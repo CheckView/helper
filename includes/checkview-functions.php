@@ -85,9 +85,19 @@ if ( ! function_exists( 'checkview_validate_jwt_token' ) ) {
 			);
 		}
 		$jwt = (array) $decoded;
+		$default_site_url = checkview_ensure_trailing_slash( get_bloginfo( 'url' ) );
+
+		/**
+		 * Filter: Allows sites with custom URL structures to modify the URL the JWT is checked against.
+		 *
+		 * @since 2.0.21
+		 *
+		 * @param string $default_site_url Default site URL.
+		 */
+		$site_url = apply_filters( 'checkview_site_url', $default_site_url );
 
 		// If a URL mismatch, return false.
-		if ( false === strpos( checkview_ensure_trailing_slash( get_bloginfo( 'url' ) ), checkview_ensure_trailing_slash( $jwt['websiteUrl'] ) ) ) {
+		if ( false === strpos( $site_url, checkview_ensure_trailing_slash( $jwt['websiteUrl'] ) ) ) {
 			Checkview_Admin_Logs::add( 'api-logs', 'Invalid site url.' );
 			return false;
 		}

@@ -87,6 +87,7 @@ Yes, creating a [CheckView.io](https://checkview.io/) account is required - for 
 == Changelog ==
 = 2.0.21 =
 * Handle errors when setting up logs folder.
+* New filter that allows modification of the site URL used in JWT authentication.
 
 = 2.0.20 =
 * Only run testing code for requests with newly required cookie.
@@ -382,6 +383,7 @@ Yes, creating a [CheckView.io](https://checkview.io/) account is required - for 
 == Upgrade Notice ==
 = 2.0.21 =
 * Handle errors when setting up logs folder.
+* New filter that allows modification of the site URL used in JWT authentication.
 
 = 2.0.20 =
 * Only run testing code for requests with newly required cookie.
