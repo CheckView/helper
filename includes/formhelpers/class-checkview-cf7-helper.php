@@ -115,6 +115,12 @@ if ( ! class_exists( 'Checkview_Cf7_Helper' ) ) {
 				),
 				99
 			);
+
+			// Set Piped values back to original values for required select fields
+			add_filter('wpcf7_posted_data_select*', array($this, 'checkview_handled_cf7_piped_data'), 99, 3);
+
+			// Set Piped values back to original values for optional select fields
+			add_filter('wpcf7_posted_data_select', array($this, 'checkview_handled_cf7_piped_data'), 99, 3);
 		}
 
 		/**
@@ -314,6 +320,29 @@ if ( ! class_exists( 'Checkview_Cf7_Helper' ) ) {
 			$cases   = array();
 			$cases[] = 'checkview_bot';
 			return $cases;
+		}
+
+		/**
+		 * Assign original data instead of piped data to fields during CF7 submissions.
+		 *
+		 * @param array|mixed|string $value Piped value.
+		 * @param array|mixed|string $value_orig Original value.
+		 * @param mixed $tag Tag.
+		 *
+		 * @return array|mixed|string
+		 */
+		public function checkview_handled_cf7_piped_data( $value, $value_orig, $tag ) {
+			if ( ! is_array( $value ) || ! is_string( $value[0]) || ! is_string( $value_orig ) ) {
+				return $value;
+			}
+
+			if ($value[0] !== $value_orig) {
+				Checkview_Admin_Logs::add( 'api-logs', 'Detected piped CF7 select field, restoring original value.' );
+
+				return $value_orig;
+			}
+
+			return $value;
 		}
 	}
 
