@@ -325,6 +325,8 @@ if ( ! class_exists( 'Checkview_Cf7_Helper' ) ) {
 		/**
 		 * Assign original data instead of piped data to fields during CF7 submissions.
 		 *
+		 * @since 2.0.22
+		 *
 		 * @param array|mixed|string $value Piped value.
 		 * @param array|mixed|string $value_orig Original value.
 		 * @param mixed $tag Tag.
