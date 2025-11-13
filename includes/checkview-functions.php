@@ -388,8 +388,9 @@ if ( ! function_exists( 'checkview_get_visitor_ip' ) ) {
 
 			foreach ( explode( ',', $key ) as $ip ) {
 				$ip = trim( $ip );
+				$ip = preg_replace('/:\d{1,5}$/', '', $ip);
 
-				if ( checkview_validate_ip( $ip ) && is_array( $cv_bot_ip ) && in_array( $ip, $cv_bot_ip ) ) {
+				if ( $ip !== null && checkview_validate_ip( $ip ) && is_array( $cv_bot_ip ) && in_array( $ip, $cv_bot_ip ) ) {
 					return sanitize_text_field( $ip );
 				}
 			}
