@@ -22,8 +22,6 @@ if ( ! function_exists( 'checkview_validate_ip' ) ) {
 	function checkview_validate_ip( string $ip ): bool {
 		// Validate that the input is a valid IP address.
 		if ( ! empty( $ip ) && ! filter_var( $ip, FILTER_VALIDATE_IP ) ) {
-			// If validation fails, handle the error appropriately.
-			error_log( esc_html__( 'Invalid IP Address', 'checkview' ) );
 			return false;
 		} elseif ( empty( $ip ) ) {
 			return false;
