@@ -3,11 +3,11 @@ Contributors: checkview, inspry, muhammadfaizanhaidar
 Donate link: https://checkview.io/
 Tags: testing, monitoring, uptime, tests, woocommerce
 Requires at least: 5.0.1
-Tested up to: 6.8
+Tested up to: 6.9
 Requires PHP: 7.0.0
 License: GPLv3
 License URI: http://www.gnu.org/licenses/gpl-3.0.html
-Stable tag: 2.0.23
+Stable tag: 2.0.24
 
 [CheckView](https://checkview.io/) is the friendly WordPress automated testing platform for everyone, from developers, shop owners to agencies.  
 
@@ -85,6 +85,9 @@ Yes, creating a [CheckView.io](https://checkview.io/) account is required - for 
 3. CheckView general settings.
 
 == Changelog ==
+= 2.0.24 =
+* Confirmed compatibility with WordPress 6.9.
+
 = 2.0.23 =
 * Trim ports when detecting IP addresses.
 
@@ -387,6 +390,9 @@ Yes, creating a [CheckView.io](https://checkview.io/) account is required - for 
 * Initial release.
 
 == Upgrade Notice ==
+= 2.0.24 =
+* Confirmed compatibility with WordPress 6.9.
+
 = 2.0.23 =
 * Trim ports when detecting IP addresses.
 
