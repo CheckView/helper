@@ -86,6 +86,7 @@ Yes, creating a [CheckView.io](https://checkview.io/) account is required - for 
 
 == Changelog ==
 = 2.0.24 =
+* Add new filter, `checkview_jwt_leeway`, for JWT leeway configuration (in seconds).
 * Confirmed compatibility with WordPress 6.9.
 
 = 2.0.23 =
@@ -391,6 +392,7 @@ Yes, creating a [CheckView.io](https://checkview.io/) account is required - for 
 
 == Upgrade Notice ==
 = 2.0.24 =
+* Add new filter, `checkview_jwt_leeway`, for JWT leeway configuration (in seconds).
 * Confirmed compatibility with WordPress 6.9.
 
 = 2.0.23 =
