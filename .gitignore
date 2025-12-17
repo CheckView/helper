@@ -1,8 +1,8 @@
 node_modules
 .vscode
 wp-content
-wp-config.php
-wordpress
-applications
-public_html/
-web
+public_html/*
+site/*
+web/*
+scripts/dist
+.idea

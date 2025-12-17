@@ -1,11 +1,10 @@
 <?php
 /**
- * Fired during Gforms is active.
+ * Checkview_Gforms_Helper class
  *
- * @link       https://checkview.io
- * @since      1.0.0
+ * @since 1.0.0
  *
- * @package    Checkview
+ * @package Checkview
  * @subpackage Checkview/includes/formhelpers
  */
 
@@ -15,26 +14,29 @@ if ( ! defined( 'WPINC' ) ) {
 
 if ( ! class_exists( 'Checkview_Gforms_Helper' ) ) {
 	/**
-	 * The public-facing functionality of the plugin.
+	 * Adds support for Gravity Forms.
 	 *
-	 * Helps in Gforms management.
+	 * During CheckView tests, modifies Gravity Forms hooks, overwrites the
+	 * recipient email address, and handles test cleanup.
 	 *
-	 * @package    Checkview
+	 * @package Checkview
 	 * @subpackage Checkview/includes/formhelpers
-	 * @author     Check View <support@checkview.io>
+	 * @author Check View <support@checkview.io>
 	 */
 	class Checkview_Gforms_Helper {
 		/**
-		 * The loader that's responsible for maintaining and registering all hooks that power
-		 * the plugin.
+		 * Loader.
 		 *
-		 * @since    1.0.0
-		 * @access   protected
-		 * @var      Checkview_Loader    $loader    Maintains and registers all hooks for the plugin.
+		 * @since 1.0.0
+		 * @access protected
+		 *
+		 * @var Checkview_Loader $loader Maintains and registers all hooks for the plugin.
 		 */
 		protected $loader;
 		/**
-		 * Initializes the class constructor.
+		 * Constructor.
+		 *
+		 * Initiates loader property, adds hooks.
 		 */
 		public function __construct() {
 			$this->loader = new Checkview_Loader();
@@ -49,18 +51,40 @@ if ( ! class_exists( 'Checkview_Gforms_Helper' ) ) {
 					99,
 					1
 				);
+				// Divert and suppress postmark.
+				add_filter(
+					'gform_postmark_email',
+					array(
+						$this,
+						'checkview_modify_postmark_email',
+					),
+					99,
+					1
+				);
+
+				// Divert and suppress postmark.
+				add_filter(
+					'gform_sendgrid_email',
+					array(
+						$this,
+						'checkview_modify_sendgrid_email',
+					),
+					99,
+					1
+				);
+
 			}
-			// disable addons found in forms.
-			// add_filter(
-			// 	'gform_addon_pre_process_feeds',
-			// 	array(
-			// 		$this,
-			// 		'checkview_disable_addons_feed',
-			// 	),
-			// 	999,
-			// 	3
-			// );
-			// disable pdf addon if added to form.
+			// Disable addons found in forms.
+			add_filter(
+				'gform_addon_pre_process_feeds',
+				array(
+					$this,
+					'checkview_disable_addons_feed',
+				),
+				999,
+				3
+			);
+			// Disable PDF addon if added to form.
 			add_filter(
 				'gfpdf_pdf_config',
 				array(
@@ -70,7 +94,8 @@ if ( ! class_exists( 'Checkview_Gforms_Helper' ) ) {
 				999,
 				2
 			);
-			// disable zero spam for form testing.
+
+			// Disable Zero Spam addon for form testing.
 			add_filter(
 				'gf_zero_spam_check_key_field',
 				array(
@@ -80,7 +105,7 @@ if ( ! class_exists( 'Checkview_Gforms_Helper' ) ) {
 				99,
 				4
 			);
-			// clone entry after submission complete.
+
 			add_action(
 				'gform_after_submission',
 				array(
@@ -96,6 +121,7 @@ if ( ! class_exists( 'Checkview_Gforms_Helper' ) ) {
 				'__return_true',
 				999
 			);
+
 			add_filter(
 				'gform_pre_render',
 				array( $this, 'maybe_hide_recaptcha' )
@@ -118,12 +144,12 @@ if ( ! class_exists( 'Checkview_Gforms_Helper' ) ) {
 				'gform_pre_submission_filter',
 				array( $this, 'maybe_hide_recaptcha' )
 			);
-			// bypass hcaptcha.
+			// Bypass hCaptcha.
 			add_filter(
 				'hcap_activate',
 				'__return_false'
 			);
-			// bypass akimet.
+			// Bypass Akismet.
 			add_filter(
 				'akismet_get_api_key',
 				'__return_null',
@@ -131,59 +157,62 @@ if ( ! class_exists( 'Checkview_Gforms_Helper' ) ) {
 			);
 		}
 		/**
-		 * Bypasses recaptcha .
+		 * Unsets Captchas from the form.
 		 *
-		 * @param [Ninaja form] $form form object.
-		 * @return form.
+		 * @param array $form Form object.
+		 * @return form
 		 */
 		public function maybe_hide_recaptcha( $form ) {
-
-			// Add a placeholder to field id 8, is not used with multi-select or radio, will overwrite placeholder set in form editor.
-			// Replace 8 with your actual field id.
 			$fields = $form['fields'];
 
 			foreach ( $form['fields'] as $key => $field ) {
 				if ( 'captcha' === $field->type || 'hcaptcha' === $field->type || 'turnstile' === $field->type ) {
+					Checkview_Admin_Logs::add( 'ip-logs', 'Unset captcha field type [' . $field->type . '].' );
+
 					unset( $fields[ $key ] );
 				}
 			}
 
 			$form['fields'] = $fields;
+
 			return $form;
 		}
 
 		/**
-		 * Clones entry to DB.
+		 * Stores the test results and finishes the testing session.
 		 *
-		 * @param array  $entry form entry data.
-		 * @param object $form form object.
+		 * Deletes test submission from Formidable database table.
+		 *
+		 * @param array  $entry Form entry data.
+		 * @param object $form Form object.
 		 * @return void
 		 */
 		public function checkview_clone_entry( $entry, $form ) {
-			$form_id           = rgar( $form, 'id' );
+			$form_id = rgar( $form, 'id' );
 			$checkview_test_id = get_checkview_test_id();
 
 			if ( empty( $checkview_test_id ) ) {
 				$checkview_test_id = $form_id . gmdate( 'Ymd' );
 			}
+
 			self::checkview_clone_gf_entry( $entry['id'], $form_id, $checkview_test_id );
+
 			if ( isset( $entry['id'] ) ) {
-				// Remove entry after submission.
 				GFAPI::delete_entry( $entry['id'] );
 			}
-			// Test completed So Clear sessions.
+
 			complete_checkview_test( $checkview_test_id );
 		}
 		/**
-		 * Injects email to Formidableis supported emails.
+		 * Modifies the submission recipient email addreesss.
 		 *
-		 * @param array $email address.
-		 * @return array email.
+		 * @param array $email Address.
+		 * @return array Email.
 		 */
 		public function checkview_inject_email( $email ) {
 			if ( get_option( 'disable_email_receipt', false ) == false ) {
 				$email['to'] = TEST_EMAIL;
-				$headers = $email['headers'];
+				$headers     = $email['headers'];
 				if ( ! is_array( $headers ) ) {
 					$headers = explode( "\r\n", $headers );
 				}
@@ -202,46 +231,120 @@ if ( ! class_exists( 'Checkview_Gforms_Helper' ) ) {
 			}
 			return $email;
 		}
+
 		/**
-		 * Clone Gravity form Entry
+		 * Modifies Sendgrid email.
 		 *
-		 * @param int $entry_id entry id of the form.
-		 * @param int $form_id form submitted id.
-		 * @param int $uid user submitted id.
+		 * @param array $email modifies sendgrid emails.
+		 * @return array
+		 */
+		public function checkview_modify_sendgrid_email( array $email ): array {
+			if ( get_option( 'disable_email_receipt', false ) == false ) {
+				$email['personalizations'][0]['to']  = TEST_EMAIL;
+				$email['personalizations'][0]['cc']  = '';
+				$email['personalizations'][0]['bcc'] = '';
+			} else {
+				$email['personalizations'][0]['to'][] = TEST_EMAIL;
+			}
+			return $email;
+		}
+		/**
+		 * Modifies PM emails.
+		 *
+		 * @param array $email post mark email.
+		 * @return array
+		 */
+		public function checkview_modify_postmark_email( array $email ): array {
+			if ( get_option( 'disable_email_receipt', false ) == false ) {
+				$email['To'] = TEST_EMAIL;
+				$headers     = $email['Headers'];
+				if ( ! is_array( $headers ) ) {
+					$headers = explode( "\r\n", $headers );
+				}
+				$filtered_headers = array_filter(
+					$headers,
+					function ( $header ) {
+						// Exclude headers that start with 'bcc:' or 'cc:'.
+						return stripos( $header, 'Bcc:' ) !== 0 && stripos( $header, 'CC:' ) !== 0;
+					}
+				);
+				$email['Headers'] = $filtered_headers;
+				$email['Bcc']     = '';
+				$email['CC']      = '';
+			} elseif ( is_array( $email['To'] ) ) {
+				$email['To'][] = TEST_EMAIL;
+			} else {
+				$email['To'] .= ', ' . TEST_EMAIL;
+			}
+			return $email;
+		}
+		/**
+		 * Clones the form submission to CheckView tables.
+		 *
+		 * @param int $entry_id Entry ID of the form.
+		 * @param int $form_id Form submitted ID.
+		 * @param int $uid User submitted ID.
 		 * @return void
 		 */
 		public function checkview_clone_gf_entry( $entry_id, $form_id, $uid ) {
 			global $wpdb;
 
+			Checkview_Admin_Logs::add( 'ip-logs', 'Cloning submission entry [' . $entry_id . '] with unique ID [' . $uid . ']...' );
+
 			$tablename = $wpdb->prefix . 'gf_entry_meta';
-			$rows      = $wpdb->get_results( $wpdb->prepare( 'Select * from ' . $tablename . ' where entry_id=%d and form_id=%d order by id ASC', $entry_id, $form_id ) );
+			$rows = $wpdb->get_results( $wpdb->prepare( 'Select * from ' . $tablename . ' where entry_id=%d and form_id=%d order by id ASC', $entry_id, $form_id ) );
+			$entry_meta_table = $wpdb->prefix . 'cv_entry_meta';
+			$count = 0;
+
 			foreach ( $rows as $row ) {
-				$table = $wpdb->prefix . 'cv_entry_meta';
 				$data  = array(
-					'uid'        => $uid,
-					'form_id'    => $row->form_id,
-					'entry_id'   => $row->entry_id,
-					'meta_key'   => $row->meta_key,
+					'uid' => $uid,
+					'form_id' => $row->form_id,
+					'entry_id' => $row->entry_id,
+					'meta_key' => $row->meta_key,
 					'meta_value' => $row->meta_value,
 				);
-				$wpdb->insert( $table, $data );
+
+				$result = $wpdb->insert( $entry_meta_table, $data );
+
+				if ( $result ) {
+					$count++;
+				}
 			}
+
+			if ( $count > 0 ) {
+				Checkview_Admin_Logs::add( 'ip-logs', 'Cloned submission entry meta data (inserted ' . $count . ' rows into ' . $entry_meta_table . ').' );
+			} else {
+				if ( count( $rows ) > 0 ) {
+					Checkview_Admin_Logs::add( 'ip-logs', 'Failed to clone submission entry meta data.' );
+				}
+			}
+
 			$tablename = $wpdb->prefix . 'gf_entry';
-			$row       = $wpdb->get_row( $wpdb->prepare( 'Select * from ' . $tablename . ' where id=%d and form_id=%d LIMIT 1', $entry_id, $form_id ), ARRAY_A );
+			$row = $wpdb->get_row( $wpdb->prepare( 'Select * from ' . $tablename . ' where id=%d and form_id=%d LIMIT 1', $entry_id, $form_id ), ARRAY_A );
+
 			unset( $row['id'] );
-			$table1           = $wpdb->prefix . 'cv_entry';
-			$row['uid']       = $uid;
+			unset( $row['source_id'] );
+
+			$entry_table = $wpdb->prefix . 'cv_entry';
+			$row['uid'] = $uid;
 			$row['form_type'] = 'GravityForms';
-			$wpdb->insert( $table1, $row );
+			$result = $wpdb->insert( $entry_table, $row );
+
+			if ( ! $result ) {
+				Checkview_Admin_Logs::add( 'ip-logs', 'Failed to clone submission entry data.' );
+			} else {
+				Checkview_Admin_Logs::add( 'ip-logs', 'Cloned submission entry data (inserted ' . (int) $result . ' rows into ' . $entry_table . ').' );
+			}
 		}
 
 		/**
-		 * Disable Zeror Spam Addon
+		 * Returns false.
 		 *
-		 * @param int    $form_id form's id.
-		 * @param int    $should_check_key_field check for filed.
-		 * @param object $form forms object.
-		 * @param array  $entry entry details.
+		 * @param int    $form_id Form's ID.
+		 * @param int    $should_check_key_field Check for filed.
+		 * @param object $form Forms object.
+		 * @param array  $entry Entry details.
 		 * @return bool
 		 */
 		public function checkview_disable_zero_spam_addon( $form_id, $should_check_key_field, $form, $entry ) {
@@ -249,10 +352,10 @@ if ( ! class_exists( 'Checkview_Gforms_Helper' ) ) {
 		}
 
 		/**
-		 * Disable Pdf Addon.
+		 * Disables Gravity Forms PDF addons.
 		 *
-		 * @param array $settings settinfs for form helper.
-		 * @param int   $form_id id of the form submitted.
+		 * @param array $settings Settings for form helper.
+		 * @param int   $form_id ID of the form submitted.
 		 * @return array
 		 */
 		public function checkview_disable_pdf_addon( $settings, $form_id ) {
@@ -277,15 +380,18 @@ if ( ! class_exists( 'Checkview_Gforms_Helper' ) ) {
 		}
 
 		/**
-		 * Disable addons feed.
+		 * Disables conditional logic for feeds.
 		 *
-		 * @param array  $feeds form feeds.
-		 * @param array  $entry form entry data.
-		 * @param object $form form obbject.
+		 * @param array  $feeds Form feeds.
+		 * @param array  $entry Form entry data.
+		 * @param object $form Form object.
 		 * @return array
 		 */
 		public function checkview_disable_addons_feed( $feeds, $entry, $form ) {
-			return array();
+			if ( get_option( 'disable_actions', false ) ) {
+				return array();
+			}
+			return $feeds;
 		}
 	}
 	$checkview_gforms_helper = new Checkview_Gforms_Helper();

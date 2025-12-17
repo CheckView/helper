@@ -1,13 +1,11 @@
 <?php
 /**
- * CheckView Options
+ * Checkview_Admin_Settings class
  *
- * Displays the CheckView Options.
- *
- * @author   CheckView
+ * @author CheckView
  * @category Admin
- * @package  Checkview/admin/settings/
- * @version  1.0.0
+ * @package Checkview/admin/settings/
+ * @version 1.0.0
  */
 
 if ( ! defined( 'ABSPATH' ) ) {
@@ -15,40 +13,47 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 /**
- * Checkview_Admin_Settings
+ * Configures CheckView's admin area settings.
  *
  * @since 1.0.0
  */
 class Checkview_Admin_Settings {
 	/**
-	 * Contains the tab name for current settings tab.
+	 * The current tab.
+	 * 
+	 * The CheckView settings page has tabs, where each tab contains its relevant settings.
 	 *
 	 * @var string
 	 */
 	public $page_tab;
 	/**
-	 * The unique identifier of this plugin.
+	 * Plugin name.
 	 *
-	 * @since    1.0.0
-	 * @access   protected
-	 * @var      string    $plugin_name    The string used to uniquely identify this plugin.
+	 * @since 1.0.0
+	 * @access protected
+	 * 
+	 * @var string $plugin_name The string used to uniquely identify this plugin.
 	 */
 	protected $plugin_name;
 
 	/**
-	 * The current version of the plugin.
+	 * Plugin version.
 	 *
-	 * @since    1.0.0
-	 * @access   protected
-	 * @var      string    $version    The current version of the plugin.
+	 * @since 1.0.0
+	 * @access protected
+	 * 
+	 * @var string $version The current version of the plugin.
 	 */
 	protected $version;
 	/**
-	 * Hook in tabs.
+	 * Constructor.
+	 * 
+	 * Sets class properties.
 	 *
-	 * @param string $plugin_name name of the plugin.
-	 * @param string $version version number of the plugin.
 	 * @since 1.0.0
+	 * 
+	 * @param string $plugin_name Name of the plugin.
+	 * @param string $version Version number of the plugin.
 	 */
 	public function __construct( $plugin_name, $version ) {
 		$this->plugin_name = $plugin_name;
@@ -57,9 +62,12 @@ class Checkview_Admin_Settings {
 	}
 
 	/**
-	 * Adds admin notices.
+	 * Displays admin notices.
+	 * 
+	 * Displays a success notice when a user updates settings within the admin area.
 	 *
 	 * @since 1.0.0
+	 * 
 	 * @return void
 	 */
 	public function checkview_admin_notices() {
@@ -90,9 +98,10 @@ class Checkview_Admin_Settings {
 	}
 
 	/**
-	 * Advance settings save.
+	 * Saves settings to the database.
 	 *
 	 * @since 1.0.0
+	 * 
 	 * @return void
 	 */
 	public function checkview_admin_advance_settings_save() {
@@ -121,7 +130,7 @@ class Checkview_Admin_Settings {
 	}
 
 	/**
-	 * Ajax function to sync cache.
+	 * Clears the CheckView caches.
 	 *
 	 * @since 1.0.0
 	 */
@@ -148,7 +157,7 @@ class Checkview_Admin_Settings {
 	}
 
 	/**
-	 * Ajax function to sync cache.
+	 * Clears the CheckView caches.
 	 *
 	 * @since 1.0.0
 	 */
@@ -157,14 +166,20 @@ class Checkview_Admin_Settings {
 	}
 
 	/**
-	 * Add plugin's menu.
+	 * Adds the CheckView options page.
 	 *
 	 * @since 1.0.0
 	 */
 	public function checkview_menu() {
+		$hide_me = get_option( 'checkview_hide_me', false );
+		if ( 'true' == $hide_me ) {
+			$title = esc_html__( 'Automated Testing', 'checkview' );
+		} else {
+			$title = esc_html__( 'CheckView', 'checkview' );
+		}
 		add_options_page(
-			esc_html__( 'CheckView', 'checkview' ),
-			esc_html__( 'CheckView', 'checkview' ),
+			$title,
+			$title,
 			'manage_options',
 			'checkview-options',
 			array( $this, 'checkview_options' )
@@ -172,21 +187,13 @@ class Checkview_Admin_Settings {
 	}
 
 	/**
-	 * Setting page data.
+	 * Renders the CheckView options pages.
 	 *
 	 * @since 1.0.0
 	 */
 	public function checkview_options() {
 		?>
 		<div class="checkview-wrapper">
-			<div class="inner-header">
-				<div class="checkview-settings-wrapper d-flex align-items-center">
-					<div class="d-flex align-items-center">
-						<a href="https://checkview.io" target="_blank"><img src="<?php echo esc_html( CHECKVIEW_ADMIN_ASSETS ); ?>images/logo.svg" class="img-fluid main-logo" /></a>
-					</div>
-				</div>
-			</div>
-
 			<div class="checkview-settings-wrapper">
 				<div id="icon-options-general" class="icon32"></div>
 				<div class="checkview-tab-box">
@@ -224,7 +231,7 @@ class Checkview_Admin_Settings {
 	}
 
 	/**
-	 * CheckView Settings Sections.
+	 * Retrieves CheckView settings tabs.
 	 *
 	 * @since 1.0.0
 	 *
@@ -261,10 +268,11 @@ class Checkview_Admin_Settings {
 	}
 
 	/**
-	 * Add footer branding.
+	 * Adds Inspry mention in the admin footer text.
 	 *
 	 * @since 1.0.0
-	 * @param string $footer_text footer text.
+	 * 
+	 * @param string $footer_text Footer text.
 	 * @return mixed
 	 */
 	public function checkview_add_footer_admin( $footer_text ) {

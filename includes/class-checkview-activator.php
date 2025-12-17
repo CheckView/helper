@@ -1,32 +1,29 @@
 <?php
 /**
- * Fired during plugin activation
+ * Checkview_Activator class
  *
- * @link       https://checkview.io
- * @since      1.0.0
+ * @since 1.0.0
  *
- * @package    Checkview
+ * @package Checkview
  * @subpackage Checkview/includes
  */
 
 /**
- * Fired during plugin activation.
+ * Sets up CheckView on plugin activation.
  *
- * This class defines all code necessary to run during the plugin's activation.
+ * Sets up database tables used by the plugin.
  *
- * @since      1.0.0
- * @package    Checkview
+ * @since 1.0.0
+ * @package Checkview
  * @subpackage Checkview/includes
- * @author     Check View <support@checkview.io>
+ * @author Check View <support@checkview.io>
  */
 class Checkview_Activator {
 
 	/**
-	 * Creates table for the plugin and sets transients.
+	 * Runs the activation sequence.
 	 *
-	 * Long Description.
-	 *
-	 * @since    1.0.0
+	 * @since 1.0.0
 	 */
 	public static function activate() {
 		self::checkview_run_sql();
@@ -35,9 +32,10 @@ class Checkview_Activator {
 	}
 
 	/**
-	 * Creates table for the plugin.
+	 * Generates database tables.
 	 *
-	 * @since    1.0.0
+	 * @since 1.0.0
+	 *
 	 * @return void
 	 */
 	public static function checkview_run_sql() {

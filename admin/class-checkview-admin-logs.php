@@ -1,30 +1,29 @@
 <?php
 /**
- * Logs important actions of our plugin
+ * Checkview_Admin_Logs class
  *
- * @link       https://inspry.com
- * @since      1.0.0
+ * @since 1.0.0
  *
- * @package    CheckView
+ * @package CheckView
  * @subpackage CheckView/admin/
  */
 
 /**
- * Logs important actions of our plugin
+ * Handles admin logs.
+ * 
+ * Reads, writes, and clears admin logs. Supports writing to differnt log
+ * files within the logs folder, which is useful for splitting logs depending
+ * on their purpose.
  *
- * It is important that we save some events that take place on the plugin, this class
- * handles the addition of messages to our log file
- * We are going to use this feature in future.
- *
- * @author      CheckView
- * @category    Incldues
- * @package     CheckView/admin/
- * @version     1.0.0
+ * @author CheckView
+ * @category Incldues
+ * @package CheckView/admin/
+ * @version 1.0.0
  */
 class Checkview_Admin_Logs {
 
 	/**
-	 * Stores open file _handles.
+	 * Handles/file names for log files.
 	 *
 	 * @var array
 	 * @access private
@@ -32,7 +31,9 @@ class Checkview_Admin_Logs {
 	private static $_handles;
 
 	/**
-	 * Constructor for the logger.
+	 * Constructor.
+	 * 
+	 * Defines log handles property as an empty array.
 	 */
 	public function __construct() {
 		self::$_handles = array();
@@ -40,6 +41,8 @@ class Checkview_Admin_Logs {
 
 	/**
 	 * Destructor.
+	 * 
+	 * Closes file pointers when this class is destroyed.
 	 */
 	public function __destruct() {
 		foreach ( self::$_handles as $handle ) {
@@ -50,7 +53,7 @@ class Checkview_Admin_Logs {
 	}
 
 	/**
-	 * Returns the uplaods directory
+	 * Gets the WordPress uploads folder's path.
 	 *
 	 * @return string
 	 */
@@ -59,10 +62,10 @@ class Checkview_Admin_Logs {
 		$uploads = wp_upload_dir( null, false );
 
 		return isset( $uploads['basedir'] ) && $uploads['basedir'] ? $uploads['basedir'] : '';
-	} // end get_uplaods_folder;
+	}
 
 	/**
-	 * Save Plugin Settings Admin ajax formsa
+	 * Handles saving the admin logs options.
 	 *
 	 * @return void
 	 */
@@ -87,7 +90,10 @@ class Checkview_Admin_Logs {
 	}
 
 	/**
-	 * Returns the logs folder
+	 * Gets the path of the logs folder.
+	 * 
+	 * Returns the path of the logs folder, which, by default, is located within
+	 * the WordPress Uploads directory.
 	 *
 	 * @return string
 	 */
@@ -96,10 +102,10 @@ class Checkview_Admin_Logs {
 		$path = apply_filters( 'checkview_get_logs_folder', self::get_uploads_folder() . '/checkview-logs/' );
 
 		return $path;
-	} // end get_logs_folder;
+	}
 
 	/**
-	 * Creates Logs folder.
+	 * Creates the logs folder.
 	 *
 	 * @return void
 	 */
@@ -115,9 +121,13 @@ class Checkview_Admin_Logs {
 
 			$fp = @fopen( $htaccess, 'w' );
 
-			@fputs( $fp, 'deny from all' );
+			if ( ! $fp ) {
+				error_log( 'CheckView: Could not create logs htaccess file: ' . $htaccess );
+			} else {
+				@fputs( $fp, 'deny from all' );
 
-			@fclose( $fp );
+				@fclose( $fp );
+			}
 
 		}
 
@@ -128,19 +138,27 @@ class Checkview_Admin_Logs {
 
 			$fp = @fopen( $index, 'w' );
 
-			@fputs( $fp, '' );
+			if ( ! $fp ) {
+				error_log( 'CheckView: Could not create logs index.html file: ' . $index );
+			} else {
+				@fputs( $fp, '' );
 
-			@fclose( $fp );
+				@fclose( $fp );
+			}
 
 		}
-	} // end create_logs_folder;
+	}
 
 	/**
-	 * Get the log contents
-	 *
-	 * @since  1.6.0
-	 * @param  string  $handle file handle.
-	 * @param  integer $lines number of line to enter.
+	 * Reads a log file.
+	 * 
+	 * If given a `$lines`, this function will only return the last `$lines`
+	 * lines of the chosen log file.
+	 * 
+	 * @since 1.6.0
+	 * 
+	 * @param string $handle File handle.
+	 * @param integer $lines Number of line to limit.
 	 * @return array
 	 */
 	public static function read_lines( $handle, $lines = 10 ) {
@@ -164,22 +182,19 @@ class Checkview_Admin_Logs {
 			}
 		}
 
-		// Close the file handle; when you are done using a
-		// resource you should always close it immediately.
-
 		return array_filter( $results );
-	} // end read_lines;
+	}
 
 	/**
-	 * Open log file for writing.
+	 * Tests opening a log file.
 	 *
-	 * @since  1.2.0 Checks if the directory exists
-	 * @since  0.0.1
+	 * @since 0.0.1
+	 * @since 1.2.0 Checks if the directory exists
 	 *
 	 * @access private
-	 * @param mixed  $handle file handle.
-	 * @param string $permission file permissions.
-	 * @return bool success
+	 * @param mixed $handle File handle.
+	 * @param string $permission File permissions.
+	 * @return bool True on success, false otherwise.
 	 */
 	private static function open( $handle, $permission = 'a' ) {
 
@@ -201,12 +216,16 @@ class Checkview_Admin_Logs {
 	}
 
 	/**
-	 * Add a log entry to chosen file.
+	 * Writes to a log file.
+	 * 
+	 * Given a log file's `$handle`, append `$message` to it. Prepends each new
+	 * message with the time the log was written.
 	 *
-	 * @param string $handle file handle.
-	 * @param string $message log to write.
+	 * @param string $handle File handle.
+	 * @param string $message Log to write.
 	 */
 	public static function add( $handle, $message ) {
+		$handle = $handle . '-log-' . gmdate( 'Y-m-d' );
 		if ( self::open( $handle ) && is_resource( self::$_handles[ $handle ] ) ) {
 			$time   = self::get_now()->format( 'm-d-Y @ H:i:s -' ); // Grab Time.
 			$result = @fwrite( self::$_handles[ $handle ], $time . ' ' . $message . "\n" );
@@ -217,11 +236,12 @@ class Checkview_Admin_Logs {
 	}
 
 	/**
-	 * Get the NOW relative to our timezone
+	 * Gets the current date-time.
 	 *
 	 * @since 1.5.1
-	 * @param string $type type of date.
-	 * @return date
+	 * 
+	 * @param string $type Type of date.
+	 * @return mixed
 	 */
 	public static function get_now( $type = 'mysql' ) {
 
@@ -229,9 +249,9 @@ class Checkview_Admin_Logs {
 	}
 
 	/**
-	 * Returns the current time from the network
+	 * Gets the current timestamp.
 	 *
-	 * @param string $type date type.
+	 * @param string $type Date type.
 	 * @return date
 	 */
 	public static function get_current_time( $type = 'mysql' ) {
@@ -248,12 +268,12 @@ class Checkview_Admin_Logs {
 		}
 
 		return $time;
-	} // end get_current_time;
+	}
 
 	/**
-	 * Clear entries from chosen file.
+	 * Clears a log file.
 	 *
-	 * @param mixed $handle file handle.
+	 * @param mixed $handle File handle.
 	 */
 	public function clear( $handle ) {
 		if ( self::open( $handle ) && is_resource( self::$_handles[ $handle ] ) ) {

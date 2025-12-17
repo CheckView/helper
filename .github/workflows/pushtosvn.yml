@@ -1,4 +1,4 @@
-name: "Deploy to WordPress.org and create release on GitHub"
+name: "Deploy to WordPress.org"
 
 on:
   workflow_dispatch:
@@ -20,25 +20,15 @@ jobs:
           composer install --no-dev --prefer-dist --optimize-autoloader --no-scripts
           yarn install
           grunt build
+          
+      - uses: actions/checkout@master
+      - name: Install SVN
+        run: sudo apt-get install subversion
+
       - name: WordPress Plugin Deploy
         uses: 10up/action-wordpress-plugin-deploy@stable
         env:
           SVN_PASSWORD: ${{ secrets.SVN_PASSWORD }}
           SVN_USERNAME: ${{ secrets.SVN_USERNAME }}
           SLUG: checkview # optional, remove if GitHub repo name matches SVN slug, including capitalization
-  build:
-    name: Create Release
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@main
-      - name: Create Release
-        id: create_release
-        uses: actions/create-release@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} # This token is provided by Actions, you do not need to create your own token
-        with:
-          tag_name: ${{ github.ref }}
-          release_name: Release ${{ github.ref }}
-          draft: false
-          prerelease: false
+

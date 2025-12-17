@@ -23,7 +23,7 @@ class Checkview_Cf7_Helper_Test extends WP_UnitTestCase {
 		$helper = new Checkview_Cf7_Helper();
 
 		if ( ! defined( 'CHECKVIEW_EMAIL' ) ) {
-			define( 'CHECKVIEW_EMAIL', 'verify@test-mail.checkview' );
+			define( 'CHECKVIEW_EMAIL', 'verify@test-mail.checkview.io' );
 		}
 		$send_to = CHECKVIEW_EMAIL;
 		if ( isset( $test_form['send_to'] ) && '' !== $test_form['send_to'] ) {

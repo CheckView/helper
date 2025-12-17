@@ -1,264 +1,214 @@
 <?php
 /**
- * The file that defines the core plugin class
+ * CheckView core: Checkview class
  *
- * A class definition that includes attributes and functions used across both the
- * public-facing side of the site and the admin area.
+ * @since 1.0.0
  *
- * @link       https://checkview.io
- * @since      1.0.0
- *
- * @package    Checkview
+ * @package Checkview
  * @subpackage Checkview/includes
  */
 
 /**
- * The core plugin class.
+ * Loads plugin dependencies and files, runs hooks.
  *
- * This is used to define internationalization, admin-specific hooks, and
- * public-facing site hooks.
- *
- * Also maintains the unique identifier of this plugin as well as the current
- * version of the plugin.
- *
- * @since      1.0.0
- * @package    Checkview
+ * @since 1.0.0
+ * @package Checkview
  * @subpackage Checkview/includes
- * @author     Check View <support@checkview.io>
+ * @author Check View <support@checkview.io>
  */
-class Checkview {
+class CheckView {
 
 	/**
-	 * The loader that's responsible for maintaining and registering all hooks that power
-	 * the plugin.
+	 * Hook loader.
 	 *
-	 * @since    1.0.0
-	 * @access   protected
-	 * @var      Checkview_Loader    $loader    Maintains and registers all hooks for the plugin.
+	 * @since 1.0.0
+	 * @access protected
+	 *
+	 * @var Checkview_Loader $loader Maintains and registers all hooks for the plugin.
 	 */
 	protected $loader;
 
 	/**
-	 * The unique identifier of this plugin.
+	 * Plugin name.
 	 *
-	 * @since    1.0.0
-	 * @access   protected
-	 * @var      string    $plugin_name    The string used to uniquely identify this plugin.
+	 * @since 1.0.0
+	 * @access protected
+	 *
+	 * @var string $plugin_name The string used to uniquely identify this plugin.
 	 */
 	protected $plugin_name;
 
 	/**
-	 * The current version of the plugin.
+	 * Plugin version.
 	 *
-	 * @since    1.0.0
-	 * @access   protected
-	 * @var      string    $version    The current version of the plugin.
+	 * @since 1.0.0
+	 * @access protected
+	 *
+	 * @var string $version The current version of the plugin.
 	 */
 	protected $version;
 
 	/**
-	 * The single instance of the plugin.
+	 * Class singleton.
 	 *
-	 * @since    1.0.0
-	 * @access   private
-	 * @var      class    $instance    The instance of the class.
+	 * @since 1.0.0
+	 * @access private
+	 *
+	 * @var CheckView $instance The instance of the class.
 	 */
 
 	private static $instance = null;
 
 	/**
-	 * Define the core functionality of the plugin.
+	 * Bot cookie name.
 	 *
-	 * Set the plugin name and the plugin version that can be used throughout the plugin.
-	 * Load the dependencies, define the locale, and set the hooks for the admin area and
-	 * the public-facing side of the site.
+	 * @since 2.0.20
+	 * @access private
 	 *
-	 * @since    1.0.0
+	 * @var string $bot_cookie Bot cookie name.
+	 */
+	private static string $bot_cookie = 'cv_running';
+
+	/**
+	 * Constructor.
+	 *
+	 * Sets up class properties, loads dependencies, and hooks up functions.
+	 *
+	 * @since 1.0.0
 	 */
 	public function __construct() {
 		if ( defined( 'CHECKVIEW_VERSION' ) ) {
 			$this->version = CHECKVIEW_VERSION;
 		} else {
-			$this->version = '2.0.7';
+			$this->version = '2.0.25';
 		}
 		$this->plugin_name = 'checkview';
 
 		$this->load_dependencies();
-		$this->define_public_hooks();
-		$this->set_locale();
+
+		$this->loader->add_action( 'init', $this, 'load_textdomain' );
+		$this->loader->add_action( 'wp_enqueue_scripts', $this, 'dequeue_scripts', 20 );
+
 		$this->define_admin_hooks();
 	}
 
 	/**
-	 * The object is created from within the class itself.
-	 * only if the class has no instance.
+	 * Gets the instance of this class.
 	 *
-	 * @since    1.0.0
-	 * @return   self   class instance
+	 * Creates an instance of itself if there was not one found before returning.
+	 *
+	 * @since 1.0.0
+	 *
+	 * @return self Class instance
 	 */
 	public static function get_instance() {
 		if ( null === self::$instance ) {
-			self::$instance = new Checkview();
+			self::$instance = new CheckView();
 		}
 
 		return self::$instance;
 	}
 
 	/**
-	 * Load the required dependencies for this plugin.
+	 * Determine if the request contains the cookie necessary for running testing code.
 	 *
-	 * Include the following files that make up the plugin:
+	 * Returns one of `woo_checkout`, `form`, or `custom`. False if not set or invalid value.
 	 *
-	 * - Checkview_Loader. Orchestrates the hooks of the plugin.
-	 * - Checkview_i18n. Defines internationalization functionality.
-	 * - Checkview_Admin. Defines all hooks for the admin area.
-	 * - Checkview_Public. Defines all hooks for the public side of the site.
+	 * @return string|false Validated cookie value, or false.
+	 */
+	public static function has_cookie() {
+		$valid_values = array('woo_checkout', 'form', 'custom');
+
+		if ( isset( $_COOKIE[self::$bot_cookie] ) && in_array( $_COOKIE[self::$bot_cookie], $valid_values ) ) {
+			return $_COOKIE[self::$bot_cookie];
+		}
+
+		return false;
+	}
+
+	/**
+	 * Determine if the current request is a CheckView bot.
 	 *
-	 * Create an instance of the loader which will be used to register the hooks
-	 * with WordPress.
+	 * @return bool
+	 */
+	public static function is_bot(): bool {
+		$visitor_ip = checkview_get_visitor_ip();
+		$cv_bot_ip = checkview_get_api_ip();
+		$ip_verified = is_array( $cv_bot_ip ) && in_array( $visitor_ip, $cv_bot_ip );
+
+		if ( isset( $_REQUEST['checkview_test_id'] ) && ! $ip_verified ) {
+			Checkview_Admin_Logs::add( 'ip-logs', 'Although checkview_test_id is set in the request, failing bot check due to visitor IP [' . $visitor_ip . '] not existing in bot IP list [' . implode(', ', $cv_bot_ip) . '].' );
+
+			return false;
+		}
+
+		$has_cookie = self::has_cookie();
+
+		return $has_cookie && $ip_verified;
+	}
+
+	/**
+	 * Loads plugin dependencies.
 	 *
-	 * @since    1.0.0
-	 * @access   private
+	 * Loads WordPress Core dependenceis, vendor files, and CheckView classes.
+	 * Additionally sets up more class properties, conditionally loads WooCommerce
+	 * helper, adds admin plugin list action links, and initializes the API class.
+	 *
+	 * @since 1.0.0
+	 * @access private
 	 */
 	private function load_dependencies() {
+		// WordPress Core
 		if ( ! function_exists( 'is_plugin_active' ) ) {
 			include_once ABSPATH . 'wp-admin/includes/plugin.php';
 		}
+
+		// WordPress Core
 		require_once ABSPATH . 'wp-admin/includes/class-wp-filesystem-base.php';
 		require_once ABSPATH . 'wp-admin/includes/class-wp-filesystem-direct.php';
 
-		/**
-		 * The class responsible for defining all actions that occur in the public-facing JWT
-		 * side of the site. Exposes the general functions.
-		 */
+		// Vendor
 		require_once plugin_dir_path( __DIR__ ) . 'includes/vendor/autoload.php';
-		/**
-		 * The class responsible for defining all actions that occur in the public and admin -facing
-		 * side of the site. Exposes the general functions.
-		 */
+
+		// CheckView
 		require_once plugin_dir_path( __DIR__ ) . 'includes/checkview-functions.php';
-
-		/**
-		 * The class responsible for orchestrating the actions and filters of the
-		 * core plugin.
-		 */
 		require_once plugin_dir_path( __DIR__ ) . 'includes/class-checkview-loader.php';
-
-		/**
-		 * The class responsible for defining internationalization functionality
-		 * of the plugin.
-		 */
-		require_once plugin_dir_path( __DIR__ ) . 'includes/class-checkview-i18n.php';
-
-		/**
-		 * The class responsible for defining all actions that occur in the admin area.
-		 */
 		require_once plugin_dir_path( __DIR__ ) . 'admin/class-checkview-admin.php';
-
-		/**
-		 * The class responsible for defining and maintaining logs for  all actions that occur in the admin area.
-		 */
 		require_once plugin_dir_path( __DIR__ ) . 'admin/class-checkview-admin-logs.php';
-
-		/**
-		 * The class responsible for defining all settings that occur in the admin area.
-		 */
 		require_once plugin_dir_path( __DIR__ ) . 'admin/settings/class-checkview-admin-settings.php';
 
-		/**
-		 * The class responsible for defining all actions that occur in the public-facing
-		 * side of the site.
-		 */
-		require_once plugin_dir_path( __DIR__ ) . 'public/class-checkview-public.php';
 		$this->loader = new Checkview_Loader();
-		// Current Vsitor IP.
+
+		// Current visitor IP.
 		$visitor_ip = checkview_get_visitor_ip();
+		$woo_helper = '';
 		// Check view Bot IP.
 		$cv_bot_ip = checkview_get_api_ip();
-		// if ( is_plugin_active( 'contact-form-7/wp-contact-form-7.php' ) && ! class_exists( 'checkview_cf7_helper' ) && ( 'checkview-saas' === get_option( $visitor_ip ) || isset( $_REQUEST['checkview_test_id'] ) || ( is_array( $cv_bot_ip ) && in_array( $visitor_ip, $cv_bot_ip ) ) ) ) {
-		// $send_to = CHECKVIEW_EMAIL;
-		// return;
-		// if clean talk plugin active whitelist check form API IP. .
-		// if ( is_plugin_active( 'cleantalk-spam-protect/cleantalk.php' ) ) {
-		// checkview_whitelist_api_ip();
-		// }
 
-		// $cv_test_id = isset( $_REQUEST['checkview_test_id'] ) ? sanitize_text_field( wp_unslash( $_REQUEST['checkview_test_id'] ) ) : '';
+		// TODO: What is this for?
+		if ( ( 'checkview-saas' === get_option( $visitor_ip ) || isset( $_REQUEST['checkview_test_id'] ) || ( is_array( $cv_bot_ip ) && in_array( $visitor_ip, $cv_bot_ip ) ) ) ) {
+			update_option( $visitor_ip, 'checkview-saas', true );
+		}
 
-		// $referrer_url = sanitize_url( wp_get_raw_referer(), array( 'http', 'https' ) );
-		// If not Ajax submission and found test_id.
-		// if ( isset( $_SERVER['REQUEST_URI'] ) && strpos( sanitize_url( wp_unslash( $_SERVER['REQUEST_URI'] ) ), 'admin-ajax.php' ) === false && '' !== $cv_test_id ) {
-		// Create session for later use when form submit VIA AJAX.
-		// checkview_create_cv_session( $visitor_ip, $cv_test_id );
-		// update_option( $visitor_ip, 'checkview-saas', true );
-		// }
-		// if ( $cv_test_id && '' !== $cv_test_id ) {
-		// setcookie( 'checkview_test_id' . $cv_test_id, $cv_test_id, time() + 3600, COOKIEPATH, COOKIE_DOMAIN );
-		// }
-		// If submit VIA AJAX.
-		// if ( isset( $_SERVER['REQUEST_URI'] ) && strpos( sanitize_url( wp_unslash( $_SERVER['REQUEST_URI'] ) ), 'admin-ajax.php' ) !== false ) {
-		// $referer_url_query = wp_parse_url( $referrer_url, PHP_URL_QUERY );
-		// $qry_str           = array();
-		// parse_str( $referer_url_query, $qry_str );
-		// if ( ! empty( $qry_str['checkview_test_id'] ) ) {
-		// $cv_test_id = $qry_str['checkview_test_id'];
-		// }
-		// }
-
-		// $cv_session = checkview_get_cv_session( $visitor_ip, $cv_test_id );
-
-		// stop if session not found.
-		// if ( ! empty( $cv_session ) ) {
-
-		// $test_key = $cv_session[0]['test_key'];
-
-		// $test_form = get_option( $test_key, '' );
-
-		// if ( ! empty( $test_form ) ) {
-		// $test_form = json_decode( $test_form, true );
-		// }
-
-		// if ( isset( $test_form['send_to'] ) && '' !== $test_form['send_to'] ) {
-		// $send_to = $test_form['send_to'];
-		// }
-
-		// if ( ! defined( 'TEST_EMAIL' ) ) {
-		// define( 'TEST_EMAIL', $send_to );
-		// }
-
-		// if ( ! defined( 'CV_TEST_ID' ) ) {
-		// define( 'CV_TEST_ID', $cv_test_id );
-		// }
-		// delete_transient( 'checkview_forms_test_transient' );
-		// }
-		// if ( ! defined( 'TEST_EMAIL' ) ) {
-		// define( 'TEST_EMAIL', $send_to );
-		// }
-		// if ( ! defined( 'CV_DISABLE_EMAIL_RECEIPT' ) && $disable_email_receipt ) {
-		// define( 'CV_DISABLE_EMAIL_RECEIPT', 'true' );
-		// }
-		// require_once CHECKVIEW_INC_DIR . 'formhelpers/class-checkview-cf7-helper.php';
-		// }
-		$woo_helper = '';
 		if ( class_exists( 'WooCommerce' ) ) {
-			/**
-			 * The class responsible for defining all actions that occur in the public-facing
-			 * side of the site. Exposes CheckView payment gateway.
-			 */
 			require_once plugin_dir_path( __DIR__ ) . 'includes/woocommercehelper/class-checkview-woo-automated-testing.php';
+
 			$woo_helper = new Checkview_Woo_Automated_Testing( $this->get_plugin_name(), $this->get_version(), $this->loader );
 		}
+
 		$this->loader->add_filter(
 			'plugin_action_links_' . CHECKVIEW_BASE_DIR,
 			$this,
 			'checkview_settings_link'
 		);
-		/**
-		 * The class responsible for defining all actions that occur in the public-facing
-		 * side of the site. Exposes the API end points.
-		 */
+
+		// Require API class.
 		require_once plugin_dir_path( __DIR__ ) . 'includes/API/class-checkview-api.php';
-		$plugin_api = new CheckView_Api( $this->get_plugin_name(), $this->get_version(), $woo_helper );
+
+		// Initialize the plugin's API.
+		$plugin_api = new CheckView_Api();
+
+		// Hook our routes into WordPress.
 		$this->loader->add_action(
 			'rest_api_init',
 			$plugin_api,
@@ -267,30 +217,25 @@ class Checkview {
 	}
 
 	/**
-	 * Define the locale for this plugin for internationalization.
+	 * Loads the CheckView text domain.
 	 *
-	 * Uses the Checkview_i18n class in order to set the domain and to register the hook
-	 * with WordPress.
-	 *
-	 * @since    1.0.0
-	 * @access   private
+	 * @since 1.0.0
 	 */
-	private function set_locale() {
-
-		$plugin_i18n = new Checkview_i18n();
-		$plugin_i18n->load_plugin_textdomain();
-		add_action(
-			'plugins_loaded',
-			array( $plugin_i18n, 'load_plugin_textdomain' )
+	public function load_textdomain() {
+		load_plugin_textdomain(
+			'checkview',
+			false,
+			dirname( plugin_basename( __FILE__ ) ) . '/languages/'
 		);
 	}
 
 	/**
-	 * Add settings link on plugin page.
+	 * Adds a "Settings" link to admin plugin list page.
 	 *
-	 * @since  1.0.0
-	 * @param array $links href to settings pages.
-	 * @return $links href to settings pages.
+	 * @since 1.0.0
+	 *
+	 * @param array $links The `href` value for settings pages.
+	 * @return array Modified array of plugin action links with the "Settings" link included.
 	 */
 	public function checkview_settings_link( $links ) {
 		$settings_link = '<a href="admin.php?page=checkview-options">' . esc_html__( 'Settings', 'checkview' ) . '</a>';
@@ -298,17 +243,18 @@ class Checkview {
 		return $links;
 	}
 	/**
-	 * Register all of the hooks related to the admin area functionality
-	 * of the plugin.
+	 * Sets up admin classes and hooks.
 	 *
-	 * @since    1.0.0
-	 * @access   private
+	 * Initializes various admin classes and hooks up methods from those classes.
+	 *
+	 * @since 1.0.0
+	 * @access private
 	 */
 	private function define_admin_hooks() {
-
 		$plugin_admin    = new Checkview_Admin( $this->get_plugin_name(), $this->get_version() );
 		$plugin_settings = new Checkview_Admin_Settings( $this->get_plugin_name(), $this->get_version() );
 		$plugin_logs     = new Checkview_Admin_Logs();
+
 		if ( is_admin() ) {
 			// load backend hooks.
 			$this->loader->add_action(
@@ -366,11 +312,15 @@ class Checkview {
 				3
 			);
 		}
-		$this->loader->add_action(
-			'init',
-			$plugin_admin,
-			'checkview_init_current_test'
-		);
+
+		if ( self::is_bot() ) {
+			$this->loader->add_action(
+				'init',
+				$plugin_admin,
+				'checkview_init_current_test'
+			);
+		}
+
 		$this->loader->add_action(
 			'upgrader_process_complete',
 			$this,
@@ -381,34 +331,20 @@ class Checkview {
 	}
 
 	/**
-	 * Register all of the hooks related to the public-facing functionality
-	 * of the plugin.
+	 * Sets up public classes and hooks.
 	 *
-	 * @since    1.0.0
-	 * @access   private
+	 * Initializes various public classes and hooks up methods from those classes.
+	 *
+	 * @since 1.0.0
+	 * @access private
 	 */
-	private function define_public_hooks() {
+	public function dequeue_scripts() {
+		if ( self::is_bot() ) {
+			wp_dequeue_script( 'contact-form-7' );
+			wp_dequeue_style( 'contact-form-7' );
+			wp_dequeue_script( 'wpcf7-recaptcha' );
+			wp_dequeue_style( 'wpcf7-recaptcha' );
 
-		$plugin_public = new Checkview_Public( $this->get_plugin_name(), $this->get_version() );
-
-		$this->loader->add_action(
-			'wp_enqueue_scripts',
-			$plugin_public,
-			'enqueue_styles'
-		);
-
-		$this->loader->add_action(
-			'wp_enqueue_scripts',
-			$plugin_public,
-			'enqueue_scripts'
-		);
-
-		// Current Vsitor IP.
-		$visitor_ip = checkview_get_visitor_ip();
-		// Check view Bot IP.
-		$cv_bot_ip = checkview_get_api_ip();
-		// proceed if visitor ip is equal to cv bot ip.
-		if ( is_array( $cv_bot_ip ) && in_array( $visitor_ip, $cv_bot_ip ) ) {
 			$this->loader->add_action(
 				'pre_option_require_name_email',
 				'',
@@ -417,20 +353,19 @@ class Checkview {
 		}
 	}
 	/**
-	 * Tracks core version updates. Resets CheckView cache.
+	 * Resets plugin cache if being updated.
 	 *
-	 * @param [object] $upgrader_object class upgrader.
-	 * @param [array]  $options array.
+	 * @param object $upgrader_object Class upgrader.
+	 * @param array  $options Options.
 	 * @return void
 	 */
 	public function checkview_track_updates_notification( $upgrader_object, $options ) {
 		global $wpdb;
+
 		// If an update has taken place and the updated type is plugins and the plugins element exists.
 		if ( 'update' === $options['action'] && 'plugin' === $options['type'] && isset( $options['plugins'] ) ) {
-			// Iterate through the plugins being updated and check if ours is there.
 			foreach ( $options['plugins'] as $plugin ) {
 				if ( CHECKVIEW_BASE_DIR === $plugin ) {
-					// Your action if it is your plugin.
 					checkview_reset_cache( true );
 					// Include upgrade.php for dbDelta.
 					if ( ! function_exists( 'dbDelta' ) ) {
@@ -454,40 +389,42 @@ class Checkview {
 		}
 	}
 	/**
-	 * Run the loader to execute all of the hooks with WordPress.
+	 * Hooks up the actions and filters stored in the loader.
 	 *
-	 * @since    1.0.0
+	 * @since 1.0.0
 	 */
 	public function run() {
 		$this->loader->run();
 	}
 
 	/**
-	 * The name of the plugin used to uniquely identify it within the context of
-	 * WordPress and to define internationalization functionality.
+	 * Gets the plugin name.
 	 *
-	 * @since     1.0.0
-	 * @return    string    The name of the plugin.
+	 * @since 1.0.0
+	 *
+	 * @return string The name of the plugin.
 	 */
 	public function get_plugin_name() {
 		return $this->plugin_name;
 	}
 
 	/**
-	 * The reference to the class that orchestrates the hooks with the plugin.
+	 * Gets the loader.
 	 *
-	 * @since     1.0.0
-	 * @return    Checkview_Loader    Orchestrates the hooks of the plugin.
+	 * @since 1.0.0
+	 *
+	 * @return Checkview_Loader Orchestrates the hooks of the plugin.
 	 */
 	public function get_loader() {
 		return $this->loader;
 	}
 
 	/**
-	 * Retrieve the version number of the plugin.
+	 * Gets the plugin version.
 	 *
-	 * @since     1.0.0
-	 * @return    string    The version number of the plugin.
+	 * @since 1.0.0
+	 *
+	 * @return string The version number of the plugin.
 	 */
 	public function get_version() {
 		return $this->version;

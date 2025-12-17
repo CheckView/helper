@@ -1,46 +1,45 @@
 <?php
 /**
- * Hanldes Checkview payment Gateway options.
+ * Checkview_Blocks_Payment_Gateway class
  *
- * @link       https://checkview.io
- * @since      1.0.0
+ * @since 1.0.0
  *
- * @package    CheckView
+ * @package CheckView
  * @subpackage CheckView/includes/woocommercehelper
  */
 
 use Automattic\WooCommerce\Blocks\Payments\Integrations\AbstractPaymentMethodType;
 
 /**
- * Checkview Payments Blocks integration
+ * Creates CheckView Blocks payment gateway.
  *
  * @since 1.0.3
  */
 final class Checkview_Blocks_Payment_Gateway extends AbstractPaymentMethodType {
 
 	/**
-	 * The gateway instance.
+	 * Payment gateway.
 	 *
 	 * @var Checkview_Blocks_Payment_Gateway
 	 */
 	private $gateway;
 
 	/**
-	 * Payment method name/id/slug.
+	 * Payment gateway name.
 	 *
 	 * @var string
 	 */
 	protected $name = 'checkview';
 
 	/**
-	 * Support the gateway provides.
+	 * Payment gateway compatibilities.
 	 *
 	 * @var array
 	 */
 	protected $supports = array( 'checkview' );
 
 	/**
-	 * Initializes the payment method type.
+	 * Initializes the payment gateway.
 	 */
 	public function initialize() {
 		$this->settings = get_option( 'woocommerce_checkview_settings', array() );
@@ -49,7 +48,7 @@ final class Checkview_Blocks_Payment_Gateway extends AbstractPaymentMethodType {
 	}
 
 	/**
-	 * Returns if this payment method should be active. If false, the scripts will not be enqueued.
+	 * Returns true.
 	 *
 	 * @return boolean
 	 */
@@ -58,7 +57,7 @@ final class Checkview_Blocks_Payment_Gateway extends AbstractPaymentMethodType {
 	}
 
 	/**
-	 * Returns an array of scripts/handles to be registered for this payment method.
+	 * Registers scripts for our payment method.
 	 *
 	 * @return array
 	 */
@@ -69,7 +68,7 @@ final class Checkview_Blocks_Payment_Gateway extends AbstractPaymentMethodType {
 			? require $script_asset_path
 			: array(
 				'dependencies' => array(),
-				'version'      => '2.0.7',
+				'version'      => '5',
 			);
 		$script_url        = CHECKVIEW_URI . $script_path;
 
@@ -89,7 +88,7 @@ final class Checkview_Blocks_Payment_Gateway extends AbstractPaymentMethodType {
 	}
 
 	/**
-	 * Returns an array of key=>value pairs of data made available to the payment methods script.
+	 * Gets data from our payment method.
 	 *
 	 * @return array
 	 */

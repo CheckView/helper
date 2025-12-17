@@ -1,6 +1,6 @@
 <?php
 /**
- * General Options.
+ * CheckView General Settings page content
  *
  * @package settings
  */
@@ -12,7 +12,12 @@ if ( ! defined( 'ABSPATH' ) ) {
 $checkview_options = get_option( 'checkview_advance_options', array() );
 $delete_all        = ! empty( $checkview_options['checkview_delete_data'] ) ? $checkview_options['checkview_delete_data'] : '';
 $allow_dev         = ! empty( $checkview_options['checkview_allowed_extensions'] ) ? $checkview_options['checkview_allowed_extensions'] : '';
-
+$hide_me           = get_option( 'checkview_hide_me', false );
+if ( 'true' == $hide_me ) {
+	$title = esc_html__( 'Automated Testing', 'checkview' );
+} else {
+	$title = esc_html__( 'CheckView', 'checkview' );
+}
 ?>
 <div id="checkview-general-options" class="card">
 	<form action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" method="POST">
@@ -25,7 +30,7 @@ $allow_dev         = ! empty( $checkview_options['checkview_allowed_extensions']
 						<label for="checkview_delete_data">
 							<?php esc_html_e( 'Delete data on uninstall', 'checkview' ); ?>
 						</label>
-						<p class="make-lib-description"><?php esc_html_e( 'When selected, this option will remove all data associated with the plugin from WordPress upon uninstallation, without affecting the CheckView platform.', 'checkview' ); ?></p>
+						<p class="make-lib-description"><?php esc_html_e( 'When selected, this option will remove all data associated with the plugin from WordPress upon uninstallation, without affecting the ' . $title . ' platform.', 'checkview' ); ?></p>
 					</th>
 					<td class="checkview-make-cache-box">
 					<label class="switch" for="checkview_delete_data">
@@ -43,7 +48,7 @@ $allow_dev         = ! empty( $checkview_options['checkview_allowed_extensions']
 						<label for="checkview_update_cache">
 							<?php esc_html_e( 'Update Cache', 'checkview' ); ?>
 						</label>
-						<p class="make-lib-description"><?php esc_html_e( 'The CheckView Cache refreshes daily automatically. To update it manually, simply click the "Update Cache" button.', 'checkview' ); ?></p>
+						<p class="make-lib-description"><?php esc_html_e( 'The ' . $title . ' Cache refreshes daily automatically. To update it manually, simply click the "Update Cache" button.', 'checkview' ); ?></p>
 					</th>
 					<td class="checkview-make-cache-box">
 						<label class="" for="checkview_update_cache">

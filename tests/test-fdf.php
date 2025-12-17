@@ -6,7 +6,7 @@ class Test_Checkview_Formidable_Helper extends WP_UnitTestCase {
 
 	public function test_checkview_inject_email() {
 		if ( ! defined( 'CHECKVIEW_EMAIL' ) ) {
-			define( 'CHECKVIEW_EMAIL', 'verify@test-mail.checkview' );
+			define( 'CHECKVIEW_EMAIL', 'verify@test-mail.checkview.io' );
 		}
 		$send_to = CHECKVIEW_EMAIL;
 		if ( isset( $test_form['send_to'] ) && '' !== $test_form['send_to'] ) {

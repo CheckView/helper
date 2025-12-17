@@ -1,42 +1,47 @@
 <?php
 /**
- * Hanldes Checkview WooCommerce automatted testing options.
+ * Checkview_Woo_Automated_Testing class
  *
- * @link       https://checkview.io
- * @since      1.0.0
+ * @since 1.0.0
  *
- * @package    CheckView
+ * @package CheckView
  * @subpackage CheckView/includes/woocommercehelper
  */
 
 /**
- * Integration for the WooCommerce Automated Testing system.
+ * Sets up WooCommerce for CheckView automated testing.
+ *
+ * Modifies hooks, manages testing product, manages customer account,
+ * handles email recipients, etc.
  */
 class Checkview_Woo_Automated_Testing {
 	/**
-	 * The ID of this plugin.
+	 * Plugin name.
 	 *
-	 * @since    1.0.0
-	 * @access   private
-	 * @var      string    $plugin_name    The ID of this plugin.
+	 * @since 1.0.0
+	 * @access private
+	 *
+	 * @var string $plugin_name The ID of this plugin.
 	 */
 	private $plugin_name;
 
 	/**
-	 * The version of this plugin.
+	 * Plugin version.
 	 *
-	 * @since    1.0.0
-	 * @access   private
-	 * @var      string    $version    The current version of this plugin.
+	 * @since 1.0.0
+	 * @access private
+	 *
+	 * @var string $version The current version of this plugin.
 	 */
 	private $version;
 
 	/**
-	 * The loader hooks of this plugin.
+	 * Loader.
 	 *
-	 * @since    1.0.0
-	 * @access   private
-	 * @var      bool/class    $loader    The hooks loader of this plugin.
+	 * @since 1.0.0
+	 * @access private
+	 *
+	 * @var bool/class $loader The hooks loader of this plugin.
 	 */
 	private $loader;
 
@@ -59,20 +64,23 @@ class Checkview_Woo_Automated_Testing {
 	private $suppress_webhook;
 
 	/**
-	 * Initialize the class and set its properties.
+	 * Constructor.
 	 *
-	 * @since    1.0.0
-	 * @param      string $plugin_name       The name of this plugin.
-	 * @param      string $version    The version of this plugin.
-	 * @param      string $loader    Loads the hooks.
+	 * Initiates class properties, adds hooks.
+	 *
+	 * @since 1.0.0
+	 *
+	 * @param string $plugin_name The name of this plugin.
+	 * @param string $version The version of this plugin.
+	 * @param Checkview_Loader $loader Loads the hooks.
 	 */
 	public function __construct( $plugin_name, $version, $loader ) {
-
 		$this->plugin_name      = $plugin_name;
 		$this->version          = $version;
 		$this->loader           = $loader;
 		$this->suppress_email   = get_option( 'disable_email_receipt', false );
 		$this->suppress_webhook = get_option( 'disable_webhooks', false );
+
 		if ( $this->loader ) {
 			$this->loader->add_action(
 				'admin_init',
@@ -170,13 +178,13 @@ class Checkview_Woo_Automated_Testing {
 			);
 
 			// Delete orders on backend page load if crons are disabled.
-			if ( defined( 'DISABLE_WP_CRON' ) && DISABLE_WP_CRON ) {
-				$this->loader->add_action(
-					'admin_init',
-					$this,
-					'delete_orders_from_backend',
-				);
-			}
+			// if ( defined( 'DISABLE_WP_CRON' ) && DISABLE_WP_CRON ) {
+			// $this->loader->add_action(
+			// 'admin_init',
+			// $this,
+			// 'delete_orders_from_backend',
+			// );
+			// }
 
 			$this->loader->add_filter(
 				'woocommerce_can_reduce_order_stock',
@@ -194,12 +202,13 @@ class Checkview_Woo_Automated_Testing {
 				3
 			);
 		}
+
 		$this->checkview_test_mode();
 	}
 
 
 	/**
-	 * Deletes the option storing the product ID when the product is permanently deleted.
+	 * Deletes the stored Woo Product ID option.
 	 *
 	 * @param int $post_id The ID of the post being deleted.
 	 */
@@ -213,7 +222,7 @@ class Checkview_Woo_Automated_Testing {
 	}
 
 	/**
-	 * Handles the scenario where the product is moved to the trash.
+	 * Untrashes CheckView Test product if it was accidentally trashed.
 	 *
 	 * @param int $post_id The ID of the post being trashed.
 	 */
@@ -222,12 +231,12 @@ class Checkview_Woo_Automated_Testing {
 		$product_id = get_option( 'checkview_woo_product_id' );
 
 		if ( $post_id == $product_id ) {
-			// If the product being trashed matches the stored product ID, delete the option.
+			// If the product being trashed matches the stored product ID, untrash it.
 			wp_untrash_post( $product_id );
 		}
 	}
 	/**
-	 * Empties the Cart before sessions inits.
+	 * Clears the WooCommerce cart.
 	 *
 	 * @return void
 	 */
@@ -247,15 +256,19 @@ class Checkview_Woo_Automated_Testing {
 		}
 	}
 	/**
-	 * Retrieve active payment gateways for stripe.
+	 * Retrieves active/enabled payment gateways.
 	 *
 	 * @return array
 	 */
-	public function get_active_payment_gateways() {
+	public static function get_active_payment_gateways() {
 		$active_gateways  = array();
 		$payment_gateways = WC_Payment_Gateways::instance()->payment_gateways();
 		foreach ( $payment_gateways as $gateway ) {
 			if ( 'yes' === $gateway->settings['enabled'] ) {
+				$active_gateways[ $gateway->id ] = $gateway->title;
+			}
+
+			if ( 'yes' === $gateway->enabled ) {
 				$active_gateways[ $gateway->id ] = $gateway->title;
 			}
 		}
@@ -264,12 +277,14 @@ class Checkview_Woo_Automated_Testing {
 
 
 	/**
-	 * Creates a new test customer if one does not exist. Avoids flooding the DB with test customers.
+	 * Creates the CheckView test customer.
+	 *
+	 * If the customer already exists, just return it.
 	 *
 	 * @return WC_Customer
 	 */
-	public function checkview_create_test_customer() {
-		$customer = $this->checkview_get_test_customer();
+	public static function checkview_create_test_customer() {
+		$customer = self::checkview_get_test_customer();
 		$email    = CHECKVIEW_EMAIL;
 
 		if ( false === $customer || empty( $customer ) ) {
@@ -295,20 +310,18 @@ class Checkview_Woo_Automated_Testing {
 
 
 	/**
-	 * Retrieve the test customer.
+	 * Gets the test customer.
 	 *
-	 * If the test user does not yet exist, return false.
+	 * If no customer was found, return `false`.
 	 *
 	 * @return WC_Customer|false
 	 */
-	public function checkview_get_test_customer() {
+	public static function checkview_get_test_customer() {
 		$customer_id = get_option( 'checkview_test_user', false );
 
 		if ( $customer_id ) {
 			$customer = new WC_Customer( $customer_id );
 
-			// WC_Customer will return a new customer with an ID of 0 if
-			// one could not be found with the given ID.
 			if ( is_a( $customer, 'WC_Customer' ) && 0 !== $customer->get_id() ) {
 				return $customer;
 			}
@@ -318,12 +331,11 @@ class Checkview_Woo_Automated_Testing {
 	}
 
 	/**
-	 * Prevent registration errors on WooCommerce registration.
-	 * This serves to prevent captcha-related errors that break the test-user creation for WCAT.
+	 * Resets errors when registering CheckView testing customer.
 	 *
-	 * @param WP_Error $errors   Registration errors.
+	 * @param WP_Error $errors Registration errors.
 	 * @param string   $username Username for the registration.
-	 * @param string   $email    Email for the registration.
+	 * @param string   $email Email for the registration.
 	 *
 	 * @return WP_Error
 	 */
@@ -338,32 +350,29 @@ class Checkview_Woo_Automated_Testing {
 	}
 
 	/**
-	 * Get credentials for the test user.
-	 *
-	 * It's important to note that every time this method is called the password for the test user
-	 * will be reset. This is to prevent passwords from being stored in plain-text anywhere.
+	 * Sets credentials for the CheckView testing customer.
 	 *
 	 * @return string[] Credentials for the test user.
 	 *
-	 * @type string $email    The test user's email address.
+	 * @type string $email The test user's email address.
 	 * @type string $username The test user's username.
 	 * @type string $password The newly-generated password for the test user.
 	 */
-	public function checkview_get_test_credentials() {
+	public static function checkview_get_test_credentials() {
 		add_filter( 'pre_wp_mail', '__return_false', PHP_INT_MAX );
 
 		$password = wp_generate_password();
-		$customer = $this->checkview_get_test_customer();
+		$customer = self::checkview_get_test_customer();
 
 		if ( ! $customer ) {
-			$customer = $this->checkview_create_test_customer();
+			$customer = self::checkview_create_test_customer();
 		}
 
 		$customer->set_password( $password );
 		$customer->save();
 
 		// Schedule the password to be rotated 15min from now.
-		$this->checkview_rotate_password_cron();
+		self::checkview_rotate_password_cron();
 
 		return array(
 			'email'    => $customer->get_email(),
@@ -373,15 +382,12 @@ class Checkview_Woo_Automated_Testing {
 	}
 
 	/**
-	 * Rotate the credentials for the test customer.
-	 *
-	 * This method should be called some amount of time after credentials have been shared with the
-	 * test runner.
+	 * Generates and saves a new password for the CheckView test user.
 	 */
 	public function checkview_rotate_test_user_credentials() {
 		add_filter( 'pre_wp_mail', '__return_false', PHP_INT_MAX );
 
-		$customer = $this->checkview_get_test_customer();
+		$customer = self::checkview_get_test_customer();
 
 		if ( ! $customer ) {
 			return false;
@@ -392,20 +398,22 @@ class Checkview_Woo_Automated_Testing {
 	}
 
 	/**
-	 * Schedules Cron for 15 minutes to update the User Password.
+	 * Rotate test user's password every 15 minutes.
 	 *
 	 * @return void
 	 */
-	public function checkview_rotate_password_cron() {
+	public static function checkview_rotate_password_cron() {
 		wp_schedule_single_event( time() + 15 * MINUTE_IN_SECONDS, 'checkview_rotate_user_credentials' );
 	}
 
 	/**
-	 * Retrieves details for test product.
+	 * Gets the CheckView test product.
+	 *
+	 * If the testing product is trashed, it untrash it, then return it.
 	 *
 	 * @return WC_Product/bool
 	 */
-	public function checkview_get_test_product() {
+	public static function checkview_get_test_product() {
 		$product_id = get_option( 'checkview_woo_product_id' );
 		if ( $product_id ) {
 			try {
@@ -449,7 +457,9 @@ class Checkview_Woo_Automated_Testing {
 	}
 
 	/**
-	 * Creates test product if one does not exist. Avoids flooding the DB with test products.
+	 * Creates the CheckView testing product.
+	 *
+	 * If a testing product exists, return it.
 	 *
 	 * @return WC_Product
 	 */
@@ -482,10 +492,9 @@ class Checkview_Woo_Automated_Testing {
 	}
 
 	/**
-	 * Hide test product from Yoast sitemap. Takes $excluded_post_ids if any set, adds our $product_id to the array and
-	 * returns the array.
+	 * Hides testing product from sitemap.
 	 *
-	 * @param array $excluded_posts_ids post id's to be excluded.
+	 * @param array $excluded_posts_ids Post IDs to be excluded.
 	 *
 	 * @return array[]
 	 */
@@ -500,7 +509,7 @@ class Checkview_Woo_Automated_Testing {
 	}
 
 	/**
-	 * Hide test product from WordPress' sitemap.
+	 * Hides testing product from sitemap.
 	 *
 	 * @param array $args Query args.
 	 *
@@ -518,9 +527,9 @@ class Checkview_Woo_Automated_Testing {
 	}
 
 	/**
-	 * Hide test product from JetPack's Publicize module and from Jetpack Social.
+	 * Hides testing product from Jetpack.
 	 *
-	 * @param bool     $should_publicize bool type.
+	 * @param bool     $should_publicize Publicized or not.
 	 * @param \WP_Post $post WordPress post object.
 	 *
 	 * @return bool|array
@@ -538,7 +547,7 @@ class Checkview_Woo_Automated_Testing {
 	}
 
 	/**
-	 * Add noindex to the test product.
+	 * Adds no index meta tag for test product.
 	 */
 	public function checkview_no_index_for_test_product() {
 		$product_id = get_option( 'checkview_woo_product_id' );
@@ -548,32 +557,47 @@ class Checkview_Woo_Automated_Testing {
 	}
 
 	/**
-	 * Turns test mode on.
+	 * Sets up additional hooks for CheckView test submissions.
 	 *
 	 * @return void
 	 */
 	public function checkview_test_mode() {
+		$is_bot = CheckView::is_bot();
 
-		// Current Vsitor IP.
-		$visitor_ip = checkview_get_visitor_ip();
-		// Check view Bot IP.
-		$cv_bot_ip = checkview_get_api_ip();
-		Checkview_Admin_Logs::add( 'ip-logs', wp_json_encode( $cv_bot_ip ) . 'bot IP' );
-		Checkview_Admin_Logs::add( 'ip-logs', wp_json_encode( $visitor_ip ) . 'visitor IP' );
-		if ( ! is_array( $cv_bot_ip ) || ! in_array( $visitor_ip, $cv_bot_ip ) ) {
-
+		if ( ! $is_bot ) {
 			return;
 		}
+
+		$cookie = CheckView::has_cookie();
+
+		if ( $cookie !== 'woo_checkout' ) {
+			return;
+		}
+
+		Checkview_Admin_Logs::add( 'ip-logs', 'Running Woo test mode hooks, visitor is bot and cookie value equals [' . $cookie . '].' );
 
 		if ( ! is_admin() && class_exists( 'WooCommerce' ) ) {
 			// Always use Stripe test mode when on dev or staging.
 			add_filter(
 				'option_woocommerce_stripe_settings',
 				function ( $value ) {
+					Checkview_Admin_Logs::add( 'ip-logs', 'Setting Woo test mode to true for hook [option_woocommerce_stripe_settings].' );
 
 					$value['testmode'] = 'yes';
 
 					return $value;
+				}
+			);
+
+			// Turn test mode on for stripe payments.
+			add_filter(
+				'wc_stripe_mode',
+				function ( $mode ) {
+					Checkview_Admin_Logs::add( 'ip-logs', 'Setting Woo test mode to true for hook [wc_stripe_mode].' );
+
+					$mode = 'test';
+
+					return $mode;
 				}
 			);
 
@@ -595,26 +619,37 @@ class Checkview_Woo_Automated_Testing {
 				$this,
 				'checkview_woocommerce_block_support',
 			);
+
 			add_filter(
 				'cfturnstile_whitelisted',
 				'__return_true',
 				999
 			);
+
 			// Make the test product visible in the catalog.
 			add_filter(
 				'woocommerce_product_is_visible',
-				function ( $visible, $product_id ) {
+				function ( bool $visible, $product_id ) {
 					$product = $this->checkview_get_test_product();
 
 					if ( ! $product ) {
 						return false;
 					}
 
-					return $product_id === $product->get_id() ? true : $visible;
+					$is_visible = $product_id === $product->get_id() ? true : $visible;
+
+					if ($is_visible) {
+						Checkview_Admin_Logs::add( 'ip-logs', 'Setting Woo test product visibility to true.' );
+
+						return true;
+					}
+
+					return false;
 				},
 				9999,
 				2
 			);
+
 			$this->loader->add_action(
 				'woocommerce_order_status_changed',
 				$this,
@@ -622,12 +657,15 @@ class Checkview_Woo_Automated_Testing {
 				10,
 				3
 			);
+		} else {
+			Checkview_Admin_Logs::add( 'ip-logs', 'No Woo hooks were ran (WooCommerce was not found or client is requesting admin area).' );
 		}
 	}
+
 	/**
-	 * Retuns false.
+	 * Returns false.
 	 *
-	 * @param bool $activate wether to activate or not.
+	 * @param bool $activate Wether to activate or not.
 	 * @return bool
 	 */
 	public function checkview_return_false( $activate ) {
@@ -635,10 +673,10 @@ class Checkview_Woo_Automated_Testing {
 		return $activate;
 	}
 	/**
-	 * Disable admin notifications on checkview checks.
+	 * Overwrites order email recipients.
 	 *
-	 * @param string   $recipient recipient.
-	 * @param Wc_order $order WooCommerce order.
+	 * @param string   $recipient Recipient.
+	 * @param WC_Order $order WooCommerce order.
 	 * @param Email    $self WooCommerce Email object.
 	 * @return string
 	 */
@@ -651,7 +689,13 @@ class Checkview_Woo_Automated_Testing {
 		$cv_bot_ip = checkview_get_api_ip();
 		if ( ( isset( $_REQUEST['checkview_test_id'] ) || ( is_array( $cv_bot_ip ) && in_array( $visitor_ip, $cv_bot_ip ) ) ) || ( 'checkview' === $payment_method || 'checkview' === $payment_made_by ) ) {
 			if ( get_option( 'disable_email_receipt' ) == true || get_option( 'disable_email_receipt' ) == 'true' || defined( 'CV_DISABLE_EMAIL_RECEIPT' ) || $this->suppress_email ) {
-				$recipient = $recipient . ', ' . CHECKVIEW_EMAIL;
+				if ( defined( 'TEST_EMAIL' ) ) {
+					$recipient = $recipient . ', ' . TEST_EMAIL;
+				} else {
+					$recipient = $recipient . ', ' . CHECKVIEW_EMAIL;
+				}
+			} elseif ( defined( 'TEST_EMAIL' ) ) {
+				return TEST_EMAIL;
 			} else {
 				return CHECKVIEW_EMAIL;
 			}
@@ -662,11 +706,11 @@ class Checkview_Woo_Automated_Testing {
 
 
 	/**
-	 * Disable webhooks on checkview checks.
+	 * Stops delivery of webhooks for CheckView orders.
 	 *
-	 * @param bool   $should_deliver delivery status.
-	 * @param object $webhook_object wenhook object.
-	 * @param array  $arg args to support.
+	 * @param bool   $should_deliver Delivery status.
+	 * @param object $webhook_object Webhook object.
+	 * @param array  $arg Args to support.
 	 * @return bool
 	 */
 	public function checkview_filter_webhooks( $should_deliver, $webhook_object, $arg ) {
@@ -701,18 +745,23 @@ class Checkview_Woo_Automated_Testing {
 	}
 
 	/**
-	 * Adds checkview payment gateway to WooCommerce.
+	 * Adds CheckView dummy payment gateway to Woo.
 	 *
-	 * @param string $methods methods to add payments.
-	 * @return array $methods
+	 * @param string[] $methods Methods to add payments.
+	 * @return string[]
 	 */
 	public function checkview_add_payment_gateway( $methods ) {
-		$methods[] = 'Checkview_Payment_Gateway';
+		$gateway = 'Checkview_Payment_Gateway';
+
+		Checkview_Admin_Logs::add( 'ip-logs', 'Adding Woo payment gateway [' . $gateway . '].' );
+
+		$methods[] = $gateway;
+
 		return $methods;
 	}
 
 	/**
-	 * Registers WooCommerce Blocks integration.
+	 * Declares Block Payment Gateway compatibility.
 	 *
 	 * @return void
 	 */
@@ -723,6 +772,8 @@ class Checkview_Woo_Automated_Testing {
 			add_action(
 				'woocommerce_blocks_payment_method_type_registration',
 				function ( Automattic\WooCommerce\Blocks\Payments\PaymentMethodRegistry $payment_method_registry ) {
+					Checkview_Admin_Logs::add( 'ip-logs', 'Added Woo Blocks payment gateway.' );
+
 					$payment_method_registry->register( new Checkview_Blocks_Payment_Gateway() );
 				}
 			);
@@ -731,72 +782,79 @@ class Checkview_Woo_Automated_Testing {
 
 
 	/**
-	 * Directly deletes orders.
+	 * Handles deleting orders from the backend.
 	 *
-	 * @return void
+	 * Doesn't run on AJAX requests.
+	 *
+	 * @return boolean
 	 */
-	public function delete_orders_from_backend() {
-
-		// don't run on ajax calls.
+	public static function delete_orders_from_backend() {
 		if ( defined( 'DOING_AJAX' ) && DOING_AJAX ) {
-			return;
+			return false;
 		}
-		return $this->checkview_delete_orders();
+
+		return self::checkview_delete_orders();
 	}
 
 	/**
-	 * Deletes Woocommerce orders.
+	 * Deletes CheckView orders from the database.
 	 *
-	 * @param integer $order_id Woocommerce Order Id.
+	 * @param integer $order_id Woocommerce Order ID.
 	 * @return bool
 	 */
-	public function checkview_delete_orders( $order_id = '' ) {
+	public static function checkview_delete_orders( $order_id = '' ) {
+		Checkview_Admin_Logs::add( 'ip-logs', 'Deleting CheckView orders from the database...' );
 
-		global $wpdb;
 		$orders = array();
-		// WPDBPREPARE.
-		if ( empty( $orders ) || false === $orders ) {
-			$args = array(
-				'limit'        => -1,
-				'type'         => 'shop_order',
-				'meta_key'     => 'payment_made_by', // Postmeta key field.
-				'meta_value'   => 'checkview', // Postmeta value field.
-				'meta_compare' => '=',
-				'return'       => 'ids',
-			);
-			if ( function_exists( 'wc_get_orders' ) ) {
-				$orders = wc_get_orders( $args );
-			}
-			$orders_cv = array();
-			$args      = array(
-				'limit'          => -1,
-				'type'           => 'shop_order',
-				'payment_method' => 'checkview',
-				'return'         => 'ids',
-			);
-			if ( function_exists( 'wc_get_orders' ) ) {
-				$orders_cv = wc_get_orders( $args );
-			}
-			$orders = array_unique( array_merge( $orders, $orders_cv ) );
+		$args = array(
+			'limit' => -1,
+			'type' => 'shop_order',
+			'meta_key' => 'payment_made_by', // Postmeta key field.
+			'meta_value' => 'checkview', // Postmeta value field.
+			'meta_compare' => '=',
+			'return' => 'ids',
+		);
 
+		if ( function_exists( 'wc_get_orders' ) ) {
+			$orders = wc_get_orders( $args );
 		}
+
+		$orders_cv = array();
+		$args = array(
+			'limit' => -1,
+			'type' => 'shop_order',
+			'payment_method' => 'checkview',
+			'return' => 'ids',
+		);
+
+		if ( function_exists( 'wc_get_orders' ) ) {
+			$orders_cv = wc_get_orders( $args );
+		}
+
+		$orders = array_unique( array_merge( $orders, $orders_cv ) );
+
+		Checkview_Admin_Logs::add( 'cron-logs', 'Found ' . count( $orders ) . ' CheckView orders to delete.' );
+
 		// Delete orders.
 		if ( ! empty( $orders ) ) {
 			foreach ( $orders as $order ) {
+				$order_object = wc_get_order( $order );
 
+				// Delete order.
 				try {
-					$order_object = wc_get_order( $order );
-					// Delete order.
 					if ( $order_object && method_exists( $order_object, 'get_customer_id' ) ) {
 						if ( $order_object->get_meta( 'payment_made_by' ) !== 'checkview' && 'checkview' !== $order_object->get_payment_method() ) {
 							continue;
 						}
+
 						$customer_id = $order_object->get_customer_id();
 						$order_object->delete( true );
+
 						delete_transient( 'checkview_store_orders_transient' );
 
 						$order_object = null;
 						$current_user = get_user_by( 'id', $customer_id );
+
 						// Delete customer if available.
 						if ( $customer_id && isset( $current_user->roles ) && isset( $current_user->roles ) && ! in_array( 'administrator', $current_user->roles, true ) ) {
 							$customer = new WC_Customer( $customer_id );
@@ -805,41 +863,50 @@ class Checkview_Woo_Automated_Testing {
 								require_once ABSPATH . 'wp-admin/includes/user.php';
 							}
 
-							$res      = $customer->delete( true );
+							$res = $customer->delete( true );
 							$customer = null;
 						}
 					}
 				} catch ( \Exception $e ) {
 					if ( ! class_exists( 'Checkview_Admin_Logs' ) ) {
-						/**
-						 * The class responsible for defining all actions that occur in the admin area.
-						 */
 						require_once CHECKVIEW_ADMIN_DIR . '/class-checkview-admin-logs.php';
 					}
-					Checkview_Admin_Logs::add( 'cron-logs', 'Crone job failed.' );
+
+					if ($order_object) {
+						Checkview_Admin_Logs::add( 'cron-logs', 'Failed to delete CheckView order [' . $order_object->get_id() . '] from the database.' );
+					} else {
+						Checkview_Admin_Logs::add( 'cron-logs', 'Failed to delete CheckView order from the database.' );
+					}
+
 				}
 			}
+
 			return true;
 		}
 	}
 
 	/**
-	 * Adds custom fields after order status changes.
+	 * Adds custom meta to CheckView test orders.
 	 *
-	 * @param int    $order_id order id.
-	 * @param string $old_status order old status.
-	 * @param string $new_status order new status.
+	 * @param int    $order_id Order ID.
+	 * @param string $old_status Order's old status.
+	 * @param string $new_status Order's new status.
 	 * @return void
 	 */
 	public function checkview_add_custom_fields_after_purchase( $order_id, $old_status, $new_status ) {
 		if ( isset( $_COOKIE['checkview_test_id'] ) && '' !== $_COOKIE['checkview_test_id'] && checkview_is_valid_uuid( sanitize_text_field( wp_unslash( $_COOKIE['checkview_test_id'] ) ) ) ) {
 			$order = new WC_Order( $order_id );
 			$order->update_meta_data( 'payment_made_by', 'checkview' );
-
 			$order->update_meta_data( 'checkview_test_id', sanitize_text_field( wp_unslash( $_COOKIE['checkview_test_id'] ) ) );
+
+			Checkview_Admin_Logs::add( 'ip-logs', 'Added meta data to test order.' );
+
 			complete_checkview_test( sanitize_text_field( wp_unslash( $_COOKIE['checkview_test_id'] ) ) );
 
 			$order->save();
+
+			Checkview_Admin_Logs::add( 'ip-logs', 'Saved new order [' . $order->get_id() . '].' );
+
 			unset( $_COOKIE['checkview_test_id'] );
 			setcookie( 'checkview_test_id', '', time() - 6600, COOKIEPATH, COOKIE_DOMAIN );
 			checkview_schedule_delete_orders( $order_id );
@@ -847,11 +914,12 @@ class Checkview_Woo_Automated_Testing {
 	}
 
 	/**
-	 * Make sure we don't reduce the stock levels of products for test orders.
+	 * Prevents reduction of stock for CheckView orders.
 	 *
 	 * @since 1.5.2
-	 * @param bool     $reduce_stock true/false.
-	 * @param WP_Order $order wc order.
+	 *
+	 * @param bool     $reduce_stock Reduce stock or not.
+	 * @param WP_Order $order WooCommerce order object.
 	 * @return bool
 	 */
 	public static function checkview_maybe_not_reduce_stock( $reduce_stock, $order ) {
@@ -873,11 +941,11 @@ class Checkview_Woo_Automated_Testing {
 	}
 
 	/**
-	 * Prevent adjust line item
+	 * Prevents adjustment of stock for CheckView orders.
 	 *
-	 * @param [bool]  $prevent bool true/false.
-	 * @param wc_itme $item item in order.
-	 * @param int     $quantity quaniity if item.
+	 * @param bool          $prevent Prevent adjustment of stock.
+	 * @param WC_Order_Item $item Item in order.
+	 * @param int           $quantity Quaniity of item.
 	 */
 	public function checkview_woocommerce_prevent_adjust_line_item_product_stock( $prevent, $item, $quantity ) {
 		// Get order.
@@ -896,4 +964,18 @@ class Checkview_Woo_Automated_Testing {
 
 		return $prevent;
 	}
+
+	/**
+	 * Emails suppression for Woo orders.
+	 *
+	 * @param [array] $args mail args.
+	 * @return array
+	 */
+	public function checkview_filter_wp_mail( $args ) {
+		// Suppress all order-related notifications except for new orders.
+		if ( strpos( $args['subject'], 'order' ) !== false && ! strpos( $args['subject'], 'New order' ) ) {
+			$args['to'] = ''; // Return empty array to suppress email.
+		}
+		return $args;
+	}//end checkview_filter_wp_mail()
 }

@@ -1,6 +1,6 @@
 <?php
 /**
- * General Options.
+ * CheckView API Settings page content
  *
  * @package settings
  */
@@ -231,6 +231,20 @@ $allow_dev         = ! empty( $checkview_options['checkview_allowed_extensions']
 
 				<tr valign="top">
 					<th scope="row" >
+						<label for="checkview_get_helper_logs">
+							<?php esc_html_e( 'Get helper logs', 'checkview' ); ?>
+						</label>
+						<p class="make-lib-description"><?php esc_html_e( 'Use this endpoint to get helper logs.', 'checkview' ); ?></p>
+					</th>
+					<td class="checkview-make-library-box">
+					<label  for="checkview_get_helper_logs">
+						<p class="make-lib-description"><?php echo esc_url_raw( get_rest_url() . 'checkview/v1/get-logs' ); ?></p>
+					</label>
+					</td>
+				</tr>
+
+				<tr valign="top">
+					<th scope="row" >
 						<label for="checkview_verify_test_user_credentials">
 							<?php esc_html_e( 'Verify user', 'checkview' ); ?>
 						</label>
@@ -253,6 +267,34 @@ $allow_dev         = ! empty( $checkview_options['checkview_allowed_extensions']
 					<td class="checkview-make-library-box">
 					<label  for="checkview_delete_test_user_credentials">
 						<p class="make-lib-description"><?php echo esc_url_raw( get_rest_url() . 'checkview/v1/deletetestuser' ); ?></p>
+					</label>
+					</td>
+				</tr>
+
+				<tr valign="top">
+					<th scope="row" >
+						<label for="checkview_helper_status">
+							<?php esc_html_e( 'Helper status', 'checkview' ); ?>
+						</label>
+						<p class="make-lib-description"><?php esc_html_e( 'Use this endpoint to set helper visibility status.', 'checkview' ); ?></p>
+					</th>
+					<td class="checkview-make-library-box">
+					<label  for="checkview_helper_status">
+						<p class="make-lib-description"><?php echo esc_url_raw( get_rest_url() . 'checkview/v1/checkview-status' ); ?></p>
+					</label>
+					</td>
+				</tr>
+
+				<tr valign="top">
+					<th scope="row" >
+						<label for="checkview_test_product_status">
+							<?php esc_html_e( 'Test product status', 'checkview' ); ?>
+						</label>
+						<p class="make-lib-description"><?php esc_html_e( 'Use this endpoint to set test product visibility status.', 'checkview' ); ?></p>
+					</th>
+					<td class="checkview-make-library-box">
+					<label  for="checkview_test_product_status">
+						<p class="make-lib-description"><?php echo esc_url_raw( get_rest_url() . 'checkview/v1/set-status' ); ?></p>
 					</label>
 					</td>
 				</tr>

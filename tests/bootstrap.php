@@ -1,6 +1,6 @@
 <?php
 /**
- * PHPUnit bootstrap file
+ * CheckView testing
  */
 
 error_reporting( E_ALL & ~E_DEPRECATED );

@@ -1,6 +1,6 @@
 <?php
 /**
- * General Options.
+ * CheckView Logs Settings page content
  *
  * @package Logs
  */

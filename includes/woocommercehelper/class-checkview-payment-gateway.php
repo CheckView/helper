@@ -1,29 +1,28 @@
 <?php
 /**
- * Hanldes Checkview payment Gateway options.
+ * Checkview_Payment_Gateway class
  *
- * @link       https://checkview.io
- * @since      1.0.0
+ * @since 1.0.0
  *
- * @package    CheckView
+ * @package CheckView
  * @subpackage CheckView/includes/woocommercehelper
  */
 
 if ( class_exists( 'WC_Payment_Gateway' ) ) {
 	/**
-	 * Fired to inject custom payment gateway to WooCommerce.
+	 * Creates CheckView payment gateway.
 	 *
-	 * This class defines all code necessary to run for handling CheckView WooCommerce Operations.
-	 *
-	 * @since      1.0.0
-	 * @package    CheckView
+	 * @since 1.0.0
+	 * @package CheckView
 	 * @subpackage CheckView/includes/woocommercehelper
-	 * @author     CheckView <checkview> https://checkview.io/
+	 * @author CheckView <checkview> https://checkview.io/
 	 */
 	class Checkview_Payment_Gateway extends WC_Payment_Gateway {
 
 		/**
-		 * Class constructor.
+		 * Constructor.
+		 *
+		 * Sets up class properties, hooks into Woo payment gateway options.
 		 */
 		public function __construct() {
 
@@ -44,7 +43,7 @@ if ( class_exists( 'WC_Payment_Gateway' ) ) {
 		}
 
 		/**
-		 * Initiates settings.
+		 * Initializes payment gateway settings.
 		 *
 		 * @return void
 		 */
@@ -54,7 +53,7 @@ if ( class_exists( 'WC_Payment_Gateway' ) ) {
 		}
 
 		/**
-		 * Renders payments fields.
+		 * Displays payment gateway description.
 		 *
 		 * @return void
 		 */
@@ -62,9 +61,9 @@ if ( class_exists( 'WC_Payment_Gateway' ) ) {
 			echo '<p>' . esc_html( $this->description ) . '</p>';
 		}
 		/**
-		 * Processes payment.
+		 * Processes the dummy order payment.
 		 *
-		 * @param integer $order_id WooCommerce order id.
+		 * @param integer $order_id WooCommerce order ID.
 		 * @return array
 		 */
 		public function process_payment( $order_id ) {

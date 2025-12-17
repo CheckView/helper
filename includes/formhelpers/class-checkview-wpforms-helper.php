@@ -1,11 +1,10 @@
 <?php
 /**
- * Fired if Wpforms is active.
+ * Checkview_Wpforms_Helper class
  *
- * @link       https://checkview.io
- * @since      1.0.0
+ * @since 1.0.0
  *
- * @package    Checkview
+ * @package Checkview
  * @subpackage Checkview/includes/formhelpers
  */
 
@@ -16,50 +15,44 @@ if ( ! defined( 'WPINC' ) ) {
 
 if ( ! class_exists( 'Checkview_Wpforms_Helper' ) ) {
 	/**
-	 * The public-facing functionality of the plugin.
+	 * Adds support for WP Forms.
 	 *
-	 * Helps in Wpforms management.
+	 * During CheckView tests, modifies WP Forms hooks, overwrites the
+	 * recipient email address, and handles test cleanup.
 	 *
-	 * @package    Checkview
+	 * @package Checkview
 	 * @subpackage Checkview/includes/formhelpers
-	 * @author     Check View <support@checkview.io>
+	 * @author Check View <support@checkview.io>
 	 */
 	class Checkview_Wpforms_Helper {
 		/**
-		 * The loader that's responsible for maintaining and registering all hooks that power
-		 * the plugin.
+		 * Loader.
 		 *
-		 * @since    1.0.0
-		 * @access   protected
-		 * @var      Checkview_Loader    $loader    Maintains and registers all hooks for the plugin.
+		 * @since 1.0.0
+		 * @access protected
+		 *
+		 * @var Checkview_Loader $loader Maintains and registers all hooks for the plugin.
 		 */
 		protected $loader;
 		/**
-		 * Initializes the class constructor.
+		 * Constructor.
+		 *
+		 * Initiates loader property, adds hooks.
 		 */
 		public function __construct() {
 			$this->loader = new Checkview_Loader();
+
 			if ( ! is_admin() ) {
 				include_once ABSPATH . 'wp-admin/includes/plugin.php';
 			}
 
-			$old_settings = (array) get_option( 'wpforms_settings', array() );
-			if ( ! empty( $old_settings['turnstile-site-key'] ) && null !== $old_settings['turnstile-site-key'] && null !== $old_settings['turnstile-secret-key'] ) {
-				if ( '1x00000000000000000000AA' !== $old_settings['turnstile-site-key'] ) {
-					update_option( 'checkview_wpforms_turnstile-site-key', $old_settings['turnstile-site-key'], true );
-					update_option( 'checkview_wpforms_turnstile-secret-key', $old_settings['turnstile-secret-key'], true );
-					$old_settings['turnstile-site-key']   = '1x00000000000000000000AA';
-					$old_settings['turnstile-secret-key'] = '1x0000000000000000000000000000000AA';
-					update_option( 'wpforms_settings', $old_settings );
-				}
-			} else {
-				// Disable reCAPTCHA assets and initialisation on the frontend.
-				add_filter(
-					'wpforms_frontend_recaptcha_disable',
-					'__return_true',
-					99
-				);
-			}
+			add_filter( 'wpforms_frontend_form_data', array( $this, 'checkview_disable_turnstile' ) );
+
+			add_filter( 'wpforms_process_before_form_data', array( $this, 'checkview_disable_turnstile' ) );
+
+			add_filter( 'wpforms_frontend_captcha_api', array( $this, 'checkview_disable_frontend_captcha_api' ) );
+
+			add_filter( 'wpforms_frontend_recaptcha_disable', '__return_true', 99 );
 
 			// Disable validation and verification on the backend.
 			add_filter(
@@ -88,11 +81,10 @@ if ( ! class_exists( 'Checkview_Wpforms_Helper' ) ) {
 			);
 
 			/**
-			 * Disable the email address suggestion.
+			 * Disables the email address suggestion.
 			 *
-			 * @link  https://wpforms.com/developers/how-to-disable-the-email-suggestion-on-the-email-form-field/
+			 * @link https://wpforms.com/developers/how-to-disable-the-email-suggestion-on-the-email-form-field/
 			 */
-
 			add_filter(
 				'wpforms_mailcheck_enabled',
 				'__return_false'
@@ -115,23 +107,76 @@ if ( ! class_exists( 'Checkview_Wpforms_Helper' ) ) {
 				'__return_true',
 				999
 			);
-			// bypass hcaptcha.
-			add_filter(
-				'hcap_activate',
-				'__return_false'
-			);
-			// bypass akismet.
+
+			// Bypass hCaptcha.
+			add_filter( 'hcap_activate', '__return_false' );
+
+			// Bypass Akismet.
 			add_filter(
 				'akismet_get_api_key',
 				'__return_null',
 				-10
 			);
+
+			add_filter(
+				'wpforms_frontend_form_data',
+				array(
+					$this,
+					'checkview_disable_wpforms_custom_captcha',
+				),
+				99,
+				1
+			);
+
+			add_filter(
+				'wpforms_process_before_form_data',
+				array(
+					$this,
+					'checkview_disable_wpforms_custom_captcha',
+				),
+				99,
+				1
+			);
 		}
 
 		/**
-		 * Injects email to WP forms supported emails.
+		 * Disable Cloudflare Turnstile.
 		 *
-		 * @param array $email email address details.
+		 * @param array $form_data Form data.
+		 *
+		 * @return array Modified form data.
+		 *
+		 * @since 2.0.19
+		 */
+		public function checkview_disable_turnstile( $form_data ) {
+			$form_data['settings']['recaptcha'] = '0';
+
+			return $form_data;
+		}
+
+		/**
+		 * Disable WP Forms frontend CAPTCHA API.
+		 *
+		 * @param $captcha_api string CAPTCHA API.
+		 *
+		 * @return string
+		 *
+		 * @since 2.0.19
+		 */
+		public function checkview_disable_frontend_captcha_api( $captcha_api ) {
+			$captcha_settings = wpforms_get_captcha_settings();
+
+			if ( $captcha_settings['provider'] === 'turnstile' ) {
+				return '';
+			}
+
+			return $captcha_api;
+		}
+
+		/**
+		 * Injects testing email address.
+		 *
+		 * @param array $email Email address details.
 		 * @return array
 		 */
 		public function checkview_inject_email( $email ) {
@@ -149,21 +194,26 @@ if ( ! class_exists( 'Checkview_Wpforms_Helper' ) ) {
 			return $email;
 		}
 		/**
-		 * Logs entry for WP forms.
+		 * Stores the test results and finishes the testing session.
 		 *
-		 * @param array $form_fields array form fields.
-		 * @param array $entry form entry details.
-		 * @param array $form_data form data.
-		 * @param int   $entry_id form entry id.
+		 * Deletes test submission from Formidable database table.
+		 *
+		 * @param array $form_fields Form fields.
+		 * @param array $entry Form entry details.
+		 * @param array $form_data Form data.
+		 * @param int   $entry_id Form entry ID.
 		 * @return void
 		 */
 		public function checkview_log_wpform_test_entry( $form_fields, $entry, $form_data, $entry_id ) {
 			global $wpdb;
+
+			Checkview_Admin_Logs::add( 'ip-logs', 'Cloning submission entry [' . $entry_id . ']...' );
+
 			if ( ! function_exists( 'is_plugin_active' ) ) {
 				include_once ABSPATH . 'wp-admin/includes/plugin.php';
 			}
 
-			$form_id           = $form_data['id'];
+			$form_id = $form_data['id'];
 			$checkview_test_id = get_checkview_test_id();
 
 			if ( empty( $checkview_test_id ) ) {
@@ -171,26 +221,37 @@ if ( ! class_exists( 'Checkview_Wpforms_Helper' ) ) {
 			}
 
 			$entry_data  = array(
-				'form_id'      => $form_id,
-				'status'       => 'publish',
-				'source_url'   => isset( $_SERVER['HTTP_REFERER'] ) ? sanitize_url( wp_unslash( $_SERVER['HTTP_REFERER'] ) ) : '',
+				'form_id' => $form_id,
+				'status' => 'publish',
+				'source_url' => isset( $_SERVER['HTTP_REFERER'] ) ? sanitize_url( wp_unslash( $_SERVER['HTTP_REFERER'] ) ) : '',
 				'date_created' => current_time( 'mysql' ),
 				'date_updated' => current_time( 'mysql' ),
-				'uid'          => $checkview_test_id,
-				'form_type'    => 'WpForms',
+				'uid' => $checkview_test_id,
+				'form_type' => 'WpForms',
 			);
 			$entry_table = $wpdb->prefix . 'cv_entry';
-			$wpdb->insert( $entry_table, $entry_data );
+
+			$result = $wpdb->insert( $entry_table, $entry_data );
+
+			if ( ! $result ) {
+				Checkview_Admin_Logs::add( 'ip-logs', 'Failed to clone submission entry data.' );
+			} else {
+				Checkview_Admin_Logs::add( 'ip-logs', 'Cloned submission entry data (inserted ' . (int) $result . ' rows into ' . $entry_table . ').' );
+			}
+
 			$inserted_entry_id = $wpdb->insert_id;
 			$entry_meta_table  = $wpdb->prefix . 'cv_entry_meta';
 			$field_id_prefix   = 'wpforms-' . $form_id . '-field_';
-			foreach ( $form_fields as $field ) {
+			$count = 0;
 
+			foreach ( $form_fields as $field ) {
 				if ( ! isset( $field['value'] ) || '' === $field['value'] ) {
 					continue;
 				}
+
 				$field_value = is_array( $field['value'] ) ? serialize( $field['value'] ) : $field['value'];
-				$type        = isset( $field['type'] ) ? $field['type'] : '';
+				$type = isset( $field['type'] ) ? $field['type'] : '';
+
 				switch ( $type ) {
 					case 'name':
 						if ( '' === $field['middle'] && '' === $field['last'] ) {
@@ -201,8 +262,12 @@ if ( ! class_exists( 'Checkview_Wpforms_Helper' ) ) {
 								'meta_key'   => $field_id_prefix . $field['id'],
 								'meta_value' => $field['first'],
 							);
-							$wpdb->insert( $entry_meta_table, $entry_metadata );
 
+							$result = $wpdb->insert( $entry_meta_table, $entry_metadata );
+
+							if ( $result ) {
+								$count++;
+							}
 						} elseif ( '' === $field['middle'] ) {
 							$entry_metadata = array(
 								'uid'        => $checkview_test_id,
@@ -211,58 +276,98 @@ if ( ! class_exists( 'Checkview_Wpforms_Helper' ) ) {
 								'meta_key'   => $field_id_prefix . $field['id'],
 								'meta_value' => $field['first'],
 							);
-							$wpdb->insert( $entry_meta_table, $entry_metadata );
+
+							$result = $wpdb->insert( $entry_meta_table, $entry_metadata );
+
+							if ( $result ) {
+								$count++;
+							}
+
 							$entry_metadata = array(
-								'uid'        => $checkview_test_id,
-								'form_id'    => $form_id,
-								'entry_id'   => $inserted_entry_id,
-								'meta_key'   => $field_id_prefix . $field['id'] . '-last',
+								'uid' => $checkview_test_id,
+								'form_id' => $form_id,
+								'entry_id' => $inserted_entry_id,
+								'meta_key' => $field_id_prefix . $field['id'] . '-last',
 								'meta_value' => $field['last'],
 							);
-							$wpdb->insert( $entry_meta_table, $entry_metadata );
 
+							$result = $wpdb->insert( $entry_meta_table, $entry_metadata );
+
+							if ( $result ) {
+								$count++;
+							}
 						} else {
 							$entry_metadata = array(
-								'uid'        => $checkview_test_id,
-								'form_id'    => $form_id,
-								'entry_id'   => $inserted_entry_id,
-								'meta_key'   => $field_id_prefix . $field['id'],
+								'uid' => $checkview_test_id,
+								'form_id' => $form_id,
+								'entry_id' => $inserted_entry_id,
+								'meta_key' => $field_id_prefix . $field['id'],
 								'meta_value' => $field['first'],
 							);
-							$wpdb->insert( $entry_meta_table, $entry_metadata );
+
+							$result = $wpdb->insert( $entry_meta_table, $entry_metadata );
+
+							if ( $result ) {
+								$count++;
+							}
+
 							$entry_metadata = array(
-								'uid'        => $checkview_test_id,
-								'form_id'    => $form_id,
-								'entry_id'   => $inserted_entry_id,
-								'meta_key'   => $field_id_prefix . $field['id'] . '-middle',
+								'uid' => $checkview_test_id,
+								'form_id' => $form_id,
+								'entry_id' => $inserted_entry_id,
+								'meta_key' => $field_id_prefix . $field['id'] . '-middle',
 								'meta_value' => $field['middle'],
 							);
-							$wpdb->insert( $entry_meta_table, $entry_metadata );
+
+							$result = $wpdb->insert( $entry_meta_table, $entry_metadata );
+
+							if ( $result ) {
+								$count++;
+							}
+
 							$entry_metadata = array(
-								'uid'        => $checkview_test_id,
-								'form_id'    => $form_id,
-								'entry_id'   => $inserted_entry_id,
-								'meta_key'   => $field_id_prefix . $field['id'] . '-last',
+								'uid' => $checkview_test_id,
+								'form_id' => $form_id,
+								'entry_id' => $inserted_entry_id,
+								'meta_key' => $field_id_prefix . $field['id'] . '-last',
 								'meta_value' => $field['last'],
 							);
-							$wpdb->insert( $entry_meta_table, $entry_metadata );
 
+							$result = $wpdb->insert( $entry_meta_table, $entry_metadata );
+
+							if ( $result ) {
+								$count++;
+							}
 						}
 						break;
 					default:
 						$entry_metadata = array(
-							'uid'        => $checkview_test_id,
-							'form_id'    => $form_id,
-							'entry_id'   => $inserted_entry_id,
-							'meta_key'   => $field_id_prefix . $field['id'],
+							'uid' => $checkview_test_id,
+							'form_id' => $form_id,
+							'entry_id' => $inserted_entry_id,
+							'meta_key' => $field_id_prefix . $field['id'],
 							'meta_value' => $field_value,
 						);
-						$wpdb->insert( $entry_meta_table, $entry_metadata );
+
+						$result = $wpdb->insert( $entry_meta_table, $entry_metadata );
+
+						if ( $result ) {
+							$count++;
+						}
+
 						break;
 				}
 			}
 
-			// remove entry if pro plugin.
+			if ( $count > 0 ) {
+				Checkview_Admin_Logs::add( 'ip-logs', 'Cloned submission entry meta data (inserted ' . $count . ' rows into ' . $entry_meta_table . ').' );
+			} else {
+				if ( count( $form_fields ) > 0 ) {
+					Checkview_Admin_Logs::add( 'ip-logs', 'Failed to clone submission entry meta data.' );
+				}
+			}
+
+			// Remove entry if Pro plugin.
 			if ( is_plugin_active( 'wpforms/wpforms.php' ) ) {
 				// Remove Test Entry From WpForms Tables.
 				$wpdb->delete(
@@ -272,6 +377,7 @@ if ( ! class_exists( 'Checkview_Wpforms_Helper' ) ) {
 						'form_id'  => $form_id,
 					)
 				);
+
 				$wpdb->delete(
 					$wpdb->prefix . 'wpforms_entry_fields',
 					array(
@@ -280,16 +386,27 @@ if ( ! class_exists( 'Checkview_Wpforms_Helper' ) ) {
 					)
 				);
 			}
-			$old_settings = (array) get_option( 'wpforms_settings', array() );
-			if ( ! empty( $old_settings['turnstile-site-key'] ) && null !== $old_settings['turnstile-site-key'] && null !== $old_settings['turnstile-secret-key'] ) {
-				if ( '1x00000000000000000000AA' === $old_settings['turnstile-site-key'] ) {
-					$old_settings['turnstile-site-key']   = get_option( 'checkview_wpforms_turnstile-site-key' );
-					$old_settings['turnstile-secret-key'] = get_option( 'checkview_wpforms_turnstile-secret-key' );
-					update_option( 'wpforms_settings', $old_settings );
+
+			complete_checkview_test( $checkview_test_id );
+		}
+		/**
+		 * Disable Custom CAPTCHA in WPForms.
+		 *
+		 * @param array $form_data Form data and settings.
+		 * @return array Modified form data.
+		 */
+		public function checkview_disable_wpforms_custom_captcha( $form_data ) {
+			if ( empty( $form_data['fields'] ) ) {
+				return $form_data;
+			}
+
+			foreach ( $form_data['fields'] as $id => $field ) {
+				if ( 'captcha' === $field['type'] ) {
+					unset( $form_data['fields'][ $id ] );
 				}
 			}
-			// Test completed So Clear sessions.
-			complete_checkview_test( $checkview_test_id );
+
+			return $form_data;
 		}
 	}
 	$checkview_wpforms_helper = new Checkview_Wpforms_Helper();

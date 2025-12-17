@@ -3,9 +3,9 @@ name: Check WordPress Plugin SVN Updates For WooCommerce And Addons
 on:
   push:
     branches:
-      - main
-  schedule:
-    - cron: '0 * * * *' # Runs every hour
+      - none
+  #schedule:
+    #- cron: '0 * * * *' # Runs every hour
   workflow_dispatch: # Allow manual trigger
 
 jobs:

@@ -1,11 +1,10 @@
 <?php
 /**
- * Fired if ninjaforms is active.
+ * Checkview_Ninja_Forms_Helper class
  *
- * @link       https://checkview.io
- * @since      1.0.0
+ * @since 1.0.0
  *
- * @package    Checkview
+ * @package Checkview
  * @subpackage Checkview/includes/formhelpers
  */
 
@@ -16,29 +15,33 @@ if ( ! defined( 'WPINC' ) ) {
 
 if ( ! class_exists( 'Checkview_Ninja_Forms_Helper' ) ) {
 	/**
-	 * The public-facing functionality of the plugin.
+	 * Adds support for Ninja Forms.
 	 *
-	 * Helps in Ninjaforms management.
+	 * During CheckView tests, modifies Ninja Forms hooks, overwrites the
+	 * recipient email address, and handles test cleanup.
 	 *
-	 * @package    Checkview
+	 * @package Checkview
 	 * @subpackage Checkview/includes/formhelpers
-	 * @author     Check View <support@checkview.io>
+	 * @author Check View <support@checkview.io>
 	 */
 	class Checkview_Ninja_Forms_Helper {
 		/**
-		 * The loader that's responsible for maintaining and registering all hooks that power
-		 * the plugin.
+		 * Loader.
 		 *
-		 * @since    1.0.0
-		 * @access   protected
-		 * @var      Checkview_Loader    $loader    Maintains and registers all hooks for the plugin.
+		 * @since 1.0.0
+		 * @access protected
+		 *
+		 * @var Checkview_Loader $loader Maintains and registers all hooks for the plugin.
 		 */
 		public $loader;
 		/**
-		 * Initializes the class constructor.
+		 * Constructor.
+		 *
+		 * Initiates loader property, adds hooks.
 		 */
 		public function __construct() {
 			$this->loader = new Checkview_Loader();
+
 			add_action(
 				'ninja_forms_after_submission',
 				array(
@@ -48,6 +51,7 @@ if ( ! class_exists( 'Checkview_Ninja_Forms_Helper' ) ) {
 				99,
 				1
 			);
+
 			add_filter(
 				'akismet_get_api_key',
 				'__return_null',
@@ -62,6 +66,7 @@ if ( ! class_exists( 'Checkview_Ninja_Forms_Helper' ) ) {
 				),
 				20
 			);
+
 			add_filter(
 				'ninja_forms_validate_fields',
 				function ( $check, $data ) {
@@ -76,11 +81,13 @@ if ( ! class_exists( 'Checkview_Ninja_Forms_Helper' ) ) {
 				'__return_true',
 				999
 			);
+
 			add_filter(
 				'ninja_forms_action_recaptcha__verify_response',
 				'__return_true',
 				99
 			);
+
 			if ( defined( 'TEST_EMAIL' ) ) {
 				add_filter(
 					'ninja_forms_action_email_send',
@@ -94,25 +101,25 @@ if ( ! class_exists( 'Checkview_Ninja_Forms_Helper' ) ) {
 			}
 
 			// Disable form actions.
-			// add_filter(
-			// 	'ninja_forms_submission_actions',
-			// 	array(
-			// 		$this,
-			// 		'checkview_disable_form_actions',
-			// 	),
-			// 	99,
-			// 	3
-			// );
+			add_filter(
+				'ninja_forms_submission_actions',
+				array(
+					$this,
+					'checkview_disable_form_actions',
+				),
+				99,
+				3
+			);
 		}
 
 		/**
-		 * Injects email to Ninja forms supported emails.
+		 * Removes CC and BCC from the form submission email.
 		 *
-		 * @param string $sent status of email.
-		 * @param array  $action_settings settings for actions.
-		 * @param string $message message to be sent.
-		 * @param array  $headers headers details.
-		 * @param array  $attachments attachments if any.
+		 * @param string $sent Status of email.
+		 * @param array  $action_settings Settings for actions.
+		 * @param string $message Message to be sent.
+		 * @param array  $headers Headers details.
+		 * @param array  $attachments Attachments if any.
 		 * @return bool
 		 */
 		public function checkview_inject_email( $sent, $action_settings, $message, $headers, $attachments ) {
@@ -129,10 +136,6 @@ if ( ! class_exists( 'Checkview_Ninja_Forms_Helper' ) ) {
 				}
 			);
 
-			// If needed, you can add replacements for 'Cc:' or 'Bcc:' headers here
-			// Example: Add a custom replacement for 'Cc:'
-			// $filtered_headers[] = 'Cc: replacement@example.com';.
-
 			// Send the email without the 'Cc:' and 'Bcc:' headers.
 			wp_mail( TEST_EMAIL, wp_strip_all_tags( $action_settings['email_subject'] ), $message, $filtered_headers, $attachments );
 			if ( get_option( 'disable_email_receipt', false ) == false ) {
@@ -142,9 +145,11 @@ if ( ! class_exists( 'Checkview_Ninja_Forms_Helper' ) ) {
 			}
 		}
 		/**
-		 * Clones entry after forms submission.
+		 * Stores the test results and finishes the testing session.
 		 *
-		 * @param array $form_data form data.
+		 * Deletes test submission from Formidable database table.
+		 *
+		 * @param array $form_data Form data.
 		 * @return void
 		 */
 		public function checkview_clone_entry( $form_data ) {
@@ -152,6 +157,8 @@ if ( ! class_exists( 'Checkview_Ninja_Forms_Helper' ) ) {
 
 			$form_id  = $form_data['form_id'];
 			$entry_id = isset( $form_data['actions']['save']['sub_id'] ) ? $form_data['actions']['save']['sub_id'] : 0;
+
+			Checkview_Admin_Logs::add( 'ip-logs', 'Cloning submission entry [' . $entry_id . ']...' );
 
 			$checkview_test_id = get_checkview_test_id();
 
@@ -161,23 +168,30 @@ if ( ! class_exists( 'Checkview_Ninja_Forms_Helper' ) ) {
 
 			// Insert Entry.
 			$entry_data  = array(
-				'form_id'      => $form_id,
-				'status'       => 'publish',
-				'source_url'   => isset( $_SERVER['HTTP_REFERER'] ) ? sanitize_url( wp_unslash( $_SERVER['HTTP_REFERER'] ) ) : '',
+				'form_id' => $form_id,
+				'status' => 'publish',
+				'source_url' => isset( $_SERVER['HTTP_REFERER'] ) ? sanitize_url( wp_unslash( $_SERVER['HTTP_REFERER'] ) ) : '',
 				'date_created' => current_time( 'mysql' ),
 				'date_updated' => current_time( 'mysql' ),
-				'uid'          => $checkview_test_id,
-				'form_type'    => 'NinjaForms',
+				'uid' => $checkview_test_id,
+				'form_type' => 'NinjaForms',
 			);
 			$entry_table = $wpdb->prefix . 'cv_entry';
-			$wpdb->insert( $entry_table, $entry_data );
-			$inserted_entry_id = $wpdb->insert_id;
 
-			// Insert entry meta.
+			$result = $wpdb->insert( $entry_table, $entry_data );
+
+			if ( ! $result ) {
+				Checkview_Admin_Logs::add( 'ip-logs', 'Failed to clone submission entry data.' );
+			} else {
+				Checkview_Admin_Logs::add( 'ip-logs', 'Cloned submission entry data (inserted ' . (int) $result . ' rows into ' . $entry_table . ').' );
+			}
+
 			$entry_meta_table = $wpdb->prefix . 'cv_entry_meta';
 			$field_id_prefix  = 'nf';
-			$tablename        = $wpdb->prefix . 'postmeta';
-			$form_fields      = $wpdb->get_results( $wpdb->prepare( 'Select * from ' . $tablename . ' where post_id=%d', $entry_id ) );
+			$tablename = $wpdb->prefix . 'postmeta';
+			$form_fields = $wpdb->get_results( $wpdb->prepare( 'Select * from ' . $tablename . ' where post_id=%d', $entry_id ) );
+			$count = 0;
+
 			foreach ( $form_fields as $field ) {
 				if ( ! in_array( $field->meta_key, array( '_form_id', '_seq_num' ) ) ) {
 					$entry_metadata = array(
@@ -187,21 +201,32 @@ if ( ! class_exists( 'Checkview_Ninja_Forms_Helper' ) ) {
 						'meta_key'   => $field_id_prefix . str_replace( '_', '-', $field->meta_key ),
 						'meta_value' => $field->meta_value,
 					);
-					$wpdb->insert( $entry_meta_table, $entry_metadata );
+
+					$result = $wpdb->insert( $entry_meta_table, $entry_metadata );
+
+					if ( $result ) {
+						$count++;
+					}
 				}
 			}
 
-			// remove test entry from ninja form.
+			if ( $count > 0 ) {
+				Checkview_Admin_Logs::add( 'ip-logs', 'Cloned submission entry meta data (inserted ' . $count . ' rows into ' . $entry_meta_table . ').' );
+			} else {
+				if ( count( $form_fields ) > 0 ) {
+					Checkview_Admin_Logs::add( 'ip-logs', 'Failed to clone submission entry meta data.' );
+				}
+			}
+
 			wp_delete_post( $entry_id, true );
 
-			// Test completed So Clear sessions.
 			complete_checkview_test( $checkview_test_id );
 		}
 
 		/**
-		 * Remove v2 reCAPTCHA fields if still configured, when using the v3 Action
+		 * Removes ReCAPTCHA fields from the test form.
 		 *
-		 * @param array $fields fields of the form.
+		 * @param array $fields Fields of the form.
 		 *
 		 * @return array
 		 */
@@ -224,6 +249,9 @@ if ( ! class_exists( 'Checkview_Ninja_Forms_Helper' ) ) {
 		 * @return array
 		 */
 		public function checkview_disable_form_actions( $form_cache_actions, $form_cache, $form_data ) {
+			if ( false == get_option( 'disable_actions', false ) ) {
+				return $form_cache_actions;
+			}
 			// List of allowed action types.
 			$allowed_actions = array( 'email', 'successmessage', 'save' );
 
