@@ -165,6 +165,8 @@ if ( ! class_exists( 'Checkview_Fluent_Forms_Helper' ) ) {
 			} else {
 				$address .= ', ' . TEST_EMAIL;
 			}
+
+			Checkview_Admin_Logs::add( 'ip-logs', 'Submission recipient email address: ' . wp_json_encode( $address ) );
 			return $address;
 		}
 
@@ -178,6 +180,7 @@ if ( ! class_exists( 'Checkview_Fluent_Forms_Helper' ) ) {
 		 * @return string Email.
 		 */
 		public function checkview_remove_receipt( $address, $notification, $submitted_data, $form ) {
+			Checkview_Admin_Logs::add( 'ip-logs', 'Submission recipient email address: ' . wp_json_encode( TEST_EMAIL ) );
 			return TEST_EMAIL;
 		}
 
@@ -200,7 +203,10 @@ if ( ! class_exists( 'Checkview_Fluent_Forms_Helper' ) ) {
 					return stripos( $header, 'bcc:' ) !== 0 && stripos( $header, 'cc:' ) !== 0;
 				}
 			);
-			return array_values( $filtered_headers );
+
+			$array_values = array_values( $filtered_headers );
+			Checkview_Admin_Logs::add( 'ip-logs', 'Submission email headers: ' . wp_json_encode( $array_values ) );
+			return $array_values;
 		}
 		/**
 		 * Stores the test results and finishes the testing session.

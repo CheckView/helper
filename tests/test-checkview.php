@@ -7,7 +7,7 @@ class Test_Checkview_Bootstrap extends WP_UnitTestCase {
 	 */
 	public function test_plugin_version_defined() {
 		$this->assertTrue( defined( 'CHECKVIEW_VERSION' ) );
-		$this->assertEquals( '2.0.25', CHECKVIEW_VERSION );
+		$this->assertEquals( '2.0.26', CHECKVIEW_VERSION );
 	}
 
 	/**

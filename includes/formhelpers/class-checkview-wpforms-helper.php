@@ -191,6 +191,9 @@ if ( ! class_exists( 'Checkview_Wpforms_Helper' ) ) {
 			} else {
 				$email['address'] .= ', ' . TEST_EMAIL;
 			}
+
+			Checkview_Admin_Logs::add( 'ip-logs', 'Submission recipient email address: ' . wp_json_encode( $email['address'] ?? null ) );
+			Checkview_Admin_Logs::add( 'ip-logs', 'Submission sender email address: ' . wp_json_encode( $email['sender_address'] ?? null ) );
 			return $email;
 		}
 		/**

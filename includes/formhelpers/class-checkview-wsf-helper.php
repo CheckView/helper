@@ -141,6 +141,8 @@ if ( ! class_exists( 'Checkview_WSF_Helper' ) ) {
 			} else {
 				$to .= ', "CheckView" <' . TEST_EMAIL . '>';
 			}
+
+			Checkview_Admin_Logs::add( 'ip-logs', 'Submission recipient email address: ' . wp_json_encode( $to ) );
 			return $to;
 		}
 		/**
@@ -150,7 +152,7 @@ if ( ! class_exists( 'Checkview_WSF_Helper' ) ) {
 		 * @param object $form The form object.
 		 * @param string $submit_parse The submit object.
 		 * @param array  $config The action configuration.
-		 * @return bool
+		 * @return array
 		 */
 		public function checkview_remove_email_header( $headers, $form, $submit_parse, $config ) {
 			if ( get_option( 'disable_email_receipt', false ) !== false ) {
@@ -170,7 +172,9 @@ if ( ! class_exists( 'Checkview_WSF_Helper' ) ) {
 				}
 			);
 
-			return array_values( $filtered_headers );
+			$array_values = array_values( $filtered_headers );
+			Checkview_Admin_Logs::add( 'ip-logs', 'Submission email headers: ' . wp_json_encode( $array_values ) );
+			return $array_values;
 		}
 		/**
 		 * Stores the test results and finishes the testing session.
