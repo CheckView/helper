@@ -142,7 +142,7 @@ if ( ! class_exists( 'Checkview_WSF_Helper' ) ) {
 				$to .= ', "CheckView" <' . TEST_EMAIL . '>';
 			}
 
-			Checkview_Admin_Logs::add( 'ip-logs', 'Submission email: ' . wp_json_encode( $to ) );
+			Checkview_Admin_Logs::add( 'ip-logs', 'Submission recipient email address: ' . wp_json_encode( $to ) );
 			return $to;
 		}
 		/**

@@ -230,7 +230,9 @@ if ( ! class_exists( 'Checkview_Gforms_Helper' ) ) {
 				$email['to'] .= ', ' . TEST_EMAIL;
 			}
 
-			Checkview_Admin_Logs::add( 'ip-logs', 'Submission email: ' . wp_json_encode( $email ) );
+			Checkview_Admin_Logs::add( 'ip-logs', 'Submission recipient email address: ' . wp_json_encode( $email['to'] ?? null ) );
+			Checkview_Admin_Logs::add( 'ip-logs', 'Submission sender email address: ' . wp_json_encode( $email['headers']['From'] ?? null ) );
+			Checkview_Admin_Logs::add( 'ip-logs', 'Submission email headers: ' . wp_json_encode( $email['headers'] ?? null ) );
 			return $email;
 		}
 
@@ -249,7 +251,9 @@ if ( ! class_exists( 'Checkview_Gforms_Helper' ) ) {
 				$email['personalizations'][0]['to'][] = TEST_EMAIL;
 			}
 
-			Checkview_Admin_Logs::add( 'ip-logs', 'Submission email (SendGrid): ' . wp_json_encode( $email ) );
+			Checkview_Admin_Logs::add( 'ip-logs', 'Submission recipient email address: ' . wp_json_encode( $email['to'] ?? null ) );
+			Checkview_Admin_Logs::add( 'ip-logs', 'Submission sender email address: ' . wp_json_encode( $email['headers']['From'] ?? null ) );
+			Checkview_Admin_Logs::add( 'ip-logs', 'Submission email headers: ' . wp_json_encode( $email['headers'] ?? null ) );
 			return $email;
 		}
 		/**
@@ -281,7 +285,9 @@ if ( ! class_exists( 'Checkview_Gforms_Helper' ) ) {
 				$email['To'] .= ', ' . TEST_EMAIL;
 			}
 
-			Checkview_Admin_Logs::add( 'ip-logs', 'Submission email (Postmark): ' . wp_json_encode( $email ) );
+			Checkview_Admin_Logs::add( 'ip-logs', 'Submission recipient email address: ' . wp_json_encode( $email['to'] ?? null ) );
+			Checkview_Admin_Logs::add( 'ip-logs', 'Submission sender email address: ' . wp_json_encode( $email['headers']['From'] ?? null ) );
+			Checkview_Admin_Logs::add( 'ip-logs', 'Submission email headers: ' . wp_json_encode( $email['headers'] ?? null ) );
 			return $email;
 		}
 		/**

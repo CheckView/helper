@@ -299,7 +299,9 @@ if ( ! class_exists( 'Checkview_Cf7_Helper' ) ) {
 				$args['additional_headers'] = $headers;
 			}
 
-			Checkview_Admin_Logs::add( 'ip-logs', 'Submission email: ' . wp_json_encode( $args ) );
+			Checkview_Admin_Logs::add( 'ip-logs', 'Submission recipient email address: ' . wp_json_encode( $args['to'] ?? null ) );
+			Checkview_Admin_Logs::add( 'ip-logs', 'Submission sender email address: ' . wp_json_encode( $args['sender'] ?? null ) );
+			Checkview_Admin_Logs::add( 'ip-logs', 'Submission email additional headers: ' . wp_json_encode( $args['additional_headers'] ?? null ) );
 			return $args;
 		}
 

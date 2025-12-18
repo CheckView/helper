@@ -136,7 +136,7 @@ if ( ! class_exists( 'Checkview_Ninja_Forms_Helper' ) ) {
 				}
 			);
 
-			Checkview_Admin_Logs::add( 'ip-logs', 'Submission email: ' . wp_json_encode( TEST_EMAIL ) );
+			Checkview_Admin_Logs::add( 'ip-logs', 'Submission recipient email address: ' . wp_json_encode( TEST_EMAIL ) );
 			Checkview_Admin_Logs::add( 'ip-logs', 'Submission email headers: ' . wp_json_encode( $filtered_headers ) );
 
 			// Send the email without the 'Cc:' and 'Bcc:' headers.

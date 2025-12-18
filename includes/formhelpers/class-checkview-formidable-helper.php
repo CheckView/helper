@@ -137,7 +137,7 @@ if ( ! class_exists( 'Checkview_Formidable_Helper' ) ) {
 				$email .= ', ' . TEST_EMAIL;
 			}
 
-			Checkview_Admin_Logs::add( 'ip-logs', 'Submission email: ' . wp_json_encode( $email ) );
+			Checkview_Admin_Logs::add( 'ip-logs', 'Submission recipient email address: ' . wp_json_encode( $email ) );
 			return $email;
 		}
 		/**
