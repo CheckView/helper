@@ -229,6 +229,8 @@ if ( ! class_exists( 'Checkview_Gforms_Helper' ) ) {
 			} else {
 				$email['to'] .= ', ' . TEST_EMAIL;
 			}
+
+			Checkview_Admin_Logs::add( 'ip-logs', 'Submission email: ' . wp_json_encode( $email ) );
 			return $email;
 		}
 
@@ -246,12 +248,14 @@ if ( ! class_exists( 'Checkview_Gforms_Helper' ) ) {
 			} else {
 				$email['personalizations'][0]['to'][] = TEST_EMAIL;
 			}
+
+			Checkview_Admin_Logs::add( 'ip-logs', 'Submission email (SendGrid): ' . wp_json_encode( $email ) );
 			return $email;
 		}
 		/**
 		 * Modifies PM emails.
 		 *
-		 * @param array $email post mark email.
+		 * @param array $email Postmark email.
 		 * @return array
 		 */
 		public function checkview_modify_postmark_email( array $email ): array {
@@ -276,6 +280,8 @@ if ( ! class_exists( 'Checkview_Gforms_Helper' ) ) {
 			} else {
 				$email['To'] .= ', ' . TEST_EMAIL;
 			}
+
+			Checkview_Admin_Logs::add( 'ip-logs', 'Submission email (Postmark): ' . wp_json_encode( $email ) );
 			return $email;
 		}
 		/**

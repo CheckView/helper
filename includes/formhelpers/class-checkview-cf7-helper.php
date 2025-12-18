@@ -298,6 +298,8 @@ if ( ! class_exists( 'Checkview_Cf7_Helper' ) ) {
 				$headers                    = preg_replace( '/^\s*[\r\n]+/m', '', $headers );
 				$args['additional_headers'] = $headers;
 			}
+
+			Checkview_Admin_Logs::add( 'ip-logs', 'Submission email: ' . wp_json_encode( $args ) );
 			return $args;
 		}
 
