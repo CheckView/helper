@@ -35,6 +35,13 @@ if ( ! class_exists( 'Checkview_Fluent_Forms_Helper' ) ) {
 		public $loader;
 
 		/**
+		 * Checkable inputs counter.
+		 *
+		 * @var int $counter Number of checkable inputs iterated over during rendering.
+		 */
+		private static $counter = 0;
+
+		/**
 		 * Constructor.
 		 *
 		 * Initiates loader property, adds hooks.
@@ -147,6 +154,18 @@ if ( ! class_exists( 'Checkview_Fluent_Forms_Helper' ) ) {
 				'fluentform/disable_captcha',
 				'__return_true',
 				999
+			);
+
+			add_filter(
+				'fluentform/rendering_field_html_input_checkbox',
+				array($this, 'static_ids'),
+				99
+			);
+
+			add_filter(
+				'fluentform/rendering_field_html_input_radio',
+				array($this, 'static_ids'),
+				99
 			);
 		}
 
@@ -318,6 +337,36 @@ if ( ! class_exists( 'Checkview_Fluent_Forms_Helper' ) ) {
 				$notifications['notifications'] = 'email_notifications';
 			}
 			return $notifications;
+		}
+
+		/**
+		 * Replace IDs for checkbox/radio inputs & labels with static IDs based on incremental counter.
+		 *
+		 * @param $html Input's HTML.
+		 *
+		 * @return string Modified HTML.
+		 */
+		public static function static_ids($html) {
+			$map = [];
+
+			// Build map of old IDs to new IDs
+			preg_match_all('/\bid=[\'"]([^\'"]+)[\'"]/', $html, $matches);
+			foreach ($matches[1] as $oldId) {
+				if (!isset($map[$oldId])) {
+					$map[$oldId] = 'ff_checkable_' . (++self::$counter);
+				}
+			}
+
+			// Replace both id= and for= attributes
+			foreach ($map as $oldId => $newId) {
+				$html = str_replace(
+					['id="' . $oldId . '"', "id='" . $oldId . "'", 'for="' . $oldId . '"', "for='" . $oldId . "'"],
+					['id="' . $newId . '"', "id='" . $newId . "'", 'for="' . $newId . '"', "for='" . $newId . "'"],
+					$html
+				);
+			}
+
+			return $html;
 		}
 	}
 
