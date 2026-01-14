@@ -409,7 +409,39 @@ class CheckView_Api {
 					),
 				),
 			)
-		);// end checkview_register_rest_route.
+		);
+
+		register_rest_route(
+			'checkview/v1',
+			'/store/test-product/publish',
+			array(
+				'methods'             => array( 'POST' ),
+				'callback'            => array( $this, 'checkview_saas_publish_store_test_product' ),
+				'permission_callback' => array( $this, 'checkview_get_items_permissions_check' ),
+				'args'                => array(
+					'_checkview_token' => array(
+						'required' => false,
+					),
+				),
+			) 
+		);
+
+		register_rest_route(
+			'checkview/v1',
+			'/store/test-product/draft',
+			array(
+				'methods'             => array( 'POST' ),
+				'callback'            => array( $this, 'checkview_saas_draft_store_test_product' ),
+				'permission_callback' => array( $this, 'checkview_get_items_permissions_check' ),
+				'args'                => array(
+					'_checkview_token' => array(
+						'required' => false,
+					),
+				),
+			)
+		);
+
+		// end checkview_register_rest_route.
 	}
 
 	/**
@@ -2417,6 +2449,85 @@ class CheckView_Api {
 				array( 'status' => 400 )
 			);
 		}
+	}
+
+	/**
+	 * Publishes the CheckView test product.
+	 *
+	 * @return WP_REST_Response|WP_Error
+	 */
+	public function checkview_saas_publish_store_test_product() {
+		if ( ! class_exists( 'WooCommerce' ) ) {
+			return new WP_Error( 400, esc_html__( 'WooCommerce not found.', 'checkview' ) );
+		}
+
+		if ( null !== $this->jwt_error ) {
+			Checkview_Admin_Logs::add( 'api-logs', $this->jwt_error );
+			return new WP_Error( 400, esc_html__( 'Invalid request.', 'checkview' ) );
+		}
+
+		$product = Checkview_Woo_Automated_Testing::checkview_get_test_product();
+
+		if ( ! $product ) {
+			return new WP_Error( 404, esc_html__( 'Test product not found.', 'checkview' ) );
+		}
+
+		wp_update_post(
+			array(
+				'ID'          => $product->get_id(),
+				'post_status' => 'publish',
+			)
+		);
+
+		return new WP_REST_Response(
+			array(
+				'status'   => 200,
+				'response' => esc_html__( 'Test product published successfully.', 'checkview' ),
+				'body'     => array(
+					'product_id' => $product->get_id(),
+					'permalink'  => get_permalink( $product->get_id() ),
+				),
+			)
+		);
+	}
+
+	/**
+	 * Moves the CheckView test product to draft.
+	 *
+	 * @return WP_REST_Response|WP_Error
+	 */
+	public function checkview_saas_draft_store_test_product() {
+		if ( ! class_exists( 'WooCommerce' ) ) {
+			return new WP_Error( 400, esc_html__( 'WooCommerce not found.', 'checkview' ) );
+		}
+
+		// if ( null !== $this->jwt_error ) {
+		// 	Checkview_Admin_Logs::add( 'api-logs', $this->jwt_error );
+		// 	return new WP_Error( 400, esc_html__( 'Invalid request.', 'checkview' ) );
+		// }
+
+		$product = Checkview_Woo_Automated_Testing::checkview_get_test_product();
+
+		if ( ! $product ) {
+			return new WP_Error( 404, esc_html__( 'Test product not found.', 'checkview' ) );
+		}
+
+		wp_update_post(
+			array(
+				'ID'          => $product->get_id(),
+				'post_status' => 'draft',
+			)
+		);
+
+		return new WP_REST_Response(
+			array(
+				'status'   => 200,
+				'response' => esc_html__( 'Test product moved to draft successfully.', 'checkview' ),
+				'body'     => array(
+					'product_id' => $product->get_id(),
+				),
+			)
+		);
 	}
 
 	/**
