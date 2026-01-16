@@ -1014,6 +1014,8 @@ if ( ! function_exists( 'checkview_delete_tables_data' ) ) {
 	function checkview_delete_tables_data() {
 		global $wpdb;
 
+		Checkview_Admin_Logs::add( 'ip-logs', 'Running scheduled deletion of CheckView rows...' );
+
 		// Delete all entries from 'cv_entry' table.
 		$table_entry = esc_sql( $wpdb->prefix . 'cv_entry' );
 		$wpdb->query( "DELETE FROM $table_entry" );
@@ -1021,6 +1023,8 @@ if ( ! function_exists( 'checkview_delete_tables_data' ) ) {
 		// Delete all entries from 'cv_entry_meta' table.
 		$table_entry_meta = esc_sql( $wpdb->prefix . 'cv_entry_meta' );
 		$wpdb->query( "DELETE FROM $table_entry_meta" );
+
+		Checkview_Admin_Logs::add( 'ip-logs', 'Done.' );
 	}
 
 	// Attach the function to the cron event.
