@@ -1016,13 +1016,23 @@ if ( ! function_exists( 'checkview_delete_tables_data' ) ) {
 
 		Checkview_Admin_Logs::add( 'ip-logs', 'Running scheduled deletion of CheckView rows...' );
 
-		// Delete all entries from 'cv_entry' table.
 		$table_entry = esc_sql( $wpdb->prefix . 'cv_entry' );
-		$wpdb->query( "DELETE FROM $table_entry" );
-
-		// Delete all entries from 'cv_entry_meta' table.
 		$table_entry_meta = esc_sql( $wpdb->prefix . 'cv_entry_meta' );
-		$wpdb->query( "DELETE FROM $table_entry_meta" );
+
+		// Delete entries older than 1 day from 'cv_entry_meta' table.
+		$wpdb->query(
+			"DELETE FROM $table_entry_meta
+			WHERE entry_id IN (
+				SELECT id FROM $table_entry
+				WHERE date_created < DATE_SUB(NOW(), INTERVAL 1 DAY)
+			)"
+		);
+
+		// Delete entries older than 1 day from 'cv_entry' table.
+		$wpdb->query(
+			"DELETE FROM $table_entry
+			WHERE date_created < DATE_SUB(NOW(), INTERVAL 1 DAY)"
+		);
 
 		Checkview_Admin_Logs::add( 'ip-logs', 'Done.' );
 	}
