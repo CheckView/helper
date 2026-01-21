@@ -163,6 +163,12 @@ if ( ! class_exists( 'Checkview_Fluent_Forms_Helper' ) ) {
 			);
 
 			add_filter(
+				'fluentform/rendering_field_html_terms_and_condition',
+				array($this, 'static_ids'),
+				99
+			);
+
+			add_filter(
 				'fluentform/rendering_field_html_input_radio',
 				array($this, 'static_ids'),
 				99
