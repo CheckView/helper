@@ -15,7 +15,7 @@ Stable tag: 2.0.26
 
 Websites rarely fail loudly. Forms stop submitting. Leads disappear. Emails never send. Checkout buttons break quietly in the background. These issues often go unnoticed until sales or leads are lost.
 
-CheckView automatically tests your WordPress forms on a schedule, using real browser sessions to verify that submissions complete successfully, emails are sent, and integrations work as expected. It also supports testing logins, carts, and WooCommerce checkout flows.
+CheckView automatically tests your WordPress forms on a schedule, using real browser sessions to verify that submissions complete successfully and emails are sent. It also supports testing logins, carts, and WooCommerce checkout flows.
 
 Built specifically for WordPress and WooCommerce, CheckView helps site owners, developers, and agencies detect problems early and resolve them faster, without writing code or setting up complex testing infrastructure.
 
@@ -32,7 +32,7 @@ This plugin requires an active [CheckView](https://checkview.io/) account.  The 
 = Automated WordPress Form Testing =
 
    * Run real browser-based tests on WordPress forms, including multi-step and dynamic forms
-   * Validate form submissions from start to finish, including email notifications and integrations
+   * Validate form submissions from start to finish, including email notifications
    * Test WooCommerce checkout flows alongside forms for the most complete coverage
    * Verify full form submissions, including email notifications and stored entries
    * Confirm WooCommerce order creation when testing checkout flows
