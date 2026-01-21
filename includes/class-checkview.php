@@ -132,9 +132,10 @@ class CheckView {
 	 * @return bool
 	 */
 	public static function is_bot(): bool {
-		$visitor_ip = checkview_get_visitor_ip();
-		$cv_bot_ip = checkview_get_api_ip();
-		$ip_verified = is_array( $cv_bot_ip ) && in_array( $visitor_ip, $cv_bot_ip );
+		$visitor_ip  = checkview_get_visitor_ip();
+		$cv_bot_ip   = checkview_get_api_ip();
+		$is_local    = defined( 'WP_ENVIRONMENT_TYPE' ) && WP_ENVIRONMENT_TYPE === 'local';
+		$ip_verified = $is_local || ( is_array( $cv_bot_ip ) && in_array( $visitor_ip, $cv_bot_ip ) );
 
 		if ( isset( $_REQUEST['checkview_test_id'] ) && ! $ip_verified ) {
 			Checkview_Admin_Logs::add( 'ip-logs', 'Although checkview_test_id is set in the request, failing bot check due to visitor IP [' . $visitor_ip . '] not existing in bot IP list [' . implode(', ', $cv_bot_ip) . '].' );
