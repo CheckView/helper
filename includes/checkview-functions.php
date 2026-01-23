@@ -1154,7 +1154,10 @@ if ( ! defined( 'checkview_update_woocommerce_product_status' ) ) {
 	function checkview_update_woocommerce_product_status( $product_id, $status ) {
 		// Check if the product ID is valid and status is either 'publish' or 'draft'.
 		$updated = 0;
-		if ( get_post_type( $product_id ) === 'product' && in_array( $status, array( 'publish', 'draft' ) ) ) {
+		$allowed_status = array( 'publish', 'draft' );
+
+		Checkview_Admin_Logs::add( 'api-logs', 'Updating status of test product [' . $product_id . '] to [' . $status . ']...' );
+		if ( get_post_type( $product_id ) === 'product' && in_array( $status, $allowed_status ) ) {
 			// Update the post status.
 			$updated = wp_update_post(
 				array(
@@ -1162,6 +1165,10 @@ if ( ! defined( 'checkview_update_woocommerce_product_status' ) ) {
 					'post_status' => $status,
 				)
 			);
+			delete_transient('checkview_store_products_transient');
+			Checkview_Admin_Logs::add( 'api-logs', 'Updated status of test product and cleared product caches.' );
+		} else {
+			Checkview_Admin_Logs::add( 'api-logs', 'Called [checkview_update_woocommerce_product_status] on invalid post type or with invalid status (accepts ' . implode( ', ', $allowed_status ) . ', got ' . $status . ').' );
 		}
 		return $updated;
 	}

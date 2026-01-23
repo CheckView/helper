@@ -764,7 +764,7 @@ class CheckView_Api {
 		}
 		$args = array(
 			'post_type'           => 'product',
-			'post_status'         => 'publish',
+			'post_status'         => array( 'publish', 'draft' ),
 			'posts_per_page'      => 1000,
 			'ignore_sticky_posts' => 1,
 			'orderby'             => 'modified',        // Order by last modified date.
