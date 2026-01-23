@@ -435,7 +435,7 @@ class Checkview_Woo_Automated_Testing {
 		$existing_product = wc_get_products(
 			array(
 				'name'   => 'CheckView Testing Product',
-				'status' => array( 'trash', 'publish' ),
+				'status' => array( 'trash', 'publish', 'draft' ),
 				'limit'  => 1,
 				'return' => 'objects',
 			)
