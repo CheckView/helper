@@ -660,23 +660,26 @@ if ( ! function_exists( 'checkview_create_cv_session' ) ) {
 	 * To create a session, the function must know the IP address of the session,
 	 * as well as the test ID of the test to be used by the session.
 	 *
+	 * @param string $ip IP address of the SAAS.
+	 * @param string $test_id Test ID to be executed.
+	 *
+	 * @return void|boolean
 	 * @since 1.0.0
 	 *
-	 * @param string $ip IP address of the SAAS.
-	 * @param int    $test_id Test ID to be executed.
-	 * @return void|boolean
 	 */
 	function checkview_create_cv_session( $ip, $test_id ) {
 		global $wp, $wpdb;
+
 		if ( ! checkview_is_valid_uuid( $test_id ) ) {
 			return;
 		}
 
-		// Return if already saved.
+		// Check if already exists (get_cv_session handles its own logging)
 		$already_have = checkview_get_cv_session( $ip, $test_id );
 		if ( ! empty( $already_have ) ) {
 			return;
 		}
+
 		$current_url = '';
 		if ( ! empty( $wp->request ) ) {
 			$current_url = home_url( add_query_arg( array(), $wp->request ) );
@@ -684,18 +687,16 @@ if ( ! function_exists( 'checkview_create_cv_session' ) ) {
 
 		$is_sub_directory = explode( '/', str_replace( '//', '|', $current_url ) );
 		if ( count( $is_sub_directory ) > 1 ) {
-			// remove subdirectory from home url.
 			$current_url = str_replace( '/' . $is_sub_directory[1], '', $current_url );
 		}
 
-		// Add WP's redirect URL string.
 		$request_uri = isset( $_SERVER['REQUEST_URI'] ) ? sanitize_url( wp_unslash( $_SERVER['REQUEST_URI'] ) ) : '';
 		if ( ! empty( $request_uri ) && ! filter_var( $request_uri, FILTER_SANITIZE_URL ) ) {
-			// If validation fails, handle the error appropriately.
-			// Log the detailed error for internal use.
-			Checkview_Admin_Logs::add( 'ip-logs', esc_html__( 'Invalid URL.', 'checkview' ) );
+			Checkview_Admin_Logs::add( 'ip-logs', 'Session skip: invalid URL.' );
+
 			return false;
 		}
+
 		if ( count( $is_sub_directory ) > 1 ) {
 			$current_url = $current_url . $request_uri;
 		} else {
@@ -706,21 +707,17 @@ if ( ! function_exists( 'checkview_create_cv_session' ) ) {
 		$current_url = $url[0];
 		$page_id     = '';
 
-		// Retrieve the current post's ID based on its URL.
 		if ( ! $current_url ) {
 			global $post;
-
 			if ( $post instanceof WP_Post ) {
 				$page_id = $post->ID;
 			}
 		} else {
 			$page = get_page_by_path( $current_url );
-
 			if ( $page instanceof WP_Post ) {
 				$page_id = $page->ID;
 			} else {
 				global $post;
-
 				if ( $post instanceof WP_Post ) {
 					$page_id = $post->ID;
 				} else {
@@ -736,24 +733,49 @@ if ( ! function_exists( 'checkview_create_cv_session' ) ) {
 			'test_key'   => $test_key,
 			'test_id'    => $test_id,
 		);
-		$wpdb->insert( $session_table, $session_data );
+
+		$result = $wpdb->insert( $session_table, $session_data );
+
+		// Log create/fail
+		$safe_ip   = preg_replace( '/[^0-9a-fA-F.:,]/', '', substr( $ip, 0, 45 ) );
+		$safe_test = substr( $test_id, 0, 8 );
+
+		if ( false === $result ) {
+			Checkview_Admin_Logs::add( 'ip-logs', sprintf(
+				'Session INSERT FAILED: IP=[%s], test=[%s...], page=[%d], err=[%s].',
+				$safe_ip,
+				$safe_test,
+				(int) $page_id,
+				$wpdb->last_error ? substr( $wpdb->last_error, 0, 80 ) : 'none'
+			) );
+		} else {
+			Checkview_Admin_Logs::add( 'ip-logs', sprintf(
+				'Session CREATED: IP=[%s], test=[%s...], page=[%d].',
+				$safe_ip,
+				$safe_test,
+				(int) $page_id
+			) );
+		}
 	}
 }
+
 if ( ! function_exists( 'checkview_get_cv_session' ) ) {
 	/**
 	 * Retrieves a CheckView session from the database.
 	 *
+	 * @param string $ip IP address of the visitor.
+	 * @param string $test_id Test ID to be conducted.
+	 *
+	 * @return array Array of results from DB.
 	 * @since 1.0.0
 	 *
-	 * @param int $ip IP address of the visitor.
-	 * @param int $test_id Test ID to be conducted.
-	 * @return array Array of results form DB.
 	 */
 	function checkview_get_cv_session( $ip, $test_id ) {
 		global $wpdb;
+		static $logged_this_request = array();
 
 		$session_table = $wpdb->prefix . 'cv_session';
-		// WPDBPREPARE.
+
 		$result = $wpdb->get_results(
 			$wpdb->prepare(
 				"SELECT * FROM {$session_table}
@@ -765,6 +787,36 @@ if ( ! function_exists( 'checkview_get_cv_session' ) ) {
 			),
 			ARRAY_A
 		);
+
+		// Log once per IP+test combo per request, only for valid UUIDs
+		$log_key = $ip . '|' . $test_id;
+		if ( checkview_is_valid_uuid( $test_id ) && ! isset( $logged_this_request[ $log_key ] ) ) {
+			$logged_this_request[ $log_key ] = true;
+
+			$safe_ip   = preg_replace( '/[^0-9a-fA-F.:,]/', '', substr( $ip, 0, 45 ) );
+			$safe_test = substr( $test_id, 0, 8 );
+			$method    = isset( $_SERVER['REQUEST_METHOD'] )
+				? strtoupper( substr( preg_replace( '/[^A-Za-z]/', '', $_SERVER['REQUEST_METHOD'] ), 0, 7 ) )
+				: '?';
+
+			if ( ! empty( $result ) ) {
+				Checkview_Admin_Logs::add( 'ip-logs', sprintf(
+					'Session FOUND [%s]: IP=[%s], test=[%s...].',
+					$method,
+					$safe_ip,
+					$safe_test
+				) );
+			} else {
+				Checkview_Admin_Logs::add( 'ip-logs', sprintf(
+					'Session NOT FOUND [%s]: IP=[%s], test=[%s...]%s.',
+					$method,
+					$safe_ip,
+					$safe_test,
+					$wpdb->last_error ? ', err' : ''
+				) );
+			}
+		}
+
 		return $result;
 	}
 }

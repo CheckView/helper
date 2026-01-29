@@ -208,6 +208,7 @@ Support and test configuration are handled through the CheckView platform. Pleas
 = 2.0.29 =
 * Disallow caching and bypass WordPress-level authentication for CheckView API endpoints.
 * Improve bot detection logging.
+* Improve CheckView session logging.
 
 = 2.0.28 =
 * Allow "draft" status when retrieving store products.
@@ -532,6 +533,7 @@ Support and test configuration are handled through the CheckView platform. Pleas
 = 2.0.29 =
 * Disallow caching and bypass WordPress-level authentication for CheckView API endpoints.
 * Improve bot detection logging.
+* Improve CheckView session logging.
 
 = 2.0.28 =
 * Allow "draft" status when retrieving store products.
