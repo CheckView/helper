@@ -85,6 +85,16 @@ class Checkview_Admin {
 			10,
 			2
 		);
+		add_filter(
+			'rest_authentication_errors',
+			array( $this, 'bypass_rest_authentication' ),
+			999
+		);
+		add_filter(
+			'rest_post_dispatch',
+			array( $this, 'modify_rest_response_headers' ),
+			15
+		);
 	}
 
 	/**
@@ -198,6 +208,102 @@ class Checkview_Admin {
 				'checkview_create_token_security' => wp_create_nonce( 'create-token-' . $user_id ),
 			)
 		);
+	}
+
+	/**
+	 * Determine if the current request is for a Checkview REST API endpoint.
+	 *
+	 * Checks both pretty permalinks (/wp-json/checkview/...) and plain permalinks
+	 * (?rest_route=/checkview/...) to detect Checkview API requests.
+	 *
+	 * @since 2.0.29
+	 * @return bool True if a Checkview API endpoint request, false otherwise.
+	 */
+	public static function is_checkview_rest_request() {
+		$rest_route = '';
+
+		// 1. Check pretty permalinks (e.g. /wp-json/checkview/v1/...
+		if ( isset( $_SERVER['REQUEST_URI'] ) ) {
+			if ( preg_match( '#/wp-json/(checkview/.*)#', $_SERVER['REQUEST_URI'], $matches ) ) {
+				$rest_route = $matches[1];
+			}
+		}
+
+		// 2. Check plain permalinks (e.g. ?rest_route=/checkview/vw/...)
+		if ( empty( $rest_route ) && isset( $_GET['rest_route'] ) ) {
+			$route = ltrim( $_GET['rest_route' ], '/' );
+			if ( strpos( $route, 'checkview/' ) === 0 ) {
+				$rest_route = $route;
+			}
+		}
+
+		return ! empty( $rest_route );
+	}
+
+	/**
+	 * Bypass REST API authentication for Checkview endpoints.
+	 *
+	 * Disables authentication and caching for Checkview REST API requests to ensure
+	 * direct access without interference from security plugins or caching layers.
+	 * Sets DONOTCACHE* constants and disables external object cache.
+	 *
+	 * @since 2.0.29
+	 * @param mixed $result The current authentication result.
+	 * @return mixed|null Returns null to bypass authentication for Checkview requests,
+	 *                    or the original result for other requests.
+	 */
+	public static function bypass_rest_authentication( $result ) {
+		if ( ! self::is_checkview_rest_request() ) {
+			return $result;
+		}
+
+		// Disable caching layers for this specific request
+
+		if ( ! defined( 'DONOTCACHEPAGE' ) ) {
+			define( 'DONOTCACHEPAGE', true );
+		}
+
+		if ( ! defined( 'DONOTCACHEOBJECT' ) ) {
+			define( 'DONOTCACHEOBJECT', true );
+		}
+
+		if ( ! defined( 'DONOTCACHEDB' ) ) {
+			define( 'DONOTCACHEDB', true );
+		}
+
+		// Ignore Redis/Memcached
+
+		if ( function_exists( 'wp_using_ext_object_cache' ) ) {
+			wp_using_ext_object_cache( false );
+		}
+
+		// Clear 401/403 blocks from security plugins
+
+		return null;
+	}
+
+	/**
+	 * Modify REST API response headers to prevent caching.
+	 *
+	 * Adds cache-control headers to Checkview REST API responses to ensure
+	 * fresh data is always returned without browser or proxy caching.
+	 *
+	 * @since 2.0.29
+	 * @param WP_REST_Response|mixed $response The REST API response object.
+	 * @return WP_REST_Response|mixed The response object with modified headers.
+	 */
+	public static function modify_rest_response_headers( $response ) {
+		if ( ! self::is_checkview_rest_request() ) {
+			return $response;
+		}
+
+		if ( $response instanceof WP_REST_Response ) {
+			$response->header( 'Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0' );
+			$response->header( 'Pragma', 'no-cache' );
+			$response->header( 'Expires', '0' );
+		}
+
+		return $response;
 	}
 
 	/**
