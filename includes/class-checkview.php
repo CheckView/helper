@@ -137,12 +137,63 @@ class CheckView {
 		$is_local    = defined( 'WP_ENVIRONMENT_TYPE' ) && WP_ENVIRONMENT_TYPE === 'local';
 		$ip_verified = $is_local || ( is_array( $cv_bot_ip ) && in_array( $visitor_ip, $cv_bot_ip ) );
 
-		if ( isset( $_REQUEST['checkview_test_id'] ) && ! $ip_verified ) {
-			Checkview_Admin_Logs::add( 'ip-logs', 'Although checkview_test_id is set in the request, failing bot check due to visitor IP [' . $visitor_ip . '] not existing in bot IP list [' . implode(', ', $cv_bot_ip) . '].' );
+		// Only log during actual tests
+		if ( isset( $_REQUEST['checkview_test_id'] ) ) {
+			$has_cookie = self::has_cookie();
+			$result     = $has_cookie && $ip_verified;
 
-			return false;
+			// Sanitize for logging: remove control chars, limit length
+			$sanitize = function ( $val, $max_len = 200 ) {
+				$str = preg_replace( '/[\x00-\x1F\x7F]/', '', strval( $val ) );
+				if ( null === $str ) {
+					$str = '[sanitize error]';
+				}
+
+				return ( strlen( $str ) > $max_len ) ? substr( $str, 0, $max_len ) . '...' : $str;
+			};
+
+			$test_id         = substr( sanitize_text_field( wp_unslash( $_REQUEST['checkview_test_id'] ) ), 0, 36 );
+			$safe_visitor_ip = $sanitize( $visitor_ip, 45 );
+			$safe_cookie     = $has_cookie ? $sanitize( $has_cookie, 20 ) : 'not set';
+
+			// Collect IP headers
+			$headers = array();
+			$cf      = $sanitize( isset( $_SERVER['HTTP_CF_CONNECTING_IP'] ) ? $_SERVER['HTTP_CF_CONNECTING_IP'] : '', 45 );
+			$xff     = $sanitize( isset( $_SERVER['HTTP_X_FORWARDED_FOR'] ) ? $_SERVER['HTTP_X_FORWARDED_FOR'] : '', 100 );
+			$xri     = $sanitize( isset( $_SERVER['HTTP_X_REAL_IP'] ) ? $_SERVER['HTTP_X_REAL_IP'] : '', 45 );
+			$cli     = $sanitize( isset( $_SERVER['HTTP_CLIENT_IP'] ) ? $_SERVER['HTTP_CLIENT_IP'] : '', 45 );
+			$ra      = $sanitize( isset( $_SERVER['REMOTE_ADDR'] ) ? $_SERVER['REMOTE_ADDR'] : '', 45 );
+
+			if ( $cf ) {
+				$headers[] = 'CF=[' . $cf . ']';
+			}
+			if ( $xff ) {
+				$headers[] = 'XFF=[' . $xff . ']';
+			}
+			if ( $xri ) {
+				$headers[] = 'XRI=[' . $xri . ']';
+			}
+			if ( $cli ) {
+				$headers[] = 'CLI=[' . $cli . ']';
+			}
+			$headers[] = 'RA=[' . ( $ra ?: 'not set' ) . ']';
+
+			Checkview_Admin_Logs::add( 'ip-logs', sprintf(
+				'Bot check %s [%s]: detected=[%s], %s, cookie=[%s], ip_ok=[%s], whitelist=[%d IPs]%s',
+				$result ? 'PASSED' : 'FAILED',
+				$test_id,
+				$safe_visitor_ip ?: 'empty',
+				implode( ', ', $headers ),
+				$safe_cookie,
+				$ip_verified ? 'yes' : 'no',
+				is_array( $cv_bot_ip ) ? count( $cv_bot_ip ) : 0,
+				$is_local ? ', LOCAL_ENV' : ''
+			) );
+
+			return $result;
 		}
 
+		// Non-test requests: silent check
 		$has_cookie = self::has_cookie();
 
 		return $has_cookie && $ip_verified;
