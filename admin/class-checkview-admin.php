@@ -319,13 +319,17 @@ class Checkview_Admin {
 		}
 
 		$is_helper_api_request = isset( $_SERVER['REQUEST_URI'] ) && strpos( $_SERVER['REQUEST_URI'], '_checkview_timestamp' );
-
 		if ( $is_helper_api_request ) {
 			return;
 		}
 
-		$visitor_ip = checkview_get_visitor_ip();
+		$cv_test_id = get_checkview_test_id();
+		if ( empty( $cv_test_id ) ) {
+			Checkview_Admin_Logs::add( 'ip-logs', 'Reached test init but could not get test ID.' );
+			return;
+		}
 
+		$visitor_ip = checkview_get_visitor_ip();
 		Checkview_Admin_Logs::add( 'ip-logs', 'Visitor IP [' . $visitor_ip . '] determined to be in bot IP list, continuing with test code.' );
 
 		if ( is_plugin_active( 'cleantalk-spam-protect/cleantalk.php' ) ) {
@@ -429,7 +433,6 @@ class Checkview_Admin {
 			}
 		}
 
-		$cv_test_id = isset( $_REQUEST['checkview_test_id'] ) ? sanitize_text_field( wp_unslash( $_REQUEST['checkview_test_id'] ) ) : '';
 		$disable_email_receipt = isset( $_REQUEST['disable_email_receipt'] ) ? sanitize_text_field( wp_unslash( $_REQUEST['disable_email_receipt'] ) ) : false;
 		$disable_webhooks = isset( $_REQUEST['disable_webhooks'] ) ? sanitize_text_field( wp_unslash( $_REQUEST['disable_webhooks'] ) ) : false;
 		$referrer_url = sanitize_url( wp_get_raw_referer(), array( 'http', 'https' ) );
