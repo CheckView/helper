@@ -150,12 +150,11 @@ class CheckView {
 		$cv_bot_ip   = checkview_get_api_ip();
 		$is_local    = defined( 'WP_ENVIRONMENT_TYPE' ) && WP_ENVIRONMENT_TYPE === 'local';
 		$ip_verified = $is_local || ( is_array( $cv_bot_ip ) && in_array( $visitor_ip, $cv_bot_ip ) );
+		$test_type = self::test_type();
+		$result = $test_type && $ip_verified;
 
 		// Only log during actual tests
 		if ( isset( $_REQUEST['checkview_test_id'] ) ) {
-			$has_cookie = self::has_cookie();
-			$result     = $has_cookie && $ip_verified;
-
 			// Sanitize for logging: remove control chars, limit length
 			$sanitize = function ( $val, $max_len = 200 ) {
 				$str = preg_replace( '/[\x00-\x1F\x7F]/', '', strval( $val ) );
@@ -168,7 +167,6 @@ class CheckView {
 
 			$test_id         = substr( sanitize_text_field( wp_unslash( $_REQUEST['checkview_test_id'] ) ), 0, 36 );
 			$safe_visitor_ip = $sanitize( $visitor_ip, 45 );
-			$safe_cookie     = $has_cookie ? $sanitize( $has_cookie, 20 ) : 'not set';
 
 			// Collect IP headers
 			$headers = array();
@@ -193,22 +191,16 @@ class CheckView {
 			$headers[] = 'RA=[' . ( $ra ?: 'not set' ) . ']';
 
 			Checkview_Admin_Logs::add( 'ip-logs', sprintf(
-				'Bot check %s [%s]: detected=[%s], %s, cookie=[%s], ip_ok=[%s], whitelist=[%d IPs]%s',
+				'Bot check %s [%s]: detected=[%s], %s, ip_ok=[%s], whitelist=[%d IPs]%s',
 				$result ? 'PASSED' : 'FAILED',
 				$test_id,
 				$safe_visitor_ip ?: 'empty',
 				implode( ', ', $headers ),
-				$safe_cookie,
 				$ip_verified ? 'yes' : 'no',
 				is_array( $cv_bot_ip ) ? count( $cv_bot_ip ) : 0,
 				$is_local ? ', LOCAL_ENV' : ''
 			) );
-
-			return $result;
 		}
-
-		// Non-test requests: silent check
-		$test_type = self::test_type();
 
 		return $test_type && $ip_verified;
 	}
