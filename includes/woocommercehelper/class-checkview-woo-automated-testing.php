@@ -568,13 +568,14 @@ class Checkview_Woo_Automated_Testing {
 			return;
 		}
 
-		$cookie = CheckView::has_cookie();
+		$test_type = CheckView::test_type();
+		$woo_checkout_types = [ 'full_checkout', 'woo_checkout' ];
 
-		if ( $cookie !== 'woo_checkout' ) {
+		if ( ! in_array( $test_type, $woo_checkout_types, true ) ) {
 			return;
 		}
 
-		Checkview_Admin_Logs::add( 'ip-logs', 'Running Woo test mode hooks, visitor is bot and cookie value equals [' . $cookie . '].' );
+		Checkview_Admin_Logs::add( 'ip-logs', 'Running Woo checkout hooks, detected test type [' . $test_type . '].' );
 
 		if ( ! is_admin() && class_exists( 'WooCommerce' ) ) {
 			// Always use Stripe test mode when on dev or staging.

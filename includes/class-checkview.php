@@ -110,15 +110,29 @@ class CheckView {
 	}
 
 	/**
-	 * Determine if the request contains the cookie necessary for running testing code.
+	 * Determine if the request contains the query parameters necessary for detecting test type.
+	 * 
+	 * Legacy: Falls back to the value of `self::$bot_cookie` if it is valid.
 	 *
-	 * Returns one of `woo_checkout`, `form`, or `custom`. False if not set or invalid value.
+	 * Returns one of:
+	 * - "form" - Supported form plugin tests.
+	 * - "custom" - Custom tests.
+	 * - "full_checkout" - WooCommerce full checkout tests.
+	 * - "add_to_cart" - WooCommerce add-to-cart test.
+	 * - "woo_checkout" - WooCommerce full checkout tests (deprecated; from legacy cookie).
+	 * - false - If not set or invalid value.
 	 *
 	 * @return string|false Validated cookie value, or false.
 	 */
-	public static function has_cookie() {
-		$valid_values = array('woo_checkout', 'form', 'custom');
+	public static function test_type() {
+		$test_id = sanitize_text_field( wp_unslash( $_REQUEST['checkview_test_id'] ?? '' ) );
+		$test_type = sanitize_text_field( wp_unslash( $_REQUEST['checkview_test_type'] ?? '' ) );
+		if ( checkview_is_valid_uuid( $test_id ) && ! empty( $test_type ) ) {
+			return $test_type;
+		}
 
+		// Legacy: Cookie support
+		$valid_values = array('woo_checkout', 'form', 'custom');
 		if ( isset( $_COOKIE[self::$bot_cookie] ) && in_array( $_COOKIE[self::$bot_cookie], $valid_values ) ) {
 			return $_COOKIE[self::$bot_cookie];
 		}
@@ -194,9 +208,9 @@ class CheckView {
 		}
 
 		// Non-test requests: silent check
-		$has_cookie = self::has_cookie();
+		$test_type = self::test_type();
 
-		return $has_cookie && $ip_verified;
+		return $test_type && $ip_verified;
 	}
 
 	/**

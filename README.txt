@@ -206,6 +206,7 @@ Support and test configuration are handled through the CheckView platform. Pleas
 == Changelog ==
 
 = 2.0.29 =
+* Add support for query parameter-based test type detection.
 * Disallow caching and bypass WordPress-level authentication for CheckView API endpoints.
 * Improve bot detection logging.
 * Improve CheckView session logging.
@@ -531,6 +532,7 @@ Support and test configuration are handled through the CheckView platform. Pleas
 == Upgrade Notice ==
 
 = 2.0.29 =
+* Add support for query parameter-based test type detection.
 * Disallow caching and bypass WordPress-level authentication for CheckView API endpoints.
 * Improve bot detection logging.
 * Improve CheckView session logging.
