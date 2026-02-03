@@ -210,6 +210,7 @@ Support and test configuration are handled through the CheckView platform. Pleas
 * Disallow caching and bypass WordPress-level authentication for CheckView API endpoints.
 * Improve bot detection logging.
 * Improve CheckView session logging.
+* Fire a new action (`checkview_before_init_current_test`) right before initializing a test.
 
 = 2.0.28 =
 * Allow "draft" status when retrieving store products.
@@ -536,6 +537,7 @@ Support and test configuration are handled through the CheckView platform. Pleas
 * Disallow caching and bypass WordPress-level authentication for CheckView API endpoints.
 * Improve bot detection logging.
 * Improve CheckView session logging.
+* Fire a new action (`checkview_before_init_current_test`) right before initializing a test.
 
 = 2.0.28 =
 * Allow "draft" status when retrieving store products.

@@ -372,6 +372,8 @@ class CheckView {
 		}
 
 		if ( self::is_bot() ) {
+			do_action( 'checkview_before_init_current_test' );
+
 			$this->loader->add_action(
 				'init',
 				$plugin_admin,
