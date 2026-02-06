@@ -627,6 +627,25 @@ class Checkview_Woo_Automated_Testing {
 				999
 			);
 
+			// Bypass Simple Cloudflare Turnstile for block checkout.
+			// The plugin checks for a token and throws before calling cfturnstile_check()
+			// where our cfturnstile_whitelisted filter lives. Adding 'checkview' to the
+			// skipped payment methods list makes turnstile skip validation entirely.
+			// @since 2.0.30
+			add_filter(
+				'option_cfturnstile_selected_payment_methods',
+				function ( $methods ) {
+					if ( ! is_array( $methods ) ) {
+						$methods = array();
+					}
+					if ( ! in_array( 'checkview', $methods, true ) ) {
+						$methods[] = 'checkview';
+						Checkview_Admin_Logs::add( 'ip-logs', 'Added checkview to turnstile skipped payment methods list.' );
+					}
+					return $methods;
+				}
+			);
+
 			// Make the test product visible in the catalog.
 			add_filter(
 				'woocommerce_product_is_visible',
