@@ -127,7 +127,7 @@ class CheckView {
 	public static function test_type() {
 		$test_id = sanitize_text_field( wp_unslash( $_REQUEST['checkview_test_id'] ?? '' ) );
 		$test_type = sanitize_text_field( wp_unslash( $_REQUEST['checkview_test_type'] ?? '' ) );
-		if ( checkview_is_valid_uuid( $test_id ) && ! empty( $test_type ) ) {
+		if ( ! empty( $test_id ) && checkview_is_valid_uuid( $test_id ) && ! empty( $test_type ) ) {
 			return $test_type;
 		}
 

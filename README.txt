@@ -207,6 +207,7 @@ Support and test configuration are handled through the CheckView platform. Pleas
 
 = 2.0.30 =
 * Fix Simple Cloudflare Turnstile bypass for WooCommerce block checkout.
+* Fix "Invalid UUID" log buildup.
 
 = 2.0.29 =
 * Add support for query parameter-based test type detection.
@@ -537,6 +538,7 @@ Support and test configuration are handled through the CheckView platform. Pleas
 
 = 2.0.30 =
 * Fix Simple Cloudflare Turnstile bypass for WooCommerce block checkout.
+* Fix "Invalid UUID" log buildup.
 
 = 2.0.29 =
 * Add support for query parameter-based test type detection.
