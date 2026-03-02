@@ -574,6 +574,12 @@ class Checkview_Admin {
 			require_once CHECKVIEW_INC_DIR . 'formhelpers/class-checkview-wsf-helper.php';
 		}
 
+		if ( is_plugin_active( 'everest-forms/everest-forms.php' ) ) {
+			Checkview_Admin_Logs::add( 'ip-logs', 'Loading Everest Forms helper.' );
+
+			require_once CHECKVIEW_INC_DIR . 'formhelpers/class-checkview-everest-forms-helper.php';
+		}
+
 		if ( is_plugin_active( 'contact-form-7/wp-contact-form-7.php' ) ) {
 			Checkview_Admin_Logs::add( 'ip-logs', 'Loading Contact Form 7 helper.' );
 

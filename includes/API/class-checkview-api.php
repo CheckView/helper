@@ -1484,7 +1484,7 @@ class CheckView_Api {
 					// WPDBPREPARE.
 					$form_pages = $wpdb->get_results(
 						$wpdb->prepare(
-							"SELECT ID FROM {$wpdb->prefix}posts 
+							"SELECT ID, post_type FROM {$wpdb->prefix}posts
 						WHERE 1=1 
 						AND (
 							post_content LIKE %s 
@@ -1538,7 +1538,7 @@ class CheckView_Api {
 					// WPDBPREPARE.
 					$form_pages = $wpdb->get_results(
 						$wpdb->prepare(
-							"SELECT ID FROM {$wpdb->prefix}posts 
+							"SELECT ID, post_type FROM {$wpdb->prefix}posts
 						WHERE 1=1 
 						AND (
 							post_content LIKE %s 
@@ -1673,7 +1673,7 @@ class CheckView_Api {
 					// WPDBPREPARE.
 					$form_pages = $wpdb->get_results(
 						$wpdb->prepare(
-							"SELECT ID FROM {$wpdb->prefix}posts 
+							"SELECT ID, post_type FROM {$wpdb->prefix}posts
 						WHERE 1=1 
 						AND (
 							post_content LIKE %s 
@@ -1730,7 +1730,7 @@ class CheckView_Api {
 
 					$form_pages = $wpdb->get_results(
 						$wpdb->prepare(
-							"SELECT ID FROM {$wpdb->prefix}posts
+							"SELECT ID, post_type FROM {$wpdb->prefix}posts
 						WHERE 1=1
 						AND (
 							(post_content LIKE %s OR post_content LIKE %s OR post_content LIKE %s OR post_content LIKE %s)
@@ -1785,7 +1785,7 @@ class CheckView_Api {
 					// WPDBPREPARE.
 					$form_pages = $wpdb->get_results(
 						$wpdb->prepare(
-							"SELECT ID FROM {$wpdb->prefix}posts 
+							"SELECT ID, post_type FROM {$wpdb->prefix}posts
 						WHERE 1=1 
 						AND (
 							post_content LIKE %s 
@@ -1843,7 +1843,7 @@ class CheckView_Api {
 
 					$form_pages = $wpdb->get_results(
 						$wpdb->prepare(
-							"SELECT ID FROM {$wpdb->prefix}posts
+							"SELECT ID, post_type FROM {$wpdb->prefix}posts
 						WHERE 1=1
 						AND (
 							(post_content LIKE %s OR post_content LIKE %s OR post_content LIKE %s OR post_content LIKE %s)
@@ -1876,6 +1876,64 @@ class CheckView_Api {
 								}
 							} elseif ( ! empty( checkview_must_ssl_url( get_the_permalink( $form_page->ID ) ) ) ) {
 								$forms['ForminatorForms'][ $row->ID ]['pages'][] = array(
+									'ID'  => $form_page->ID,
+									'url' => checkview_must_ssl_url( get_the_permalink( $form_page->ID ) ),
+								);
+							}
+						}
+					}
+				}
+			}
+		}
+
+		if ( is_plugin_active( 'everest-forms/everest-forms.php' ) ) {
+			$args    = array(
+				'post_type'   => 'everest_form',
+				'post_status' => 'publish',
+				'order'       => 'ASC',
+				'orderby'     => 'ID',
+				'numberposts' => -1,
+			);
+			$results = get_posts( $args );
+			if ( $results ) {
+				foreach ( $results as $row ) {
+					$forms['EverestForms'][ $row->ID ] = array(
+						'ID'   => $row->ID,
+						'Name' => $row->post_title,
+					);
+
+					$form_pages = $wpdb->get_results(
+						$wpdb->prepare(
+							"SELECT ID, post_type FROM {$wpdb->prefix}posts
+						WHERE 1=1
+						AND (
+							post_content LIKE %s
+							OR post_content LIKE %s
+							OR post_content LIKE %s
+							OR post_content LIKE %s
+						)
+						AND post_status = 'publish'
+						AND post_type NOT IN ('kadence_wootemplate', 'revision')",
+							'%wp:everest-forms/form-selector {"formId":"' . $row->ID . '"%',
+							'%wp:everest-forms/form-selector {"formId":' . $row->ID . '%',
+							'%[everest_form id="' . $row->ID . '"%',
+							'%[everest_form id=' . $row->ID . '%'
+						)
+					);
+					if ( $form_pages ) {
+						foreach ( $form_pages as $form_page ) {
+							if ( ! empty( $form_page->post_type ) && 'wp_block' === $form_page->post_type ) {
+								$wp_block_pages = checkview_get_wp_block_pages( $form_page->ID );
+								if ( $wp_block_pages ) {
+									foreach ( $wp_block_pages as $wp_block_page ) {
+										$forms['EverestForms'][ $row->ID ]['pages'][] = array(
+											'ID'  => $wp_block_page->ID,
+											'url' => checkview_must_ssl_url( get_the_permalink( $wp_block_page->ID ) ),
+										);
+									}
+								}
+							} else {
+								$forms['EverestForms'][ $row->ID ]['pages'][] = array(
 									'ID'  => $form_page->ID,
 									'url' => checkview_must_ssl_url( get_the_permalink( $form_page->ID ) ),
 								);
