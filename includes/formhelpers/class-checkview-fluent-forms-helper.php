@@ -99,6 +99,13 @@ if ( ! class_exists( 'Checkview_Fluent_Forms_Helper' ) ) {
 				'__return_false',
 			);
 
+			// Prevent Turnstile widget from rendering on the page.
+			add_filter(
+				'fluentform/rendering_field_html_turnstile',
+				'__return_empty_string',
+				999,
+			);
+
 			add_filter(
 				'fluentform/akismet_check_spam',
 				'__return_false',
