@@ -50,6 +50,20 @@ if ( ! class_exists( 'Checkview_Everest_Forms_Helper' ) ) {
 				10
 			);
 
+			// Remove reCAPTCHA rendering hook (EVF registers it at init:0, before our filter).
+			remove_action( 'everest_forms_frontend_output', array( 'EVF_Shortcode_Form', 'recaptcha' ), 20 );
+
+			// Nullify reCAPTCHA keys so field_display() returns early without rendering.
+			add_filter( 'option_everest_forms_recaptcha_v2_site_key', '__return_empty_string' );
+			add_filter( 'option_everest_forms_recaptcha_v2_secret_key', '__return_empty_string' );
+			add_filter( 'option_everest_forms_recaptcha_v2_invisible_site_key', '__return_empty_string' );
+			add_filter( 'option_everest_forms_recaptcha_v2_invisible_secret_key', '__return_empty_string' );
+			add_filter( 'option_everest_forms_recaptcha_v3_site_key', '__return_empty_string' );
+			add_filter( 'option_everest_forms_recaptcha_v3_secret_key', '__return_empty_string' );
+
+			// Remove CleanTalk rendering hook (same init:0 timing issue).
+			remove_action( 'everest_forms_frontend_output', array( 'EVF_Shortcode_Form', 'clean_talk' ), 15 );
+
 			// Bypass nonce validation.
 			add_filter(
 				'evf_bypass_form_nonce_validation',
