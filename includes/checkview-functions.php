@@ -1311,3 +1311,269 @@ if ( ! function_exists( 'cv_delete_option' ) ) {
 		return true;
 	}
 }
+
+if ( ! function_exists( 'checkview_flush_page_cache' ) ) {
+	/**
+	 * Flushes server-level page caches for the current URL.
+	 *
+	 * Purges cached pages from all known hosting-level and plugin-level caches
+	 * so that subsequent requests to the same URL reach WordPress. Also sends
+	 * no-cache response headers to prevent CDNs from re-caching the response.
+	 *
+	 * Note: This function cannot purge external CDN edge caches (e.g.
+	 * Cloudflare) if the CDN serves a cached page before the request reaches
+	 * WordPress. CheckView's query parameters typically prevent edge cache
+	 * hits, but sites with aggressive CDN configs that ignore query strings
+	 * will need a CDN-side cache rule.
+	 *
+	 * @since 2.0.31
+	 *
+	 * @return void
+	 */
+	function checkview_flush_page_cache() {
+		// Prevent duplicate execution within the same request.
+		static $done = false;
+		if ( $done ) {
+			return;
+		}
+		$done = true;
+
+		// Skip cache flushing on AJAX requests — admin-ajax.php responses are
+		// never page-cached, so purging here only adds unnecessary latency.
+		if ( wp_doing_ajax() ) {
+			return;
+		}
+
+		// Tell all caching plugins not to cache this response.
+		if ( ! defined( 'DONOTCACHEPAGE' ) ) {
+			define( 'DONOTCACHEPAGE', true );
+		}
+
+		// Build URL from actual request host to avoid path doubling on
+		// subdirectory WordPress installs (home_url + REQUEST_URI would double).
+		$current_url = esc_url_raw(
+			( is_ssl() ? 'https://' : 'http://' )
+			. wp_unslash( isset( $_SERVER['HTTP_HOST'] ) ? $_SERVER['HTTP_HOST'] : wp_parse_url( home_url(), PHP_URL_HOST ) )
+			. ( isset( $_SERVER['REQUEST_URI'] ) ? wp_unslash( $_SERVER['REQUEST_URI'] ) : '/' )
+		);
+
+		// Strip checkview query params to get the canonical page URL for cache purging.
+		$purge_url = remove_query_arg(
+			array( 'checkview_test_id', 'checkview_test_type', 'disable_email_receipt', 'disable_webhooks' ),
+			$current_url
+		);
+
+		$flushed = array();
+		$post_id = url_to_postid( $purge_url );
+
+		// --- Hosting-level caches ---
+
+		// SiteGround (SG Optimizer).
+		if ( function_exists( 'sg_cachepress_purge_cache' ) ) {
+			sg_cachepress_purge_cache( $purge_url );
+			$flushed[] = 'SiteGround';
+		}
+
+		// WP Engine (~13% of WP hosting market).
+		if ( class_exists( 'WpeCommon' ) ) {
+			if ( $post_id ) {
+				WpeCommon::purge_varnish_cache( $post_id );
+				$flushed[] = 'WP Engine';
+			}
+		}
+
+		// Kinsta (uses /kinsta-clear-cache/ path segment, not a query param).
+		if ( defined( 'KINSTAMU_VERSION' ) ) {
+			$purge_path = wp_parse_url( $purge_url, PHP_URL_PATH );
+			if ( $purge_path ) {
+				wp_remote_get(
+					home_url( '/kinsta-clear-cache' . $purge_path ),
+					array(
+						'timeout'   => 5,
+						'sslverify' => false,
+					)
+				);
+				$flushed[] = 'Kinsta';
+			}
+		}
+
+		// Cloudways (Breeze — no per-URL purge hook available).
+		if ( class_exists( 'Breeze_PurgeCache' ) ) {
+			do_action( 'breeze_clear_all_cache' );
+			$flushed[] = 'Breeze';
+		}
+
+		// Pantheon.
+		if ( function_exists( 'pantheon_wp_clear_edge_paths' ) ) {
+			$purge_path = wp_parse_url( $purge_url, PHP_URL_PATH );
+			if ( $purge_path ) {
+				pantheon_wp_clear_edge_paths( array( $purge_path ) );
+				$flushed[] = 'Pantheon';
+			}
+		}
+
+		// SpinupWP.
+		if ( function_exists( 'spinupwp_purge_url' ) ) {
+			spinupwp_purge_url( $purge_url );
+			$flushed[] = 'SpinupWP';
+		}
+
+		// Bluehost / HostGator / Newfold Digital (Endurance Page Cache).
+		if ( class_exists( 'Endurance_Page_Cache' ) ) {
+			do_action( 'epc_purge' );
+			$flushed[] = 'Endurance Page Cache';
+		}
+
+		// WordPress.com VIP.
+		if ( function_exists( 'wpcom_vip_purge_edge_cache_for_url' ) ) {
+			wpcom_vip_purge_edge_cache_for_url( $purge_url );
+			$flushed[] = 'WordPress.com VIP';
+		}
+
+		// BigScoots.
+		if ( class_exists( 'BigScoots_Cache' ) && method_exists( 'BigScoots_Cache', 'clear_cache' ) ) {
+			BigScoots_Cache::clear_cache( array( $purge_url ) );
+			$flushed[] = 'BigScoots';
+		}
+
+		// RunCloud Hub.
+		if ( class_exists( 'RunCache_Purger' ) && method_exists( 'RunCache_Purger', 'flush_url' ) ) {
+			RunCache_Purger::flush_url( $purge_url );
+			$flushed[] = 'RunCloud';
+		}
+
+		// --- Plugin-level caches ---
+
+		// WP Rocket.
+		if ( function_exists( 'rocket_clean_files' ) ) {
+			rocket_clean_files( array( $purge_url ) );
+			$flushed[] = 'WP Rocket';
+		}
+
+		// W3 Total Cache.
+		if ( function_exists( 'w3tc_flush_url' ) ) {
+			w3tc_flush_url( $purge_url );
+			$flushed[] = 'W3 Total Cache';
+		}
+
+		// WP Super Cache (per-URL purge; wpsc_delete_url_cache rejects URLs
+		// containing "?", so strip query string first, fall back to full purge).
+		if ( function_exists( 'wpsc_delete_url_cache' ) ) {
+			$purge_url_no_qs = strtok( $purge_url, '?' );
+			if ( ! wpsc_delete_url_cache( $purge_url_no_qs ) && function_exists( 'wp_cache_clear_cache' ) ) {
+				wp_cache_clear_cache();
+			}
+			$flushed[] = 'WP Super Cache';
+		} elseif ( function_exists( 'wp_cache_clear_cache' ) ) {
+			wp_cache_clear_cache();
+			$flushed[] = 'WP Super Cache';
+		}
+
+		// LiteSpeed Cache.
+		if ( class_exists( 'LiteSpeed\Purge' ) || has_action( 'litespeed_purge_url' ) ) {
+			do_action( 'litespeed_purge_url', $purge_url );
+			$flushed[] = 'LiteSpeed';
+		}
+
+		// Cache Enabler.
+		if ( has_action( 'cache_enabler_clear_page_cache_by_url' ) ) {
+			do_action( 'cache_enabler_clear_page_cache_by_url', $purge_url );
+			$flushed[] = 'Cache Enabler';
+		}
+
+		// Comet Cache.
+		if ( class_exists( 'comet_cache' ) && method_exists( 'comet_cache', 'clearUrl' ) ) {
+			comet_cache::clearUrl( $purge_url );
+			$flushed[] = 'Comet Cache';
+		}
+
+		// WP Fastest Cache (no per-URL API available).
+		if ( class_exists( 'WpFastestCache' ) && method_exists( 'WpFastestCache', 'deleteCache' ) ) {
+			$wpfc = new WpFastestCache();
+			$wpfc->deleteCache();
+			$flushed[] = 'WP Fastest Cache';
+		}
+
+		// WP-Optimize (1M+ installs).
+		if ( class_exists( 'WPO_Page_Cache' ) && method_exists( 'WPO_Page_Cache', 'delete_single_post_cache' ) ) {
+			if ( $post_id ) {
+				WPO_Page_Cache::delete_single_post_cache( $post_id );
+				$flushed[] = 'WP-Optimize';
+			}
+		}
+
+		// FlyingPress.
+		if ( class_exists( 'FlyingPress\Purge' ) && method_exists( 'FlyingPress\Purge', 'purge_urls' ) ) {
+			FlyingPress\Purge::purge_urls( array( $purge_url ) );
+			$flushed[] = 'FlyingPress';
+		}
+
+		// Hummingbird.
+		if ( class_exists( 'Hummingbird\\WP_Hummingbird' ) && $post_id ) {
+			do_action( 'wphb_clear_page_cache', $post_id );
+			$flushed[] = 'Hummingbird';
+		}
+
+		// Swift Performance.
+		if ( class_exists( 'Swift_Performance_Cache' ) && method_exists( 'Swift_Performance_Cache', 'clear_permalink_cache' ) ) {
+			Swift_Performance_Cache::clear_permalink_cache( $purge_url );
+			$flushed[] = 'Swift Performance';
+		}
+
+		// Proxy Cache Purge / Varnish HTTP Purge (100K+ installs, used by DreamHost).
+		if ( class_exists( 'VarnishPurger' ) && method_exists( 'VarnishPurger', 'purge_url' ) ) {
+			VarnishPurger::purge_url( $purge_url );
+			$flushed[] = 'Varnish HTTP Purge';
+		}
+
+		// Nginx Helper (FastCGI/Redis purge).
+		if ( has_action( 'rt_nginx_helper_purge_url' ) ) {
+			do_action( 'rt_nginx_helper_purge_url', $purge_url );
+			$flushed[] = 'Nginx Helper';
+		}
+
+		// --- CDN / WAF integration plugins ---
+
+		// WP Cloudflare Super Page Cache.
+		if ( class_exists( 'SW_CLOUDFLARE_PAGECACHE' ) ) {
+			do_action( 'swcfpc_purge_cache' );
+			$flushed[] = 'WP Cloudflare Super Page Cache';
+		}
+
+		// Sucuri Security (WAF/Firewall cache, 700K+ installs).
+		if ( class_exists( 'SucuriScanFirewall' ) && method_exists( 'SucuriScanFirewall', 'clearCache' ) ) {
+			$purge_path = wp_parse_url( $purge_url, PHP_URL_PATH );
+			if ( $purge_path ) {
+				SucuriScanFirewall::clearCache( false, $purge_path );
+			} else {
+				SucuriScanFirewall::clearCache();
+			}
+			$flushed[] = 'Sucuri';
+		}
+
+		// Fastly CDN.
+		if ( class_exists( 'Purgely_Purge' ) ) {
+			$fastly_purger = new Purgely_Purge();
+			$fastly_purger->purge( Purgely_Purge::URL, $purge_url );
+			$flushed[] = 'Fastly';
+		}
+
+		// --- No-cache response headers ---
+
+		if ( ! headers_sent() ) {
+			header( 'Cache-Control: no-store, no-cache, must-revalidate, max-age=0' );
+			header( 'Pragma: no-cache' );
+			header( 'Expires: Thu, 01 Jan 1970 00:00:00 GMT' );
+			// Tell CDNs not to cache this response (RFC 9213 + vendor-specific).
+			header( 'CDN-Cache-Control: no-store' );
+			header( 'Cloudflare-CDN-Cache-Control: no-store' );
+			header( 'Surrogate-Control: no-store' );
+		}
+
+		if ( ! empty( $flushed ) ) {
+			Checkview_Admin_Logs::add( 'ip-logs', 'Flushed page caches: ' . implode( ', ', $flushed ) . '.' );
+		} else {
+			Checkview_Admin_Logs::add( 'ip-logs', 'No recognized page cache detected to flush.' );
+		}
+	}
+}

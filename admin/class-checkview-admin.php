@@ -532,6 +532,10 @@ class Checkview_Admin {
 		delete_transient( 'checkview_forms_test_transient' );
 		delete_transient( 'checkview_store_orders_transient' );
 
+		// Flush server-level and plugin-level page caches so subsequent test
+		// requests reach WordPress (prevents CDN/cache from serving stale HTML).
+		checkview_flush_page_cache();
+
 		if ( is_plugin_active( 'gravityforms/gravityforms.php' ) ) {
 			Checkview_Admin_Logs::add( 'ip-logs', 'Loading Gravity Forms helper.' );
 
