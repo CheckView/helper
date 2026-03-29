@@ -180,7 +180,8 @@ if ( ! class_exists( 'Checkview_Wpforms_Helper' ) ) {
 		 * @return array
 		 */
 		public function checkview_inject_email( $email ) {
-			if ( get_option( 'disable_email_receipt', false ) == false ) {
+			$cv_test_id = get_checkview_test_id();
+			if ( ! $cv_test_id || 'true' != get_option( 'disable_email_receipt_' . $cv_test_id, false ) ) {
 				$count = count( $email['address'] );
 				for ( $i = 0; $i < $count; $i++ ) {
 					$email['address'][ $i ]    = TEST_EMAIL;

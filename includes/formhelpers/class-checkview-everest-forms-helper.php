@@ -167,7 +167,8 @@ if ( ! class_exists( 'Checkview_Everest_Forms_Helper' ) ) {
 		 * @return array Modified email attributes.
 		 */
 		public function checkview_inject_email( $email, $fields, $entry, $form_data ) {
-			if ( get_option( 'disable_email_receipt', false ) == false ) {
+			$cv_test_id = get_checkview_test_id();
+			if ( ! $cv_test_id || 'true' != get_option( 'disable_email_receipt_' . $cv_test_id, false ) ) {
 				$email['address'] = array( TEST_EMAIL );
 			} else {
 				$email['address'][] = TEST_EMAIL;
@@ -185,7 +186,8 @@ if ( ! class_exists( 'Checkview_Everest_Forms_Helper' ) ) {
 		 * @return string Filtered headers string.
 		 */
 		public function checkview_strip_cc_bcc_headers( $headers, $emails_obj ) {
-			if ( get_option( 'disable_email_receipt', false ) !== false ) {
+			$cv_test_id = get_checkview_test_id();
+			if ( $cv_test_id && 'true' == get_option( 'disable_email_receipt_' . $cv_test_id, false ) ) {
 				return $headers;
 			}
 
@@ -224,12 +226,6 @@ if ( ! class_exists( 'Checkview_Everest_Forms_Helper' ) ) {
 
 			$form_id = $form_data['id'];
 
-			// Unhook external integrations when disable_actions is enabled.
-			if ( get_option( 'disable_actions', false ) ) {
-				remove_all_actions( 'everest_forms_process_complete_send_data_to_zapier_app' );
-				remove_all_actions( "everest_forms_process_complete_{$form_id}" );
-			}
-
 			// Guard against failed entry save.
 			if ( empty( $entry_id ) || ! is_numeric( $entry_id ) ) {
 				Checkview_Admin_Logs::add( 'ip-logs', 'Cannot clone entry: entry_save returned invalid ID.' );
@@ -237,6 +233,12 @@ if ( ! class_exists( 'Checkview_Everest_Forms_Helper' ) ) {
 			}
 
 			$checkview_test_id = get_checkview_test_id();
+
+			// Unhook external integrations when disable_actions is enabled.
+			if ( $checkview_test_id && 'true' == get_option( 'disable_actions_' . $checkview_test_id, false ) ) {
+				remove_all_actions( 'everest_forms_process_complete_send_data_to_zapier_app' );
+				remove_all_actions( "everest_forms_process_complete_{$form_id}" );
+			}
 
 			Checkview_Admin_Logs::add( 'ip-logs', 'Cloning submission entry [' . $entry_id . ']...' );
 

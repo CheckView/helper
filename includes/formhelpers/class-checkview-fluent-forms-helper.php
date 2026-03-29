@@ -49,8 +49,10 @@ if ( ! class_exists( 'Checkview_Fluent_Forms_Helper' ) ) {
 		public function __construct() {
 			$this->loader = new Checkview_Loader();
 
+			$cv_test_id = get_checkview_test_id();
+
 			// Change Email address to our test email.
-			if ( defined( 'TEST_EMAIL' ) && get_option( 'disable_email_receipt' ) == false ) {
+			if ( defined( 'TEST_EMAIL' ) && ( ! $cv_test_id || 'true' != get_option( 'disable_email_receipt_' . $cv_test_id, false ) ) ) {
 				add_filter(
 					'fluentform/email_to',
 					array( $this, 'checkview_remove_receipt' ),
@@ -67,7 +69,7 @@ if ( ! class_exists( 'Checkview_Fluent_Forms_Helper' ) ) {
 			}
 
 			// Disable email recipients.
-			if ( defined( 'TEST_EMAIL' ) && get_option( 'disable_email_receipt' ) == true ) {
+			if ( defined( 'TEST_EMAIL' ) && $cv_test_id && 'true' == get_option( 'disable_email_receipt_' . $cv_test_id, false ) ) {
 				add_filter(
 					'fluentform/email_to',
 					array( $this, 'checkview_inject_email' ),
@@ -344,9 +346,9 @@ if ( ! class_exists( 'Checkview_Fluent_Forms_Helper' ) ) {
 		 * @return array
 		 */
 		public function checkview_disable_form_actions( $notifications, $form_id ) {
-			if ( get_option( 'disable_actions', false ) ) {
-				// List of allowed action types.
-				$notifications['notifications'] = 'email_notifications';
+			$cv_test_id = get_checkview_test_id();
+			if ( $cv_test_id && 'true' == get_option( 'disable_actions_' . $cv_test_id, false ) ) {
+				return array();
 			}
 			return $notifications;
 		}
