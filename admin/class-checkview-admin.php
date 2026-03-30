@@ -579,6 +579,12 @@ class Checkview_Admin {
 
 			require_once CHECKVIEW_INC_DIR . 'formhelpers/class-checkview-cf7-helper.php';
 		}
+
+		if ( is_plugin_active( 'elementor/elementor.php' ) ) {
+			Checkview_Admin_Logs::add( 'ip-logs', 'Loading Elementor Forms helper.' );
+
+			require_once CHECKVIEW_INC_DIR . 'formhelpers/class-checkview-elementor-helper.php';
+		}
 	}
 
 	/**
