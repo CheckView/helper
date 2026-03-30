@@ -105,6 +105,10 @@ class Checkview_Admin_Settings {
 	 * @return void
 	 */
 	public function checkview_admin_advance_settings_save() {
+		if ( ! current_user_can( 'manage_options' ) ) {
+			wp_die( esc_html__( 'You do not have permission to access this page.', 'checkview' ) );
+		}
+
 		$uploads          = 'false';
 		$checkview_option = get_option( 'checkview_advance_options', array() );
 

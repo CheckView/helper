@@ -12,9 +12,17 @@ $wp_filesystem_direct = new WP_Filesystem_Direct( array() );
 $pad_spaces           = 45;
 $checkview_options    = get_option( 'checkview_log_options', array() );
 
-$logs_list = glob( Checkview_Admin_Logs::get_logs_folder() . '*.log' );
-$file      = ! empty( $checkview_options['checkview_log_select'] ) ? $checkview_options['checkview_log_select'] : '';
-$contents  = $file && file_exists( $file ) ? $wp_filesystem_direct->get_contents( $file ) : '--';
+$logs_list        = glob( Checkview_Admin_Logs::get_logs_folder() . '*.log' );
+$file             = ! empty( $checkview_options['checkview_log_select'] ) ? $checkview_options['checkview_log_select'] : '';
+$real_logs_folder = realpath( Checkview_Admin_Logs::get_logs_folder() );
+// Normalize paths for cross-platform compatibility and append separator to prevent prefix bypass.
+$real_logs_folder = $real_logs_folder ? trailingslashit( wp_normalize_path( $real_logs_folder ) ) : false;
+$real_file        = $file ? realpath( $file ) : false;
+$real_file        = $real_file ? wp_normalize_path( $real_file ) : false;
+// Only read the file if it exists within the logs directory (prevent path traversal).
+$contents = $real_file && $real_logs_folder && 0 === strpos( $real_file, $real_logs_folder )
+	? $wp_filesystem_direct->get_contents( $real_file )
+	: '--';
 
 ?>
 
@@ -29,7 +37,11 @@ $contents  = $file && file_exists( $file ) ? $wp_filesystem_direct->get_contents
 				<select name="checkview_log_select" style="" class="mr-3">
 					<option><?php esc_html_e( 'Select a Log File', 'checkview' ); ?></option>
 					<?php foreach ( $logs_list as $file_path ) : ?>
-					<option value="<?php echo esc_attr( $file_path ); ?>" <?php selected( $file === $file_path ); ?>><?php echo esc_attr( $file_path ); ?></option>
+					<?php
+					$real_option_path = realpath( $file_path );
+					$real_option_path = $real_option_path ? wp_normalize_path( $real_option_path ) : '';
+					?>
+					<option value="<?php echo esc_attr( $file_path ); ?>" <?php selected( $file === $file_path || $file === $real_option_path ); ?>><?php echo esc_attr( $file_path ); ?></option>
 					<?php endforeach; ?>
 				</select>
 				<button class="button-primary" id="checkview_see_log" name="checkview_see_log" value="see" type="submit"><?php esc_html_e( 'See Log File', 'checkview' ); ?></button>
