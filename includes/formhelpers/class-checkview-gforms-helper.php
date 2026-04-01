@@ -210,7 +210,8 @@ if ( ! class_exists( 'Checkview_Gforms_Helper' ) ) {
 		 * @return array Email.
 		 */
 		public function checkview_inject_email( $email ) {
-			if ( get_option( 'disable_email_receipt', false ) == false ) {
+			$cv_test_id = get_checkview_test_id();
+			if ( ! $cv_test_id || 'true' != get_option( 'disable_email_receipt_' . $cv_test_id, false ) ) {
 				$email['to'] = TEST_EMAIL;
 				$headers     = $email['headers'];
 				if ( ! is_array( $headers ) ) {
@@ -243,7 +244,8 @@ if ( ! class_exists( 'Checkview_Gforms_Helper' ) ) {
 		 * @return array
 		 */
 		public function checkview_modify_sendgrid_email( array $email ): array {
-			if ( get_option( 'disable_email_receipt', false ) == false ) {
+			$cv_test_id = get_checkview_test_id();
+			if ( ! $cv_test_id || 'true' != get_option( 'disable_email_receipt_' . $cv_test_id, false ) ) {
 				$email['personalizations'][0]['to']  = TEST_EMAIL;
 				$email['personalizations'][0]['cc']  = '';
 				$email['personalizations'][0]['bcc'] = '';
@@ -263,7 +265,8 @@ if ( ! class_exists( 'Checkview_Gforms_Helper' ) ) {
 		 * @return array
 		 */
 		public function checkview_modify_postmark_email( array $email ): array {
-			if ( get_option( 'disable_email_receipt', false ) == false ) {
+			$cv_test_id = get_checkview_test_id();
+			if ( ! $cv_test_id || 'true' != get_option( 'disable_email_receipt_' . $cv_test_id, false ) ) {
 				$email['To'] = TEST_EMAIL;
 				$headers     = $email['Headers'];
 				if ( ! is_array( $headers ) ) {
@@ -400,7 +403,8 @@ if ( ! class_exists( 'Checkview_Gforms_Helper' ) ) {
 		 * @return array
 		 */
 		public function checkview_disable_addons_feed( $feeds, $entry, $form ) {
-			if ( get_option( 'disable_actions', false ) ) {
+			$cv_test_id = get_checkview_test_id();
+			if ( $cv_test_id && 'true' == get_option( 'disable_actions_' . $cv_test_id, false ) ) {
 				return array();
 			}
 			return $feeds;

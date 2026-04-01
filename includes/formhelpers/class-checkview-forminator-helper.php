@@ -270,10 +270,10 @@ if ( ! class_exists( 'Checkview_Forminator_Helper' ) ) {
 		 * @param bool $enabled   enabled default trigger.
 		 */
 		public function checkview_disable_form_actions( $enabled ) {
-			if ( get_option( 'disable_actions', false ) ) {
-				$enabled = true;
+			$cv_test_id = get_checkview_test_id();
+			if ( $cv_test_id && 'true' == get_option( 'disable_actions_' . $cv_test_id, false ) ) {
+				return false;
 			}
-			$enabled = false;
 			return $enabled;
 		}
 		/**

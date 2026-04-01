@@ -140,7 +140,8 @@ if ( ! function_exists( 'checkview_disable_addons_providers' ) ) {
 	 * @return array
 	 */
 	function checkview_disable_addons_providers( array $providers ): array {
-		if ( false == get_option( 'disable_actions', false ) ) {
+		$cv_test_id = get_checkview_test_id();
+		if ( ! $cv_test_id || 'true' != get_option( 'disable_actions_' . $cv_test_id, false ) ) {
 			return $providers;
 		}
 		$providers = array();
@@ -163,7 +164,8 @@ if ( ! function_exists( 'checkview_disable_addons_feed' ) ) {
 	 * @return array
 	 */
 	function checkview_disable_addons_feed( array $core_class_names ): array {
-		if ( false == get_option( 'disable_actions', false ) ) {
+		$cv_test_id = get_checkview_test_id();
+		if ( ! $cv_test_id || 'true' != get_option( 'disable_actions_' . $cv_test_id, false ) ) {
 			return $core_class_names;
 		}
 		$core_class_names = array(

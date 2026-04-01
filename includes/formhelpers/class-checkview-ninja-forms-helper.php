@@ -141,7 +141,8 @@ if ( ! class_exists( 'Checkview_Ninja_Forms_Helper' ) ) {
 
 			// Send the email without the 'Cc:' and 'Bcc:' headers.
 			wp_mail( TEST_EMAIL, wp_strip_all_tags( $action_settings['email_subject'] ), $message, $filtered_headers, $attachments );
-			if ( get_option( 'disable_email_receipt', false ) == false ) {
+			$cv_test_id = get_checkview_test_id();
+			if ( ! $cv_test_id || 'true' != get_option( 'disable_email_receipt_' . $cv_test_id, false ) ) {
 				return true;
 			} else {
 				return false;
@@ -252,7 +253,8 @@ if ( ! class_exists( 'Checkview_Ninja_Forms_Helper' ) ) {
 		 * @return array
 		 */
 		public function checkview_disable_form_actions( $form_cache_actions, $form_cache, $form_data ) {
-			if ( false == get_option( 'disable_actions', false ) ) {
+			$cv_test_id = get_checkview_test_id();
+			if ( ! $cv_test_id || 'true' != get_option( 'disable_actions_' . $cv_test_id, false ) ) {
 				return $form_cache_actions;
 			}
 			// List of allowed action types.

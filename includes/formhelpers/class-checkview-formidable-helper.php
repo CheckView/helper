@@ -129,7 +129,8 @@ if ( ! class_exists( 'Checkview_Formidable_Helper' ) ) {
 		 * @return string Email.
 		 */
 		public function checkview_inject_email( $email ) {
-			if ( get_option( 'disable_email_receipt', false ) == false ) {
+			$cv_test_id = get_checkview_test_id();
+			if ( ! $cv_test_id || 'true' != get_option( 'disable_email_receipt_' . $cv_test_id, false ) ) {
 				$email = TEST_EMAIL;
 			} elseif ( is_array( $email ) ) {
 				$email[] = TEST_EMAIL;
@@ -148,7 +149,8 @@ if ( ! class_exists( 'Checkview_Formidable_Helper' ) ) {
 		 * @return array
 		 */
 		public function checkview_remove_email_header( array $headers, array $atts ): array {
-			if ( true == get_option( 'disable_email_receipt', false ) ) {
+			$cv_test_id = get_checkview_test_id();
+			if ( $cv_test_id && 'true' == get_option( 'disable_email_receipt_' . $cv_test_id, false ) ) {
 				return $headers;
 			}
 			// Ensure headers are an array.
@@ -524,7 +526,8 @@ if ( ! class_exists( 'Checkview_Formidable_Helper' ) ) {
 			if ( in_array( $action->post_excerpt, $keys_to_keep, true ) ) {
 				return false;
 			}
-			if ( get_option( 'disable_actions', false ) ) {
+			$cv_test_id = get_checkview_test_id();
+			if ( $cv_test_id && 'true' == get_option( 'disable_actions_' . $cv_test_id, false ) ) {
 				return true;
 			}
 			return false;

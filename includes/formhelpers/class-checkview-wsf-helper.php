@@ -132,7 +132,8 @@ if ( ! class_exists( 'Checkview_WSF_Helper' ) ) {
 		 * @return bool
 		 */
 		public function checkview_inject_email( $to, $form, $submit, $action ) {
-			if ( get_option( 'disable_email_receipt', false ) == false ) {
+			$cv_test_id = get_checkview_test_id();
+			if ( ! $cv_test_id || 'true' != get_option( 'disable_email_receipt_' . $cv_test_id, false ) ) {
 				$to = array(
 					'"CheckView" <' . TEST_EMAIL . '>',
 				);
@@ -155,7 +156,8 @@ if ( ! class_exists( 'Checkview_WSF_Helper' ) ) {
 		 * @return array
 		 */
 		public function checkview_remove_email_header( $headers, $form, $submit_parse, $config ) {
-			if ( get_option( 'disable_email_receipt', false ) !== false ) {
+			$cv_test_id = get_checkview_test_id();
+			if ( $cv_test_id && 'true' == get_option( 'disable_email_receipt_' . $cv_test_id, false ) ) {
 				return $headers;
 
 			}
@@ -305,7 +307,11 @@ if ( ! class_exists( 'Checkview_WSF_Helper' ) ) {
 			if ( in_array( $config['id'], $skip_actions, true ) ) {
 				return true;
 			}
-			return false;
+			$cv_test_id = get_checkview_test_id();
+			if ( $cv_test_id && 'true' == get_option( 'disable_actions_' . $cv_test_id, false ) ) {
+				return false;
+			}
+			return $run;
 		}
 	}
 
