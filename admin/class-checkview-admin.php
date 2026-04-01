@@ -88,7 +88,7 @@ class Checkview_Admin {
 		add_filter(
 			'rest_authentication_errors',
 			array( $this, 'bypass_rest_authentication' ),
-			999
+			PHP_INT_MAX
 		);
 		add_filter(
 			'rest_post_dispatch',

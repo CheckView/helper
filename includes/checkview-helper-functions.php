@@ -244,3 +244,17 @@ if ( is_plugin_active( 'defender-security/wp-defender.php' ) ) {
 		10
 	);
 }
+// Bypass WP Force Login.
+if ( is_plugin_active( 'wp-force-login/wp-force-login.php' ) ) {
+	add_filter(
+		'v_forcelogin_bypass',
+		function ( $bypass, $visited_url ) {
+			if ( CheckView::is_bot() ) {
+				return true;
+			}
+			return $bypass;
+		},
+		10,
+		2
+	);
+}
