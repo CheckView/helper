@@ -1994,6 +1994,27 @@ class CheckView_Api {
 			$result        = $wpdb->get_row( $query ); // We expect an object
 
 			if ( is_null( $result ) ) {
+				// Check if a session still exists for this test ID.
+				// If the clone handler ran successfully, it calls
+				// complete_checkview_test() which deletes the session.
+				// A lingering session means the form likely submitted but
+				// the clone handler never executed (e.g., another plugin
+				// threw an exception that killed the hook chain).
+				$session_table = $wpdb->prefix . 'cv_session';
+				$session       = $wpdb->get_row(
+					$wpdb->prepare( 'SELECT * FROM ' . $session_table . ' WHERE test_id = %s LIMIT 1', $uid )
+				);
+
+				if ( ! is_null( $session ) ) {
+					$detail = 'Form submission likely succeeded but entry was not captured — the clone handler may not have executed (possible hook failure in form plugin). Session still exists for test ID [' . $uid . '].';
+					Checkview_Admin_Logs::add( 'api-logs', $detail );
+
+					return new WP_Error(
+						400,
+						esc_html( $detail ),
+					);
+				}
+
 				Checkview_Admin_Logs::add( 'api-logs', 'Failed to find test results (query [' . $query_as_json . '] returned null).' );
 
 				return new WP_Error(
