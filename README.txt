@@ -7,7 +7,7 @@ Tested up to: 6.9
 Requires PHP: 7.0.0
 License: GPLv3
 License URI: http://www.gnu.org/licenses/gpl-3.0.html
-Stable tag: 2.0.30
+Stable tag: 2.0.31-b
 
 [CheckView](https://checkview.io/) automates WordPress form and WooCommerce testing, monitoring key flows to catch failures early before they cost you leads or sales everyday.
 
@@ -204,6 +204,19 @@ Support and test configuration are handled through the CheckView platform. Pleas
 3. CheckView general settings.
 
 == Changelog ==
+
+= 2.0.31 =
+* Add Everest Forms support.
+* Fix path traversal vulnerability and add missing capability checks.
+* Fix bot detection when SaaS omits checkview_test_type param.
+* Fix Fluent Forms entry clone failing silently due to swallowed exception.
+* Fix Fluent Forms Turnstile bypass failing on AJAX submissions.
+* Fix wp_block detection bug.
+* Fix EVF reCAPTCHA bypass for both rendering paths.
+* Bypass WP Force Login plugin redirect for CheckView bot visits.
+* Add per-test scoping for disable_actions, disable_email_receipt, disable_webhooks.
+* Use PHP_INT_MAX priority for REST auth bypass to run after theme filters.
+* Add diagnostic logging when form entry clone handler fails silently.
 
 = 2.0.30 =
 * Fix Simple Cloudflare Turnstile bypass for WooCommerce block checkout.
@@ -535,6 +548,19 @@ Support and test configuration are handled through the CheckView platform. Pleas
 * Initial release.
 
 == Upgrade Notice ==
+
+= 2.0.31 =
+* Add Everest Forms support.
+* Fix path traversal vulnerability and add missing capability checks.
+* Fix bot detection when SaaS omits checkview_test_type param.
+* Fix Fluent Forms entry clone failing silently due to swallowed exception.
+* Fix Fluent Forms Turnstile bypass failing on AJAX submissions.
+* Fix wp_block detection bug.
+* Fix EVF reCAPTCHA bypass for both rendering paths.
+* Bypass WP Force Login plugin redirect for CheckView bot visits.
+* Add per-test scoping for disable_actions, disable_email_receipt, disable_webhooks.
+* Use PHP_INT_MAX priority for REST auth bypass to run after theme filters.
+* Add diagnostic logging when form entry clone handler fails silently.
 
 = 2.0.30 =
 * Fix Simple Cloudflare Turnstile bypass for WooCommerce block checkout.
