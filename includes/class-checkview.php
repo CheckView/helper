@@ -148,20 +148,15 @@ class CheckView {
 			}
 		}
 
-		// Fallback: valid test ID present but no type param (older SaaS builds).
-		// Prefer cv_running cookie (set by SaaS with correct type) over hardcoded default.
-		if ( ! empty( $test_id ) && checkview_is_valid_uuid( $test_id ) ) {
+		// Fallback: valid test ID from request, referer, or cookie but no type param.
+		// Covers multi-step forms where page transitions lose query params.
+		$cv_test_id = get_checkview_test_id();
+		if ( ! empty( $cv_test_id ) ) {
 			$valid_values = array( 'woo_checkout', 'full_checkout', 'add_to_cart', 'form', 'custom' );
 			if ( isset( $_COOKIE[self::$bot_cookie] ) && in_array( $_COOKIE[self::$bot_cookie], $valid_values, true ) ) {
 				return $_COOKIE[self::$bot_cookie];
 			}
 			return 'form';
-		}
-
-		// Legacy: Cookie support (no test ID in request).
-		$valid_values = array( 'woo_checkout', 'full_checkout', 'add_to_cart', 'form', 'custom' );
-		if ( isset( $_COOKIE[self::$bot_cookie] ) && in_array( $_COOKIE[self::$bot_cookie], $valid_values, true ) ) {
-			return $_COOKIE[self::$bot_cookie];
 		}
 
 		return false;

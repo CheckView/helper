@@ -141,20 +141,30 @@ if ( ! function_exists( 'get_checkview_test_id' ) ) {
 				return false;
 			}
 			return $cv_test_id;
-		} else {
-			$referer_url = isset( $_SERVER['HTTP_REFERER'] ) ? sanitize_url( sanitize_text_field( wp_unslash( $_SERVER['HTTP_REFERER'] ) ) ) : '';
-			$referer_url = wp_parse_url( $referer_url, PHP_URL_QUERY );
-			$qry_str     = array();
-			if ( $referer_url ) {
-				parse_str( $referer_url, $qry_str );
-			}
-			if ( ! empty( $qry_str['checkview_test_id'] ) && ! checkview_is_valid_uuid( $qry_str['checkview_test_id'] ) ) {
-				return false;
-			}
-			if ( isset( $qry_str['checkview_test_id'] ) ) {
-				return $qry_str['checkview_test_id'];
+		}
+
+		// Fallback: check referer URL for test ID (covers AJAX submissions).
+		$referer_url = isset( $_SERVER['HTTP_REFERER'] ) ? sanitize_url( sanitize_text_field( wp_unslash( $_SERVER['HTTP_REFERER'] ) ) ) : '';
+		$referer_url = wp_parse_url( $referer_url, PHP_URL_QUERY );
+		$qry_str     = array();
+		if ( $referer_url ) {
+			parse_str( $referer_url, $qry_str );
+		}
+		if ( ! empty( $qry_str['checkview_test_id'] ) && checkview_is_valid_uuid( $qry_str['checkview_test_id'] ) ) {
+			return $qry_str['checkview_test_id'];
+		}
+
+		// Fallback: check cookie for test ID (covers multi-step forms where
+		// page transitions lose the query parameter from the URL).
+		// This cookie is set server-side by WordPress in checkview_init_current_test.
+		if ( isset( $_COOKIE['checkview_test_id'] ) ) {
+			$cookie_test_id = sanitize_text_field( wp_unslash( $_COOKIE['checkview_test_id'] ) );
+			if ( ! empty( $cookie_test_id ) && checkview_is_valid_uuid( $cookie_test_id ) ) {
+				return $cookie_test_id;
 			}
 		}
+
+		return false;
 	}
 }
 
