@@ -219,6 +219,8 @@ Support and test configuration are handled through the CheckView platform. Pleas
 * Add diagnostic logging when form entry clone handler fails silently.
 * Fix Ninja Forms conditional field values cleared by server-side action processing.
 * Fix Formidable Forms name field isset checks and defensive guards.
+* Fix multi-step form email delivery via cookie fallback.
+* Fix WPForms Simple Name field storing empty value.
 
 = 2.0.30 =
 * Fix Simple Cloudflare Turnstile bypass for WooCommerce block checkout.
