@@ -240,7 +240,7 @@ if ( ! class_exists( 'Checkview_Ninja_Forms_Helper' ) ) {
 					if ( is_array( $value ) ) {
 						$value = serialize( $value );
 					} else {
-						$value = sanitize_text_field( (string) $value );
+						$value = (string) $value;
 					}
 
 					$entry_metadata = array(
