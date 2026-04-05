@@ -160,7 +160,7 @@ if ( ! class_exists( 'Checkview_Ninja_Forms_Helper' ) ) {
 			global $wpdb;
 
 			$form_id  = $form_data['form_id'];
-			$entry_id = isset( $form_data['actions']['save']['sub_id'] ) ? $form_data['actions']['save']['sub_id'] : 0;
+			$entry_id = (int) ( isset( $form_data['actions']['save']['sub_id'] ) ? $form_data['actions']['save']['sub_id'] : 0 );
 
 			Checkview_Admin_Logs::add( 'ip-logs', 'Cloning submission entry [' . $entry_id . ']...' );
 
@@ -191,19 +191,41 @@ if ( ! class_exists( 'Checkview_Ninja_Forms_Helper' ) ) {
 			}
 
 			$entry_meta_table = $wpdb->prefix . 'cv_entry_meta';
-			$field_id_prefix  = 'nf';
-			$tablename = $wpdb->prefix . 'postmeta';
-			$form_fields = $wpdb->get_results( $wpdb->prepare( 'Select * from ' . $tablename . ' where post_id=%d', $entry_id ) );
 			$count = 0;
 
-			foreach ( $form_fields as $field ) {
-				if ( ! in_array( $field->meta_key, array( '_form_id', '_seq_num' ) ) ) {
+			// Read field values directly from the NF submission data hook
+			// parameter ($form_data is NF's $this->_data, populated at
+			// Submission.php line 309 before the Save action runs). This is
+			// more reliable than querying wp_postmeta because the Save action
+			// or conditional-logic processing may strip values for hidden fields.
+			if ( empty( $form_data['fields'] ) || ! is_array( $form_data['fields'] ) ) {
+				Checkview_Admin_Logs::add( 'ip-logs', 'WARNING: form_data[fields] is missing or not an array.' );
+			} else {
+				$skip_types = array( 'submit', 'html', 'hr', 'divider', 'note', 'confirm', 'save', 'recaptcha', 'spam', 'hcaptcha-for-ninja-forms' );
+
+				foreach ( $form_data['fields'] as $field_id => $field ) {
+					if ( ! is_array( $field ) ) {
+						continue;
+					}
+
+					$type = $field['type'] ?? '';
+					if ( in_array( $type, $skip_types, true ) ) {
+						continue;
+					}
+
+					$value = $field['value'] ?? '';
+					if ( is_array( $value ) ) {
+						$value = serialize( $value );
+					} else {
+						$value = (string) $value;
+					}
+
 					$entry_metadata = array(
 						'uid'        => $checkview_test_id,
 						'form_id'    => $form_id,
 						'entry_id'   => $entry_id,
-						'meta_key'   => $field_id_prefix . str_replace( '_', '-', $field->meta_key ),
-						'meta_value' => $field->meta_value,
+						'meta_key'   => 'nf-field-' . $field_id,
+						'meta_value' => $value,
 					);
 
 					$result = $wpdb->insert( $entry_meta_table, $entry_metadata );
@@ -217,9 +239,7 @@ if ( ! class_exists( 'Checkview_Ninja_Forms_Helper' ) ) {
 			if ( $count > 0 ) {
 				Checkview_Admin_Logs::add( 'ip-logs', 'Cloned submission entry meta data (inserted ' . $count . ' rows into ' . $entry_meta_table . ').' );
 			} else {
-				if ( count( $form_fields ) > 0 ) {
-					Checkview_Admin_Logs::add( 'ip-logs', 'Failed to clone submission entry meta data.' );
-				}
+				Checkview_Admin_Logs::add( 'ip-logs', 'Failed to clone submission entry meta data.' );
 			}
 
 			wp_delete_post( $entry_id, true );
