@@ -115,7 +115,8 @@ if ( ! class_exists( 'Checkview_Forminator_Helper' ) ) {
 		 * @return string/ARRAY Email.
 		 */
 		public function checkview_inject_email( $email ) {
-			if ( ! defined( 'CV_DISABLE_EMAIL_RECEIPT' ) ) {
+			$cv_test_id = get_checkview_test_id();
+			if ( ! $cv_test_id || 'true' != get_option( 'disable_email_receipt_' . $cv_test_id, false ) ) {
 				$email   = array();
 				$email[] = TEST_EMAIL;
 			} elseif ( is_array( $email ) ) {
