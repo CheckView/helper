@@ -221,6 +221,9 @@ Support and test configuration are handled through the CheckView platform. Pleas
 * Fix Formidable Forms name field isset checks and defensive guards.
 * Fix multi-step form email delivery via cookie fallback.
 * Fix WPForms Simple Name field storing empty value.
+* Add sub_fields array guards for Formidable name field cloning.
+* Add isset guards for WPForms name field sub-keys.
+* Fix CF7 and Forminator email scoping to use per-test option.
 
 = 2.0.30 =
 * Fix Simple Cloudflare Turnstile bypass for WooCommerce block checkout.
