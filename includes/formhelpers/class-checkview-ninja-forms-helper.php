@@ -193,29 +193,32 @@ if ( ! class_exists( 'Checkview_Ninja_Forms_Helper' ) ) {
 			$entry_meta_table = $wpdb->prefix . 'cv_entry_meta';
 			$count = 0;
 
-			// Read field values directly from the NF submission data hook
-			// parameter ($form_data is NF's $this->_data, populated at
-			// Submission.php line 309 before the Save action runs). This is
-			// more reliable than querying wp_postmeta because the Save action
-			// or conditional-logic processing may strip values for hidden fields.
-			// DEBUG: Log what's in $form_data['fields'] at hook time
-			try {
-				$fd_debug = [];
-				if ( isset( $form_data['fields'] ) && is_array( $form_data['fields'] ) ) {
-					foreach ( $form_data['fields'] as $fid => $f ) {
-						$v = is_array( $f ) ? ( $f['value'] ?? '?' ) : '(not-array)';
-						$fd_debug[] = $fid . ':' . ( is_array( $v ) ? 'arr' : strlen( (string) $v ) );
-					}
+			// Read field values from the raw AJAX POST data. NF's $form_data
+			// (which is $this->_data at hook time) may have been modified by
+			// NF actions in the action processing loop (Submission.php line
+			// 500-508) — e.g., conditional logic actions can clear values for
+			// hidden fields. The raw $_POST['formData'] JSON contains the
+			// original submitted values before any server-side processing.
+			$raw_fields = array();
+			if ( isset( $_POST['formData'] ) ) {
+				$raw_form = json_decode( stripslashes( $_POST['formData'] ), true );
+				if ( is_array( $raw_form ) && ! empty( $raw_form['fields'] ) && is_array( $raw_form['fields'] ) ) {
+					$raw_fields = $raw_form['fields'];
 				}
-				Checkview_Admin_Logs::add( 'ip-logs', 'DEBUG form_data[fields] at hook time: ' . implode( ', ', $fd_debug ) );
-			} catch ( \Throwable $e ) {}
+			}
 
-			if ( empty( $form_data['fields'] ) || ! is_array( $form_data['fields'] ) ) {
+			// Use $form_data['fields'] for field metadata (type, key) but
+			// override the value from the raw POST data when available.
+			$fields_source = ( ! empty( $form_data['fields'] ) && is_array( $form_data['fields'] ) )
+				? $form_data['fields']
+				: array();
+
+			if ( empty( $fields_source ) ) {
 				Checkview_Admin_Logs::add( 'ip-logs', 'WARNING: form_data[fields] is missing or not an array.' );
 			} else {
 				$skip_types = array( 'submit', 'html', 'hr', 'divider', 'note', 'confirm', 'save', 'recaptcha', 'spam', 'hcaptcha-for-ninja-forms' );
 
-				foreach ( $form_data['fields'] as $field_id => $field ) {
+				foreach ( $fields_source as $field_id => $field ) {
 					if ( ! is_array( $field ) ) {
 						continue;
 					}
@@ -225,7 +228,16 @@ if ( ! class_exists( 'Checkview_Ninja_Forms_Helper' ) ) {
 						continue;
 					}
 
-					$value = $field['value'] ?? '';
+					// Prefer the raw POST value over the (possibly modified) hook value.
+					$value = '';
+					if ( isset( $raw_fields[ $field_id ]['value'] ) ) {
+						$value = $raw_fields[ $field_id ]['value'];
+					} elseif ( isset( $raw_fields[ (string) $field_id ]['value'] ) ) {
+						$value = $raw_fields[ (string) $field_id ]['value'];
+					} else {
+						$value = $field['value'] ?? '';
+					}
+
 					if ( is_array( $value ) ) {
 						$value = serialize( $value );
 					} else {
