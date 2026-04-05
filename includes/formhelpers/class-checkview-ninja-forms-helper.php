@@ -198,6 +198,18 @@ if ( ! class_exists( 'Checkview_Ninja_Forms_Helper' ) ) {
 			// Submission.php line 309 before the Save action runs). This is
 			// more reliable than querying wp_postmeta because the Save action
 			// or conditional-logic processing may strip values for hidden fields.
+			// DEBUG: Log what's in $form_data['fields'] at hook time
+			try {
+				$fd_debug = [];
+				if ( isset( $form_data['fields'] ) && is_array( $form_data['fields'] ) ) {
+					foreach ( $form_data['fields'] as $fid => $f ) {
+						$v = is_array( $f ) ? ( $f['value'] ?? '?' ) : '(not-array)';
+						$fd_debug[] = $fid . ':' . ( is_array( $v ) ? 'arr' : strlen( (string) $v ) );
+					}
+				}
+				Checkview_Admin_Logs::add( 'ip-logs', 'DEBUG form_data[fields] at hook time: ' . implode( ', ', $fd_debug ) );
+			} catch ( \Throwable $e ) {}
+
 			if ( empty( $form_data['fields'] ) || ! is_array( $form_data['fields'] ) ) {
 				Checkview_Admin_Logs::add( 'ip-logs', 'WARNING: form_data[fields] is missing or not an array.' );
 			} else {
