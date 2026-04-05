@@ -160,7 +160,7 @@ if ( ! class_exists( 'Checkview_Ninja_Forms_Helper' ) ) {
 			global $wpdb;
 
 			$form_id  = $form_data['form_id'];
-			$entry_id = (int) ( isset( $form_data['actions']['save']['sub_id'] ) ? $form_data['actions']['save']['sub_id'] : 0 );
+			$entry_id = isset( $form_data['actions']['save']['sub_id'] ) ? $form_data['actions']['save']['sub_id'] : 0;
 
 			Checkview_Admin_Logs::add( 'ip-logs', 'Cloning submission entry [' . $entry_id . ']...' );
 
@@ -191,65 +191,19 @@ if ( ! class_exists( 'Checkview_Ninja_Forms_Helper' ) ) {
 			}
 
 			$entry_meta_table = $wpdb->prefix . 'cv_entry_meta';
+			$field_id_prefix  = 'nf';
+			$tablename = $wpdb->prefix . 'postmeta';
+			$form_fields = $wpdb->get_results( $wpdb->prepare( 'Select * from ' . $tablename . ' where post_id=%d', $entry_id ) );
 			$count = 0;
 
-			// Read field values from the raw AJAX POST data. NF's $form_data
-			// (which is $this->_data at hook time) may have been modified by
-			// NF actions in the action processing loop (Submission.php line
-			// 500-508) — e.g., conditional logic actions can clear values for
-			// hidden fields. The raw $_POST['formData'] JSON contains the
-			// original submitted values before any server-side processing.
-			$raw_fields = array();
-			if ( isset( $_POST['formData'] ) ) {
-				$raw_form = json_decode( stripslashes( $_POST['formData'] ), true );
-				if ( is_array( $raw_form ) && ! empty( $raw_form['fields'] ) && is_array( $raw_form['fields'] ) ) {
-					$raw_fields = $raw_form['fields'];
-				}
-			}
-
-			// Use $form_data['fields'] for field metadata (type, key) but
-			// override the value from the raw POST data when available.
-			$fields_source = ( ! empty( $form_data['fields'] ) && is_array( $form_data['fields'] ) )
-				? $form_data['fields']
-				: array();
-
-			if ( empty( $fields_source ) ) {
-				Checkview_Admin_Logs::add( 'ip-logs', 'WARNING: form_data[fields] is missing or not an array.' );
-			} else {
-				$skip_types = array( 'submit', 'html', 'hr', 'divider', 'note', 'confirm', 'save', 'recaptcha', 'spam', 'hcaptcha-for-ninja-forms' );
-
-				foreach ( $fields_source as $field_id => $field ) {
-					if ( ! is_array( $field ) ) {
-						continue;
-					}
-
-					$type = $field['type'] ?? '';
-					if ( in_array( $type, $skip_types, true ) ) {
-						continue;
-					}
-
-					// Prefer the raw POST value over the (possibly modified) hook value.
-					$value = '';
-					if ( isset( $raw_fields[ $field_id ]['value'] ) ) {
-						$value = $raw_fields[ $field_id ]['value'];
-					} elseif ( isset( $raw_fields[ (string) $field_id ]['value'] ) ) {
-						$value = $raw_fields[ (string) $field_id ]['value'];
-					} else {
-						$value = $field['value'] ?? '';
-					}
-
-					if ( is_array( $value ) ) {
-						$value = serialize( $value );
-					} else {
-						$value = (string) $value;
-					}
-
+			foreach ( $form_fields as $field ) {
+				if ( ! in_array( $field->meta_key, array( '_form_id', '_seq_num' ) ) ) {
 					$entry_metadata = array(
 						'uid'        => $checkview_test_id,
 						'form_id'    => $form_id,
 						'entry_id'   => $entry_id,
-						'meta_key'   => 'nf-field-' . $field_id,
-						'meta_value' => $value,
+						'meta_key'   => $field_id_prefix . str_replace( '_', '-', $field->meta_key ),
+						'meta_value' => $field->meta_value,
 					);
 
 					$result = $wpdb->insert( $entry_meta_table, $entry_metadata );
@@ -263,7 +217,9 @@ if ( ! class_exists( 'Checkview_Ninja_Forms_Helper' ) ) {
 			if ( $count > 0 ) {
 				Checkview_Admin_Logs::add( 'ip-logs', 'Cloned submission entry meta data (inserted ' . $count . ' rows into ' . $entry_meta_table . ').' );
 			} else {
-				Checkview_Admin_Logs::add( 'ip-logs', 'Failed to clone submission entry meta data.' );
+				if ( count( $form_fields ) > 0 ) {
+					Checkview_Admin_Logs::add( 'ip-logs', 'Failed to clone submission entry meta data.' );
+				}
 			}
 
 			wp_delete_post( $entry_id, true );
