@@ -258,23 +258,13 @@ if ( ! class_exists( 'Checkview_Wpforms_Helper' ) ) {
 
 				switch ( $type ) {
 					case 'name':
-						$first  = isset( $field['first'] ) ? $field['first'] : '';
-						$middle = isset( $field['middle'] ) ? $field['middle'] : '';
-						$last   = isset( $field['last'] ) ? $field['last'] : '';
-
-						// Simple Name format: WPForms may only set 'value'
-						// without populating first/middle/last sub-keys.
-						if ( '' === $first && '' !== $field_value ) {
-							$first = $field_value;
-						}
-
-						if ( '' === $middle && '' === $last ) {
+						if ( '' === $field['middle'] && '' === $field['last'] ) {
 							$entry_metadata = array(
 								'uid'        => $checkview_test_id,
 								'form_id'    => $form_id,
 								'entry_id'   => $inserted_entry_id,
 								'meta_key'   => $field_id_prefix . $field['id'],
-								'meta_value' => $first,
+								'meta_value' => $field['first'],
 							);
 
 							$result = $wpdb->insert( $entry_meta_table, $entry_metadata );
@@ -282,13 +272,13 @@ if ( ! class_exists( 'Checkview_Wpforms_Helper' ) ) {
 							if ( $result ) {
 								$count++;
 							}
-						} elseif ( '' === $middle ) {
+						} elseif ( '' === $field['middle'] ) {
 							$entry_metadata = array(
 								'uid'        => $checkview_test_id,
 								'form_id'    => $form_id,
 								'entry_id'   => $inserted_entry_id,
 								'meta_key'   => $field_id_prefix . $field['id'],
-								'meta_value' => $first,
+								'meta_value' => $field['first'],
 							);
 
 							$result = $wpdb->insert( $entry_meta_table, $entry_metadata );
@@ -302,7 +292,7 @@ if ( ! class_exists( 'Checkview_Wpforms_Helper' ) ) {
 								'form_id' => $form_id,
 								'entry_id' => $inserted_entry_id,
 								'meta_key' => $field_id_prefix . $field['id'] . '-last',
-								'meta_value' => $last,
+								'meta_value' => $field['last'],
 							);
 
 							$result = $wpdb->insert( $entry_meta_table, $entry_metadata );
@@ -316,7 +306,7 @@ if ( ! class_exists( 'Checkview_Wpforms_Helper' ) ) {
 								'form_id' => $form_id,
 								'entry_id' => $inserted_entry_id,
 								'meta_key' => $field_id_prefix . $field['id'],
-								'meta_value' => $first,
+								'meta_value' => $field['first'],
 							);
 
 							$result = $wpdb->insert( $entry_meta_table, $entry_metadata );
@@ -330,7 +320,7 @@ if ( ! class_exists( 'Checkview_Wpforms_Helper' ) ) {
 								'form_id' => $form_id,
 								'entry_id' => $inserted_entry_id,
 								'meta_key' => $field_id_prefix . $field['id'] . '-middle',
-								'meta_value' => $middle,
+								'meta_value' => $field['middle'],
 							);
 
 							$result = $wpdb->insert( $entry_meta_table, $entry_metadata );
@@ -344,7 +334,7 @@ if ( ! class_exists( 'Checkview_Wpforms_Helper' ) ) {
 								'form_id' => $form_id,
 								'entry_id' => $inserted_entry_id,
 								'meta_key' => $field_id_prefix . $field['id'] . '-last',
-								'meta_value' => $last,
+								'meta_value' => $field['last'],
 							);
 
 							$result = $wpdb->insert( $entry_meta_table, $entry_metadata );
