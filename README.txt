@@ -205,7 +205,7 @@ Support and test configuration are handled through the CheckView platform. Pleas
 
 == Changelog ==
 
-= 2.0.31 =
+= 2.0.31-b =
 * Add Everest Forms support.
 * Fix path traversal vulnerability and add missing capability checks.
 * Fix bot detection when SaaS omits checkview_test_type param.
