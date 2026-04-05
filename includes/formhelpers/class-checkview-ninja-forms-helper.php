@@ -233,8 +233,6 @@ if ( ! class_exists( 'Checkview_Ninja_Forms_Helper' ) ) {
 					$value = '';
 					if ( isset( $raw_fields[ $field_id ]['value'] ) ) {
 						$value = $raw_fields[ $field_id ]['value'];
-					} elseif ( isset( $raw_fields[ (string) $field_id ]['value'] ) ) {
-						$value = $raw_fields[ (string) $field_id ]['value'];
 					} else {
 						$value = $field['value'] ?? '';
 					}

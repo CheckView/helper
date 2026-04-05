@@ -252,15 +252,21 @@ if ( ! class_exists( 'Checkview_Formidable_Helper' ) ) {
 					$last   = isset( $field_values['last'] ) ? $field_values['last'] : '';
 
 					$name_format = $fields[ $field->field_id ]['name_layout'];
+					$sub_fields  = isset( $fields[ $field->field_id ]['sub_fields'] ) ? $fields[ $field->field_id ]['sub_fields'] : array();
 
 					switch ( $name_format ) {
 						case 'first_middle_last':
+							if ( count( $sub_fields ) < 3 ) {
+								Checkview_Admin_Logs::add( 'ip-logs', 'Expected 3 sub_fields for first_middle_last, got ' . count( $sub_fields ) . ' for field ' . $field->field_id );
+								break;
+							}
+
 							// First.
 							$entry_metadata = array(
 								'uid' => $checkview_test_id,
 								'form_id' => $form_id,
 								'entry_id' => $entry_id,
-								'meta_key' => $fields[ $field->field_id ]['sub_fields'][0]['field_id'],
+								'meta_key' => $sub_fields[0]['field_id'],
 								'meta_value' => $first,
 							);
 
@@ -275,7 +281,7 @@ if ( ! class_exists( 'Checkview_Formidable_Helper' ) ) {
 								'uid' => $checkview_test_id,
 								'form_id' => $form_id,
 								'entry_id' => $entry_id,
-								'meta_key' => $fields[ $field->field_id ]['sub_fields'][1]['field_id'],
+								'meta_key' => $sub_fields[1]['field_id'],
 								'meta_value' => $middle,
 							);
 
@@ -290,7 +296,7 @@ if ( ! class_exists( 'Checkview_Formidable_Helper' ) ) {
 								'uid' => $checkview_test_id,
 								'form_id' => $form_id,
 								'entry_id' => $entry_id,
-								'meta_key' => $fields[ $field->field_id ]['sub_fields'][2]['field_id'],
+								'meta_key' => $sub_fields[2]['field_id'],
 								'meta_value' => $last,
 							);
 
@@ -302,12 +308,17 @@ if ( ! class_exists( 'Checkview_Formidable_Helper' ) ) {
 
 							break;
 						case 'first_last':
+							if ( count( $sub_fields ) < 2 ) {
+								Checkview_Admin_Logs::add( 'ip-logs', 'Expected 2 sub_fields for first_last, got ' . count( $sub_fields ) . ' for field ' . $field->field_id );
+								break;
+							}
+
 							// First.
 							$entry_metadata = array(
 								'uid' => $checkview_test_id,
 								'form_id' => $form_id,
 								'entry_id' => $entry_id,
-								'meta_key' => $fields[ $field->field_id ]['sub_fields'][0]['field_id'],
+								'meta_key' => $sub_fields[0]['field_id'],
 								'meta_value' => $first,
 							);
 
@@ -322,7 +333,7 @@ if ( ! class_exists( 'Checkview_Formidable_Helper' ) ) {
 								'uid' => $checkview_test_id,
 								'form_id' => $form_id,
 								'entry_id' => $entry_id,
-								'meta_key' => $fields[ $field->field_id ]['sub_fields'][1]['field_id'],
+								'meta_key' => $sub_fields[1]['field_id'],
 								'meta_value' => $last,
 							);
 
@@ -334,12 +345,17 @@ if ( ! class_exists( 'Checkview_Formidable_Helper' ) ) {
 
 							break;
 						case 'last_first':
+							if ( count( $sub_fields ) < 2 ) {
+								Checkview_Admin_Logs::add( 'ip-logs', 'Expected 2 sub_fields for last_first, got ' . count( $sub_fields ) . ' for field ' . $field->field_id );
+								break;
+							}
+
 							// First.
 							$entry_metadata = array(
 								'uid' => $checkview_test_id,
 								'form_id' => $form_id,
 								'entry_id' => $entry_id,
-								'meta_key' => $fields[ $field->field_id ]['sub_fields'][1]['field_id'],
+								'meta_key' => $sub_fields[1]['field_id'],
 								'meta_value' => $first,
 							);
 
@@ -354,7 +370,7 @@ if ( ! class_exists( 'Checkview_Formidable_Helper' ) ) {
 								'uid' => $checkview_test_id,
 								'form_id' => $form_id,
 								'entry_id' => $entry_id,
-								'meta_key' => $fields[ $field->field_id ]['sub_fields'][0]['field_id'],
+								'meta_key' => $sub_fields[0]['field_id'],
 								'meta_value' => $last,
 							);
 
