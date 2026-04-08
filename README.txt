@@ -7,7 +7,7 @@ Tested up to: 6.9
 Requires PHP: 7.0.0
 License: GPLv3
 License URI: http://www.gnu.org/licenses/gpl-3.0.html
-Stable tag: 2.0.32-b
+Stable tag: 2.0.32
 
 [CheckView](https://checkview.io/) automates WordPress form and WooCommerce testing, monitoring key flows to catch failures early before they cost you leads or sales everyday.
 
@@ -205,7 +205,7 @@ Support and test configuration are handled through the CheckView platform. Pleas
 
 == Changelog ==
 
-= 2.0.32-b =
+= 2.0.32 =
 * Fix WP Forms simple name fields.
 
 = 2.0.31 =
@@ -562,7 +562,7 @@ Support and test configuration are handled through the CheckView platform. Pleas
 
 == Upgrade Notice ==
 
-= 2.0.32-b =
+= 2.0.32 =
 * Fix WP Forms simple name fields.
 
 = 2.0.31 =
