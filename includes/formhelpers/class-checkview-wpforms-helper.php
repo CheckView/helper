@@ -262,8 +262,10 @@ if ( ! class_exists( 'Checkview_Wpforms_Helper' ) ) {
 						$middle = isset( $field['middle'] ) ? $field['middle'] : '';
 						$last   = isset( $field['last'] ) ? $field['last'] : '';
 
-						// Simple Name format: no sub-keys, use combined value.
-						if ( ! isset( $field['first'] ) && '' !== $field_value ) {
+						// Simple Name format: WPForms sets first/middle/last to empty strings
+						// (unlike compound formats where they hold actual values), so fall
+						// back to the combined value when all subfields are empty.
+						if ( empty( $field['first'] ) && empty( $field['last'] ) && '' !== $field_value ) {
 							$first = $field_value;
 						}
 
