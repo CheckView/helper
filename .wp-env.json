@@ -1,0 +1,12 @@
+{
+  "plugins": ["."],
+  "themes": [],
+  "phpVersion": "8.2",
+  "testsEnvironment": false,
+  "config": {
+    "WP_DEBUG": true,
+    "WP_DEBUG_LOG": true,
+    "WP_DEBUG_DISPLAY": false,
+    "SCRIPT_DEBUG": true
+  }
+}
