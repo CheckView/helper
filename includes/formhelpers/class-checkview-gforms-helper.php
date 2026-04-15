@@ -155,6 +155,16 @@ if ( ! class_exists( 'Checkview_Gforms_Helper' ) ) {
 				'__return_null',
 				-10
 			);
+
+			// Bypass CAPTCHA/anti-bot validation failures. The GF reCAPTCHA
+			// Add-On v2.x validates via gform_validation, not via a captcha-type
+			// field, so maybe_hide_recaptcha() cannot catch it. This runs at
+			// PHP_INT_MAX (guaranteed last) and clears any remaining failures.
+			add_filter(
+				'gform_validation',
+				array( $this, 'checkview_bypass_captcha_validation' ),
+				PHP_INT_MAX
+			);
 		}
 		/**
 		 * Unsets Captchas from the form.
@@ -176,6 +186,41 @@ if ( ! class_exists( 'Checkview_Gforms_Helper' ) ) {
 			$form['fields'] = $fields;
 
 			return $form;
+		}
+
+		/**
+		 * Bypasses CAPTCHA/anti-bot validation failures during CheckView tests.
+		 *
+		 * The GF reCAPTCHA Add-On v2.x validates via gform_validation, not via
+		 * a captcha-type field. maybe_hide_recaptcha() only removes fields, so
+		 * it cannot catch this. This filter runs at PHP_INT_MAX priority
+		 * (guaranteed last, after all other validation hooks) and clears failures.
+		 *
+		 * Only loaded when is_bot() is true (constructor gated by
+		 * checkview_init_current_test which requires is_bot()).
+		 *
+		 * @param array $validation_result GF validation result.
+		 * @return array
+		 */
+		public function checkview_bypass_captcha_validation( $validation_result ) {
+			if ( ! $validation_result['is_valid'] ) {
+				Checkview_Admin_Logs::add( 'ip-logs',
+					'Form validation failed during CheckView test. Clearing validation failures.' );
+
+				$fields = $validation_result['form']['fields'] ?? array();
+				foreach ( $fields as &$field ) {
+					if ( $field->failed_validation ) {
+						Checkview_Admin_Logs::add( 'ip-logs',
+							'Cleared validation failure for field [' . $field->id . '] type [' . $field->type . '].' );
+						$field->failed_validation  = false;
+						$field->validation_message = '';
+					}
+				}
+
+				$validation_result['is_valid'] = true;
+			}
+
+			return $validation_result;
 		}
 
 		/**
