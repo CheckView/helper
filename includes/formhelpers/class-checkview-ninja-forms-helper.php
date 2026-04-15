@@ -288,7 +288,18 @@ if ( ! class_exists( 'Checkview_Ninja_Forms_Helper' ) ) {
 		}
 
 		/**
-		 * Disables Form actions.
+		 * Disables non-essential form actions during CheckView tests.
+		 *
+		 * Only email (needed for assert_email_received), save (needed for
+		 * checkview_clone_entry to capture the submission), and successmessage
+		 * (needed for the front-end success response) are kept active. All
+		 * others -- including recaptcha, webhooks, payment, CRM integrations -- are deactivated
+		 * to prevent side effects and submission pipeline failures.
+		 *
+		 * The ninja_forms_action_recaptcha__verify_response bypass filter can
+		 * be skipped by NF's process() method (missing token early exit, or
+		 * Google API failure). Deactivating the action entirely at
+		 * the submission-actions level is more robust.
 		 *
 		 * @param array $form_cache_actions form actions.
 		 * @param array $form_cache form cache.
@@ -296,20 +307,19 @@ if ( ! class_exists( 'Checkview_Ninja_Forms_Helper' ) ) {
 		 * @return array
 		 */
 		public function checkview_disable_form_actions( $form_cache_actions, $form_cache, $form_data ) {
-			$cv_test_id = get_checkview_test_id();
-			if ( ! $cv_test_id || 'true' != get_option( 'disable_actions_' . $cv_test_id, false ) ) {
-				return $form_cache_actions;
-			}
-			// List of allowed action types.
 			$allowed_actions = array( 'email', 'successmessage', 'save' );
-
-			// Iterate over each action and check type.
 			foreach ( $form_cache_actions as &$action ) {
-				// Check if the type is in allowed types.
-				if ( ! in_array( $action['settings']['type'], $allowed_actions ) ) {
-					$action['settings']['active'] = 0; // Set active to 0 if type is not in allowed types.
+				if ( isset( $action['settings']['type'] ) &&
+					! in_array( $action['settings']['type'], $allowed_actions, true ) ) {
+					$action['settings']['active'] = 0;
+
+					Checkview_Admin_Logs::add(
+						'ip-logs',
+						'Disabled NF action type [' . $action['settings']['type'] . '] for CheckView test.'
+					);
 				}
 			}
+			unset( $action );
 			return $form_cache_actions;
 		}
 	}
