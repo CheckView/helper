@@ -61,6 +61,28 @@ if ( ! class_exists( 'Checkview_Elementor_Helper' ) ) {
 				999
 			);
 
+			// Redirect Elementor Form email notifications to the CheckView test inbox.
+			add_filter(
+				'elementor_pro/forms/wp_mail_fields',
+				array(
+					$this,
+					'checkview_override_mail_fields',
+				),
+				99,
+				2
+			);
+
+			// Limit Elementor Form submit actions to email only during test runs.
+			add_filter(
+				'elementor_pro/forms/submit_actions',
+				array(
+					$this,
+					'checkview_restrict_submit_actions',
+				),
+				999,
+				3
+			);
+
 			add_filter(
 				'cfturnstile_whitelisted',
 				'__return_true',
@@ -80,7 +102,8 @@ if ( ! class_exists( 'Checkview_Elementor_Helper' ) ) {
 		}
 
 		/**
-		 * Stores the test results and finishes the testing session.
+		 * Clones the Elementor submission into CheckView tables, deletes the
+		 * original Elementor submission, and finishes the testing session.
 		 *
 		 * @param \ElementorPro\Modules\Forms\Classes\Form_Record  $record  Form record.
 		 * @param \ElementorPro\Modules\Forms\Classes\Ajax_Handler $handler Ajax handler.
@@ -89,16 +112,18 @@ if ( ! class_exists( 'Checkview_Elementor_Helper' ) ) {
 		public function checkview_clone_elementor_entry( $record, $handler ) {
 			global $wpdb;
 
-			$checkview_test_id = get_checkview_test_id();
+			if ( ! $record || ! $handler ) {
+				return;
+			}
+
 			$form_id           = $record->get_form_settings( 'id' );
+			$checkview_test_id = get_checkview_test_id();
 
 			if ( empty( $checkview_test_id ) ) {
 				$checkview_test_id = $form_id . gmdate( 'Ymd' );
 			}
 
-			if ( ! $record || ! $handler ) {
-				return;
-			}
+			Checkview_Admin_Logs::add( 'ip-logs', 'Cloning Elementor submission for form [' . $form_id . ']...' );
 
 			$form_data = $record->get_formatted_data();
 
@@ -112,10 +137,17 @@ if ( ! class_exists( 'Checkview_Elementor_Helper' ) ) {
 				'form_type'    => 'Elementor',
 			);
 			$entry_table = $wpdb->prefix . 'cv_entry';
-			$wpdb->insert( $entry_table, $entry_data );
+			$result      = $wpdb->insert( $entry_table, $entry_data );
 			$inserted_entry_id = $wpdb->insert_id;
 
+			if ( ! $result ) {
+				Checkview_Admin_Logs::add( 'ip-logs', 'Failed to clone Elementor submission entry data.' );
+			} else {
+				Checkview_Admin_Logs::add( 'ip-logs', 'Cloned Elementor submission entry data (inserted ' . (int) $result . ' rows into ' . $entry_table . ').' );
+			}
+
 			$entry_meta_table = $wpdb->prefix . 'cv_entry_meta';
+			$count            = 0;
 
 			foreach ( $form_data as $key => $val ) {
 				$entry_metadata = array(
@@ -123,12 +155,81 @@ if ( ! class_exists( 'Checkview_Elementor_Helper' ) ) {
 					'form_id'    => $form_id,
 					'entry_id'   => $inserted_entry_id,
 					'meta_key'   => $key,
-					'meta_value' => $val,
+					'meta_value' => is_array( $val ) ? wp_json_encode( $val ) : $val,
 				);
-				$wpdb->insert( $entry_meta_table, $entry_metadata );
+
+				if ( $wpdb->insert( $entry_meta_table, $entry_metadata ) ) {
+					$count++;
+				}
+			}
+
+			if ( $count > 0 ) {
+				Checkview_Admin_Logs::add( 'ip-logs', 'Cloned Elementor submission entry meta data (inserted ' . $count . ' rows into ' . $entry_meta_table . ').' );
+			} elseif ( ! empty( $form_data ) ) {
+				Checkview_Admin_Logs::add( 'ip-logs', 'Failed to clone Elementor submission entry meta data.' );
+			}
+
+			// Remove the just-saved submission from Elementor's tables.
+			$submissions_table = $wpdb->prefix . 'e_submissions';
+			$values_table      = $wpdb->prefix . 'e_submissions_values';
+
+			if ( $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $submissions_table ) ) === $submissions_table ) {
+				$submission_id = $wpdb->get_var(
+					$wpdb->prepare(
+						'SELECT id FROM ' . $submissions_table . ' WHERE form_id = %s ORDER BY id DESC LIMIT 1',
+						$form_id
+					)
+				);
+
+				if ( $submission_id ) {
+					$wpdb->delete( $values_table, array( 'submission_id' => $submission_id ), array( '%d' ) );
+					$wpdb->delete( $submissions_table, array( 'id' => $submission_id ), array( '%d' ) );
+					Checkview_Admin_Logs::add( 'ip-logs', 'Deleted Elementor submission [' . $submission_id . '] from ' . $submissions_table . '.' );
+				}
 			}
 
 			complete_checkview_test( $checkview_test_id );
+		}
+
+		/**
+		 * Redirects Elementor Form email notifications to the CheckView test inbox.
+		 *
+		 * Overwrites the To address and strips CC/BCC so test-run emails cannot
+		 * reach the site's real recipients.
+		 *
+		 * @param array                                           $fields wp_mail() arguments (to, subject, message, headers, attachments).
+		 * @param \ElementorPro\Modules\Forms\Classes\Form_Record $record Form record.
+		 * @return array
+		 */
+		public function checkview_override_mail_fields( $fields, $record ) {
+			if ( ! get_checkview_test_id() ) {
+				return $fields;
+			}
+
+			$fields['email_to']     = 'michael@inspry.com';
+			$fields['email_to_cc']  = '';
+			$fields['email_to_bcc'] = '';
+
+			return $fields;
+		}
+
+		/**
+		 * Restricts Elementor Form submit actions to the email action during test runs.
+		 *
+		 * Prevents third-party integrations (CRMs, webhooks, MailChimp, etc.) from
+		 * firing on CheckView test submissions.
+		 *
+		 * @param array                                            $actions Registered submit action IDs.
+		 * @param \ElementorPro\Modules\Forms\Classes\Form_Record  $record  Form record.
+		 * @param \ElementorPro\Modules\Forms\Classes\Ajax_Handler $handler Ajax handler.
+		 * @return array
+		 */
+		public function checkview_restrict_submit_actions( $actions, $record, $handler ) {
+			if ( ! get_checkview_test_id() ) {
+				return $actions;
+			}
+
+			return array_intersect( $actions, array( 'collect_submissions', 'email' ) );
 		}
 
 		/**
