@@ -206,7 +206,7 @@ if ( ! class_exists( 'Checkview_Elementor_Helper' ) ) {
 				return $fields;
 			}
 
-			$fields['email_to']     = 'michael@inspry.com';
+			$fields['email_to']     = TEST_EMAIL;
 			$fields['email_to_cc']  = '';
 			$fields['email_to_bcc'] = '';
 
