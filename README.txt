@@ -7,7 +7,7 @@ Tested up to: 6.9
 Requires PHP: 7.0.0
 License: GPLv3
 License URI: http://www.gnu.org/licenses/gpl-3.0.html
-Stable tag: 2.0.32
+Stable tag: 2.0.33
 
 [CheckView](https://checkview.io/) automates WordPress form and WooCommerce testing, monitoring key flows to catch failures early before they cost you leads or sales everyday.
 
@@ -204,6 +204,10 @@ Support and test configuration are handled through the CheckView platform. Pleas
 3. CheckView general settings.
 
 == Changelog ==
+
+= 2.0.33 =
+* Fix form page dropdown returning Kadence Element (popup/hook) container URLs instead of real display URLs.
+* Add `kadence_element` post type to the form-host page exclusion list across all supported form plugins, reusable block recursion, and the WPForms location-meta lookup.
 
 = 2.0.32 =
 * Fix WP Forms simple name fields.

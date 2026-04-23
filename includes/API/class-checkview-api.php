@@ -1493,7 +1493,7 @@ class CheckView_Api {
 							OR post_content LIKE %s
 						) 
 						AND post_status = 'publish' 
-						AND post_type NOT IN ('kadence_wootemplate', 'revision')",
+						AND post_type NOT IN ('kadence_wootemplate', 'kadence_element', 'revision')",
 							'%wp:gravityforms/form {"formId":"' . $row->id . '"%',
 							'%[gravityform id="' . $row->id . '"%',
 							'%[gravityform id=' . $row->id . '%',
@@ -1547,7 +1547,7 @@ class CheckView_Api {
 							OR post_content LIKE %s
 						) 
 						AND post_status = 'publish' 
-						AND post_type NOT IN ('kadence_wootemplate', 'revision')",
+						AND post_type NOT IN ('kadence_wootemplate', 'kadence_element', 'revision')",
 							'%wp:fluentfom/guten-block {"formId":"' . $row->id . '"%',
 							'%[fluentform id="' . $row->id . '"%',
 							'%[fluentform id=' . $row->id . '%',
@@ -1599,7 +1599,7 @@ class CheckView_Api {
 							OR post_content LIKE %s
 						) 
 						AND post_status = 'publish' 
-						AND post_type NOT IN ('kadence_wootemplate', 'revision')",
+						AND post_type NOT IN ('kadence_wootemplate', 'kadence_element', 'revision')",
 							'%wp:ninja-forms/form {\"formID\":' . $row->id . '%',
 							'%[ninja_form id="' . $row->id . '"]%',
 							'%[ninja_form id=' . $row->id . ']%',
@@ -1648,10 +1648,19 @@ class CheckView_Api {
 					$form_location                = get_post_meta( $row->ID, 'wpforms_form_locations', true );
 					if ( $form_location ) {
 						foreach ( $form_location as $form_page ) {
-							if ( ! empty( checkview_must_ssl_url( get_the_permalink( $form_page['id'] ) ) ) ) {
+							$page_id = isset( $form_page['id'] ) ? absint( $form_page['id'] ) : 0;
+							if ( ! $page_id ) {
+								continue;
+							}
+							$pt = get_post_type( $page_id );
+							if ( ! $pt || in_array( $pt, array( 'kadence_wootemplate', 'kadence_element', 'revision' ), true ) ) {
+								continue;
+							}
+							$page_url = checkview_must_ssl_url( get_the_permalink( $page_id ) );
+							if ( ! empty( $page_url ) ) {
 								$forms['WpForms'][ $row->ID ]['pages'][] = array(
-									'ID'  => $form_page['id'],
-									'url' => checkview_must_ssl_url( get_the_permalink( $form_page['id'] ) ),
+									'ID'  => $page_id,
+									'url' => $page_url,
 								);
 							}
 						}
@@ -1680,7 +1689,7 @@ class CheckView_Api {
 							OR post_content LIKE %s
 						) 
 						AND post_status = 'publish' 
-						AND post_type NOT IN ('kadence_wootemplate', 'revision')",
+						AND post_type NOT IN ('kadence_wootemplate', 'kadence_element', 'revision')",
 							'%[formidable id=\"' . $row->id . '\"%',
 							'%[formidable id=' . $row->id . ']%'
 						)
@@ -1735,7 +1744,7 @@ class CheckView_Api {
 						AND (
 							(post_content LIKE %s OR post_content LIKE %s OR post_content LIKE %s OR post_content LIKE %s)
 							AND post_status = %s
-							AND post_type NOT IN (%s, %s)
+							AND post_type NOT IN (%s, %s, %s)
 						)",
 							'%wp:contact-form-7/contact-form-selector {"id":"' . $hash . '%',
 							'%[contact-form-7 id="' . $hash . '%',
@@ -1743,6 +1752,7 @@ class CheckView_Api {
 							'%[contact-form-7 id=' . $hash . '%',
 							'publish',
 							'kadence_wootemplate',
+							'kadence_element',
 							'revision'
 						)
 					);
@@ -1794,7 +1804,7 @@ class CheckView_Api {
 							OR post_content LIKE %s
 						) 
 						AND post_status = 'publish' 
-						AND post_type NOT IN ('kadence_wootemplate', 'revision')",
+						AND post_type NOT IN ('kadence_wootemplate', 'kadence_element', 'revision')",
 							'%wp:wsf-block/form-add {"form_id":"' . $row->id . '"%',
 							'%[ws_form id="' . $row->id . '"%',
 							'%[ws_form id=' . $row->id . '%',
@@ -1848,7 +1858,7 @@ class CheckView_Api {
 						AND (
 							(post_content LIKE %s OR post_content LIKE %s OR post_content LIKE %s OR post_content LIKE %s)
 							AND post_status = %s
-							AND post_type NOT IN (%s, %s)
+							AND post_type NOT IN (%s, %s, %s)
 						)",
 							'%wp:forminator/forms {"id":"' . $row->ID . '%',
 							'%[forminator_form id="' . $row->ID . '%',
@@ -1856,6 +1866,7 @@ class CheckView_Api {
 							'%[forminator_form id=' . $row->ID . '%',
 							'publish',
 							'kadence_wootemplate',
+							'kadence_element',
 							'revision'
 						)
 					);
@@ -1913,7 +1924,7 @@ class CheckView_Api {
 							OR post_content LIKE %s
 						)
 						AND post_status = 'publish'
-						AND post_type NOT IN ('kadence_wootemplate', 'revision')",
+						AND post_type NOT IN ('kadence_wootemplate', 'kadence_element', 'revision')",
 							'%wp:everest-forms/form-selector {"formId":"' . $row->ID . '"%',
 							'%wp:everest-forms/form-selector {"formId":' . $row->ID . '%',
 							'%[everest_form id="' . $row->ID . '"%',
