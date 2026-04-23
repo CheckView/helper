@@ -69,7 +69,7 @@ if ( ! function_exists( 'checkview_my_hcap_activate' ) ) {
 			return $activate;
 		}
 		// Deactive for tests.
-		if ( CheckView::is_bot() || 'checkview-saas' === get_option( $ip ) ) {
+		if ( ( function_exists( 'checkview_get_visitor_ip' ) && CheckView::is_bot() ) || 'checkview-saas' === get_option( $ip ) ) {
 			return false;
 		}
 		return $activate;
