@@ -141,20 +141,30 @@ if ( ! function_exists( 'get_checkview_test_id' ) ) {
 				return false;
 			}
 			return $cv_test_id;
-		} else {
-			$referer_url = isset( $_SERVER['HTTP_REFERER'] ) ? sanitize_url( sanitize_text_field( wp_unslash( $_SERVER['HTTP_REFERER'] ) ) ) : '';
-			$referer_url = wp_parse_url( $referer_url, PHP_URL_QUERY );
-			$qry_str     = array();
-			if ( $referer_url ) {
-				parse_str( $referer_url, $qry_str );
-			}
-			if ( ! empty( $qry_str['checkview_test_id'] ) && ! checkview_is_valid_uuid( $qry_str['checkview_test_id'] ) ) {
-				return false;
-			}
-			if ( isset( $qry_str['checkview_test_id'] ) ) {
-				return $qry_str['checkview_test_id'];
+		}
+
+		// Fallback: check referer URL for test ID (covers AJAX submissions).
+		$referer_url = isset( $_SERVER['HTTP_REFERER'] ) ? sanitize_url( sanitize_text_field( wp_unslash( $_SERVER['HTTP_REFERER'] ) ) ) : '';
+		$referer_url = wp_parse_url( $referer_url, PHP_URL_QUERY );
+		$qry_str     = array();
+		if ( $referer_url ) {
+			parse_str( $referer_url, $qry_str );
+		}
+		if ( ! empty( $qry_str['checkview_test_id'] ) && checkview_is_valid_uuid( $qry_str['checkview_test_id'] ) ) {
+			return $qry_str['checkview_test_id'];
+		}
+
+		// Fallback: check cookie for test ID (covers multi-step forms where
+		// page transitions lose the query parameter from the URL).
+		// This cookie is set server-side by WordPress in checkview_init_current_test.
+		if ( isset( $_COOKIE['checkview_test_id'] ) ) {
+			$cookie_test_id = sanitize_text_field( wp_unslash( $_COOKIE['checkview_test_id'] ) );
+			if ( ! empty( $cookie_test_id ) && checkview_is_valid_uuid( $cookie_test_id ) ) {
+				return $cookie_test_id;
 			}
 		}
+
+		return false;
 	}
 }
 
@@ -221,8 +231,18 @@ if ( ! function_exists( 'complete_checkview_test' ) ) {
 		setcookie( 'checkview_test_id', '', time() - 6600, COOKIEPATH, COOKIE_DOMAIN );
 		setcookie( 'checkview_test_id' . $checkview_test_id, '', time() - 6600, COOKIEPATH, COOKIE_DOMAIN );
 
+		cv_delete_option( 'disable_actions_' . $checkview_test_id );
+		cv_delete_option( 'disable_email_receipt_' . $checkview_test_id );
+		cv_delete_option( 'disable_webhooks_' . $checkview_test_id );
+
+		// Legacy cleanup: remove global options from before per-test scoping.
+		cv_delete_option( 'disable_actions' );
 		cv_delete_option( 'disable_email_receipt' );
 		cv_delete_option( 'disable_webhooks' );
+
+		// Legacy cleanup: remove orphaned captcha backup keys from old code.
+		cv_delete_option( 'checkview_wpforms_turnstile-site-key' );
+		cv_delete_option( 'checkview_wpforms_turnstile-secret-key' );
 
 		Checkview_Admin_Logs::add( 'ip-logs', 'Test complete.' );
 	}
@@ -329,7 +349,7 @@ if ( ! function_exists( 'checkview_get_api_ip' ) ) {
 		return $ip_address;
 	}
 }
-if ( ! defined( 'checkview_get_custom_header_keys_for_ip' ) ) {
+if ( ! function_exists( 'checkview_get_custom_header_keys_for_ip' ) ) {
 	/**
 	 * Sends custom header keys.
 	 *
@@ -352,7 +372,7 @@ if ( ! defined( 'checkview_get_custom_header_keys_for_ip' ) ) {
 	}
 }
 
-if ( ! defined( 'checkview_get_server_value' ) ) {
+if ( ! function_exists( 'checkview_get_server_value' ) ) {
 	/**
 	 * Get any value from the $_SERVER
 	 *
@@ -1195,7 +1215,7 @@ if ( ! function_exists( 'checkview_get_option_data_handler' ) ) {
 		}
 	}
 }
-if ( ! defined( 'checkview_update_woocommerce_product_status' ) ) {
+if ( ! function_exists( 'checkview_update_woocommerce_product_status' ) ) {
 	/**
 	 * Update status of test product.
 	 *

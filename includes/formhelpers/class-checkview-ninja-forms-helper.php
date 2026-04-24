@@ -141,7 +141,8 @@ if ( ! class_exists( 'Checkview_Ninja_Forms_Helper' ) ) {
 
 			// Send the email without the 'Cc:' and 'Bcc:' headers.
 			wp_mail( TEST_EMAIL, wp_strip_all_tags( $action_settings['email_subject'] ), $message, $filtered_headers, $attachments );
-			if ( get_option( 'disable_email_receipt', false ) == false ) {
+			$cv_test_id = get_checkview_test_id();
+			if ( ! $cv_test_id || 'true' != get_option( 'disable_email_receipt_' . $cv_test_id, false ) ) {
 				return true;
 			} else {
 				return false;
@@ -159,7 +160,7 @@ if ( ! class_exists( 'Checkview_Ninja_Forms_Helper' ) ) {
 			global $wpdb;
 
 			$form_id  = $form_data['form_id'];
-			$entry_id = isset( $form_data['actions']['save']['sub_id'] ) ? $form_data['actions']['save']['sub_id'] : 0;
+			$entry_id = (int) ( isset( $form_data['actions']['save']['sub_id'] ) ? $form_data['actions']['save']['sub_id'] : 0 );
 
 			Checkview_Admin_Logs::add( 'ip-logs', 'Cloning submission entry [' . $entry_id . ']...' );
 
@@ -190,19 +191,64 @@ if ( ! class_exists( 'Checkview_Ninja_Forms_Helper' ) ) {
 			}
 
 			$entry_meta_table = $wpdb->prefix . 'cv_entry_meta';
-			$field_id_prefix  = 'nf';
-			$tablename = $wpdb->prefix . 'postmeta';
-			$form_fields = $wpdb->get_results( $wpdb->prepare( 'Select * from ' . $tablename . ' where post_id=%d', $entry_id ) );
 			$count = 0;
 
-			foreach ( $form_fields as $field ) {
-				if ( ! in_array( $field->meta_key, array( '_form_id', '_seq_num' ) ) ) {
+			// Read field values from the raw AJAX POST data instead of
+			// wp_postmeta or $form_data['fields']. NF actions in the
+			// Submission.php action loop (lines 500-508) can replace
+			// $this->_data, clearing values for conditionally hidden
+			// fields before ninja_forms_after_submission fires.
+			// The raw $_POST['formData'] JSON contains the original
+			// values submitted by the browser.
+			$raw_fields = array();
+			if ( isset( $_POST['formData'] ) ) {
+				$raw_form = json_decode( stripslashes( $_POST['formData'] ), true );
+				if ( is_array( $raw_form ) && ! empty( $raw_form['fields'] ) && is_array( $raw_form['fields'] ) ) {
+					$raw_fields = $raw_form['fields'];
+				}
+			}
+
+			// Use $form_data['fields'] for field metadata (type, key)
+			// but override the value from raw POST when available.
+			$fields_source = ( ! empty( $form_data['fields'] ) && is_array( $form_data['fields'] ) )
+				? $form_data['fields']
+				: array();
+
+			if ( empty( $fields_source ) ) {
+				Checkview_Admin_Logs::add( 'ip-logs', 'WARNING: form_data[fields] is missing or not an array.' );
+			} else {
+				$skip_types = array( 'submit', 'html', 'hr', 'divider', 'note', 'confirm', 'save', 'recaptcha', 'spam', 'hcaptcha-for-ninja-forms' );
+
+				foreach ( $fields_source as $field_id => $field ) {
+					if ( ! is_array( $field ) ) {
+						continue;
+					}
+
+					$type = $field['type'] ?? '';
+					if ( in_array( $type, $skip_types, true ) ) {
+						continue;
+					}
+
+					// Prefer the raw POST value over the (possibly modified) hook value.
+					$value = '';
+					if ( isset( $raw_fields[ $field_id ]['value'] ) ) {
+						$value = $raw_fields[ $field_id ]['value'];
+					} else {
+						$value = $field['value'] ?? '';
+					}
+
+					if ( is_array( $value ) ) {
+						$value = serialize( $value );
+					} else {
+						$value = (string) $value;
+					}
+
 					$entry_metadata = array(
 						'uid'        => $checkview_test_id,
 						'form_id'    => $form_id,
 						'entry_id'   => $entry_id,
-						'meta_key'   => $field_id_prefix . str_replace( '_', '-', $field->meta_key ),
-						'meta_value' => $field->meta_value,
+						'meta_key'   => 'nf-field-' . $field_id,
+						'meta_value' => $value,
 					);
 
 					$result = $wpdb->insert( $entry_meta_table, $entry_metadata );
@@ -216,9 +262,7 @@ if ( ! class_exists( 'Checkview_Ninja_Forms_Helper' ) ) {
 			if ( $count > 0 ) {
 				Checkview_Admin_Logs::add( 'ip-logs', 'Cloned submission entry meta data (inserted ' . $count . ' rows into ' . $entry_meta_table . ').' );
 			} else {
-				if ( count( $form_fields ) > 0 ) {
-					Checkview_Admin_Logs::add( 'ip-logs', 'Failed to clone submission entry meta data.' );
-				}
+				Checkview_Admin_Logs::add( 'ip-logs', 'Failed to clone submission entry meta data.' );
 			}
 
 			wp_delete_post( $entry_id, true );
@@ -244,7 +288,18 @@ if ( ! class_exists( 'Checkview_Ninja_Forms_Helper' ) ) {
 		}
 
 		/**
-		 * Disables Form actions.
+		 * Disables non-essential form actions during CheckView tests.
+		 *
+		 * Only email (needed for assert_email_received), save (needed for
+		 * checkview_clone_entry to capture the submission), and successmessage
+		 * (needed for the front-end success response) are kept active. All
+		 * others -- including recaptcha, webhooks, payment, CRM integrations -- are deactivated
+		 * to prevent side effects and submission pipeline failures.
+		 *
+		 * The ninja_forms_action_recaptcha__verify_response bypass filter can
+		 * be skipped by NF's process() method (missing token early exit, or
+		 * Google API failure). Deactivating the action entirely at
+		 * the submission-actions level is more robust.
 		 *
 		 * @param array $form_cache_actions form actions.
 		 * @param array $form_cache form cache.
@@ -252,19 +307,19 @@ if ( ! class_exists( 'Checkview_Ninja_Forms_Helper' ) ) {
 		 * @return array
 		 */
 		public function checkview_disable_form_actions( $form_cache_actions, $form_cache, $form_data ) {
-			if ( false == get_option( 'disable_actions', false ) ) {
-				return $form_cache_actions;
-			}
-			// List of allowed action types.
 			$allowed_actions = array( 'email', 'successmessage', 'save' );
-
-			// Iterate over each action and check type.
 			foreach ( $form_cache_actions as &$action ) {
-				// Check if the type is in allowed types.
-				if ( ! in_array( $action['settings']['type'], $allowed_actions ) ) {
-					$action['settings']['active'] = 0; // Set active to 0 if type is not in allowed types.
+				if ( isset( $action['settings']['type'] ) &&
+					! in_array( $action['settings']['type'], $allowed_actions, true ) ) {
+					$action['settings']['active'] = 0;
+
+					Checkview_Admin_Logs::add(
+						'ip-logs',
+						'Disabled NF action type [' . $action['settings']['type'] . '] for CheckView test.'
+					);
 				}
 			}
+			unset( $action );
 			return $form_cache_actions;
 		}
 	}

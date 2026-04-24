@@ -49,8 +49,10 @@ if ( ! class_exists( 'Checkview_Fluent_Forms_Helper' ) ) {
 		public function __construct() {
 			$this->loader = new Checkview_Loader();
 
+			$cv_test_id = get_checkview_test_id();
+
 			// Change Email address to our test email.
-			if ( defined( 'TEST_EMAIL' ) && get_option( 'disable_email_receipt' ) == false ) {
+			if ( defined( 'TEST_EMAIL' ) && ( ! $cv_test_id || 'true' != get_option( 'disable_email_receipt_' . $cv_test_id, false ) ) ) {
 				add_filter(
 					'fluentform/email_to',
 					array( $this, 'checkview_remove_receipt' ),
@@ -67,7 +69,7 @@ if ( ! class_exists( 'Checkview_Fluent_Forms_Helper' ) ) {
 			}
 
 			// Disable email recipients.
-			if ( defined( 'TEST_EMAIL' ) && get_option( 'disable_email_receipt' ) == true ) {
+			if ( defined( 'TEST_EMAIL' ) && $cv_test_id && 'true' == get_option( 'disable_email_receipt_' . $cv_test_id, false ) ) {
 				add_filter(
 					'fluentform/email_to',
 					array( $this, 'checkview_inject_email' ),
@@ -76,10 +78,17 @@ if ( ! class_exists( 'Checkview_Fluent_Forms_Helper' ) ) {
 				);
 			}
 
+			// Use before_submission_confirmation instead of submission_inserted because
+			// Fluent Forms wraps submission_inserted in a try-catch that silently
+			// swallows exceptions (when WP_DEBUG is off). If any other hook handler
+			// on submission_inserted throws (e.g., a mail plugin failing to attach a
+			// file), the entire hook chain is killed and our clone handler never runs.
+			// before_submission_confirmation fires outside the try-catch, so our
+			// handler is immune to exceptions from other plugins.
 			add_action(
-				'fluentform/submission_inserted',
+				'fluentform/before_submission_confirmation',
 				array( $this, 'checkview_clone_fluentform_entry' ),
-				99,
+				10,
 				3
 			);
 
@@ -97,6 +106,13 @@ if ( ! class_exists( 'Checkview_Fluent_Forms_Helper' ) ) {
 			add_filter(
 				'fluentform/has_turnstile',
 				'__return_false',
+			);
+
+			// Prevent Turnstile widget from rendering on the page.
+			add_filter(
+				'fluentform/rendering_field_html_turnstile',
+				'__return_empty_string',
+				999,
 			);
 
 			add_filter(
@@ -252,6 +268,14 @@ if ( ! class_exists( 'Checkview_Fluent_Forms_Helper' ) ) {
 		public function checkview_clone_fluentform_entry( $entry_id, $form_data, $form ) {
 			global $wpdb;
 
+			// Guard against double execution (e.g., edge-case payment flows).
+			static $processed = array();
+			$key = $entry_id . '_' . $form->id;
+			if ( isset( $processed[ $key ] ) ) {
+				return;
+			}
+			$processed[ $key ] = true;
+
 			Checkview_Admin_Logs::add( 'ip-logs', 'Cloning submission entry [' . $entry_id . ']...' );
 
 			$form_id = $form->id;
@@ -311,7 +335,7 @@ if ( ! class_exists( 'Checkview_Fluent_Forms_Helper' ) ) {
 				'date_created' => isset( $row['created_at'] ) ? $row['created_at'] : 'n/a',
 				'date_updated' => isset( $row['updated_at'] ) ? $row['updated_at'] : 'n/a',
 				'payment_status' => isset( $row['payment_status'] ) ? $row['payment_status'] : 'n/a',
-				'payment_method' => isset( $row['payment_method'] ) ? $row['payment_payment'] : 'n/a',
+				'payment_method' => isset( $row['payment_method'] ) ? $row['payment_method'] : 'n/a',
 				'payment_amount' => isset( $row['payment_total'] ) ? $row['payment_total'] : 0,
 			);
 
@@ -344,9 +368,9 @@ if ( ! class_exists( 'Checkview_Fluent_Forms_Helper' ) ) {
 		 * @return array
 		 */
 		public function checkview_disable_form_actions( $notifications, $form_id ) {
-			if ( get_option( 'disable_actions', false ) ) {
-				// List of allowed action types.
-				$notifications['notifications'] = 'email_notifications';
+			$cv_test_id = get_checkview_test_id();
+			if ( $cv_test_id && 'true' == get_option( 'disable_actions_' . $cv_test_id, false ) ) {
+				return array();
 			}
 			return $notifications;
 		}

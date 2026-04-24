@@ -70,6 +70,10 @@ class Checkview_Admin_Logs {
 	 * @return void
 	 */
 	public function checkview_admin_logs_settings_save() {
+		if ( ! current_user_can( 'manage_options' ) ) {
+			wp_die( esc_html__( 'You do not have permission to access this page.', 'checkview' ) );
+		}
+
 		$nonce  = isset( $_POST['checkview_admin_logs_settings'] ) ? sanitize_text_field( wp_unslash( $_POST['checkview_admin_logs_settings'] ) ) : '';
 		$action = 'checkview_admin_logs_settings';
 		if ( isset( $_POST['checkview_see_log'] ) && wp_verify_nonce( $nonce, $action ) ) {
@@ -77,8 +81,26 @@ class Checkview_Admin_Logs {
 			$log_path          = isset( $_POST['checkview_log_select'] ) ? sanitize_text_field( wp_unslash( $_POST['checkview_log_select'] ) ) : '';
 			$uploads           = 'false';
 			if ( $log_path && '' !== $log_path ) {
-				$log_path                                  = checkview_deslash( $log_path );
-				$checkview_options['checkview_log_select'] = $log_path;
+				$log_path = checkview_deslash( $log_path );
+
+				// Validate path is within the expected logs directory.
+				$logs_folder      = self::get_logs_folder();
+				$real_path        = realpath( $log_path );
+				$real_logs_folder = realpath( $logs_folder );
+				// Normalize paths for cross-platform compatibility (Windows uses \ separators).
+				if ( false !== $real_path ) {
+					$real_path = wp_normalize_path( $real_path );
+				}
+				if ( false !== $real_logs_folder ) {
+					$real_logs_folder = trailingslashit( wp_normalize_path( $real_logs_folder ) );
+				}
+				if ( false === $real_path || false === $real_logs_folder || 0 !== strpos( $real_path, $real_logs_folder ) ) {
+					wp_safe_redirect( add_query_arg( 'logs-settings-updated', 'false', isset( $_POST['_wp_http_referer'] ) ? sanitize_url( wp_unslash( $_POST['_wp_http_referer'] ) ) : '' ) );
+					exit;
+				}
+
+				// Store the resolved path to prevent TOCTOU and filter-injection issues.
+				$checkview_options['checkview_log_select'] = $real_path;
 				$checkview_options                         = apply_filters( 'checkview_save_log_options', $checkview_options );
 				update_option( 'checkview_log_options', $checkview_options );
 				$uploads = 'true';

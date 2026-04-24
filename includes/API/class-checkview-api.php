@@ -1484,7 +1484,7 @@ class CheckView_Api {
 					// WPDBPREPARE.
 					$form_pages = $wpdb->get_results(
 						$wpdb->prepare(
-							"SELECT ID FROM {$wpdb->prefix}posts 
+							"SELECT ID, post_type FROM {$wpdb->prefix}posts
 						WHERE 1=1 
 						AND (
 							post_content LIKE %s 
@@ -1538,7 +1538,7 @@ class CheckView_Api {
 					// WPDBPREPARE.
 					$form_pages = $wpdb->get_results(
 						$wpdb->prepare(
-							"SELECT ID FROM {$wpdb->prefix}posts 
+							"SELECT ID, post_type FROM {$wpdb->prefix}posts
 						WHERE 1=1 
 						AND (
 							post_content LIKE %s 
@@ -1673,7 +1673,7 @@ class CheckView_Api {
 					// WPDBPREPARE.
 					$form_pages = $wpdb->get_results(
 						$wpdb->prepare(
-							"SELECT ID FROM {$wpdb->prefix}posts 
+							"SELECT ID, post_type FROM {$wpdb->prefix}posts
 						WHERE 1=1 
 						AND (
 							post_content LIKE %s 
@@ -1730,7 +1730,7 @@ class CheckView_Api {
 
 					$form_pages = $wpdb->get_results(
 						$wpdb->prepare(
-							"SELECT ID FROM {$wpdb->prefix}posts
+							"SELECT ID, post_type FROM {$wpdb->prefix}posts
 						WHERE 1=1
 						AND (
 							(post_content LIKE %s OR post_content LIKE %s OR post_content LIKE %s OR post_content LIKE %s)
@@ -1785,7 +1785,7 @@ class CheckView_Api {
 					// WPDBPREPARE.
 					$form_pages = $wpdb->get_results(
 						$wpdb->prepare(
-							"SELECT ID FROM {$wpdb->prefix}posts 
+							"SELECT ID, post_type FROM {$wpdb->prefix}posts
 						WHERE 1=1 
 						AND (
 							post_content LIKE %s 
@@ -1843,7 +1843,7 @@ class CheckView_Api {
 
 					$form_pages = $wpdb->get_results(
 						$wpdb->prepare(
-							"SELECT ID FROM {$wpdb->prefix}posts
+							"SELECT ID, post_type FROM {$wpdb->prefix}posts
 						WHERE 1=1
 						AND (
 							(post_content LIKE %s OR post_content LIKE %s OR post_content LIKE %s OR post_content LIKE %s)
@@ -1876,6 +1876,64 @@ class CheckView_Api {
 								}
 							} elseif ( ! empty( checkview_must_ssl_url( get_the_permalink( $form_page->ID ) ) ) ) {
 								$forms['ForminatorForms'][ $row->ID ]['pages'][] = array(
+									'ID'  => $form_page->ID,
+									'url' => checkview_must_ssl_url( get_the_permalink( $form_page->ID ) ),
+								);
+							}
+						}
+					}
+				}
+			}
+		}
+
+		if ( is_plugin_active( 'everest-forms/everest-forms.php' ) ) {
+			$args    = array(
+				'post_type'   => 'everest_form',
+				'post_status' => 'publish',
+				'order'       => 'ASC',
+				'orderby'     => 'ID',
+				'numberposts' => -1,
+			);
+			$results = get_posts( $args );
+			if ( $results ) {
+				foreach ( $results as $row ) {
+					$forms['EverestForms'][ $row->ID ] = array(
+						'ID'   => $row->ID,
+						'Name' => $row->post_title,
+					);
+
+					$form_pages = $wpdb->get_results(
+						$wpdb->prepare(
+							"SELECT ID, post_type FROM {$wpdb->prefix}posts
+						WHERE 1=1
+						AND (
+							post_content LIKE %s
+							OR post_content LIKE %s
+							OR post_content LIKE %s
+							OR post_content LIKE %s
+						)
+						AND post_status = 'publish'
+						AND post_type NOT IN ('kadence_wootemplate', 'revision')",
+							'%wp:everest-forms/form-selector {"formId":"' . $row->ID . '"%',
+							'%wp:everest-forms/form-selector {"formId":' . $row->ID . '%',
+							'%[everest_form id="' . $row->ID . '"%',
+							'%[everest_form id=' . $row->ID . '%'
+						)
+					);
+					if ( $form_pages ) {
+						foreach ( $form_pages as $form_page ) {
+							if ( ! empty( $form_page->post_type ) && 'wp_block' === $form_page->post_type ) {
+								$wp_block_pages = checkview_get_wp_block_pages( $form_page->ID );
+								if ( $wp_block_pages ) {
+									foreach ( $wp_block_pages as $wp_block_page ) {
+										$forms['EverestForms'][ $row->ID ]['pages'][] = array(
+											'ID'  => $wp_block_page->ID,
+											'url' => checkview_must_ssl_url( get_the_permalink( $wp_block_page->ID ) ),
+										);
+									}
+								}
+							} else {
+								$forms['EverestForms'][ $row->ID ]['pages'][] = array(
 									'ID'  => $form_page->ID,
 									'url' => checkview_must_ssl_url( get_the_permalink( $form_page->ID ) ),
 								);
@@ -1936,6 +1994,27 @@ class CheckView_Api {
 			$result        = $wpdb->get_row( $query ); // We expect an object
 
 			if ( is_null( $result ) ) {
+				// Check if a session still exists for this test ID.
+				// If the clone handler ran successfully, it calls
+				// complete_checkview_test() which deletes the session.
+				// A lingering session means the form likely submitted but
+				// the clone handler never executed (e.g., another plugin
+				// threw an exception that killed the hook chain).
+				$session_table = $wpdb->prefix . 'cv_session';
+				$session       = $wpdb->get_row(
+					$wpdb->prepare( 'SELECT * FROM ' . $session_table . ' WHERE test_id = %s LIMIT 1', $uid )
+				);
+
+				if ( ! is_null( $session ) ) {
+					$detail = 'Form submission likely succeeded but entry was not captured — the clone handler may not have executed (possible hook failure in form plugin). Session still exists for test ID [' . $uid . '].';
+					Checkview_Admin_Logs::add( 'api-logs', $detail );
+
+					return new WP_Error(
+						400,
+						esc_html( $detail ),
+					);
+				}
+
 				Checkview_Admin_Logs::add( 'api-logs', 'Failed to find test results (query [' . $query_as_json . '] returned null).' );
 
 				return new WP_Error(

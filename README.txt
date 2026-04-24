@@ -7,7 +7,7 @@ Tested up to: 6.9
 Requires PHP: 7.0.0
 License: GPLv3
 License URI: http://www.gnu.org/licenses/gpl-3.0.html
-Stable tag: 2.0.30
+Stable tag: 2.0.33
 
 [CheckView](https://checkview.io/) automates WordPress form and WooCommerce testing, monitoring key flows to catch failures early before they cost you leads or sales everyday.
 
@@ -204,6 +204,35 @@ Support and test configuration are handled through the CheckView platform. Pleas
 3. CheckView general settings.
 
 == Changelog ==
+
+= 2.0.33 =
+* Properly disable non-essential Ninja Forms actions during CheckView tests.
+
+= 2.0.32 =
+* Fix WP Forms simple name fields.
+
+= 2.0.31 =
+* Add Everest Forms support.
+* Fix path traversal vulnerability and add missing capability checks.
+* Fix bot detection when SaaS omits checkview_test_type param.
+* Fix Fluent Forms entry clone failing silently due to swallowed exception.
+* Fix Fluent Forms Turnstile bypass failing on AJAX submissions.
+* Fix wp_block detection bug.
+* Fix EVF reCAPTCHA bypass for both rendering paths.
+* Bypass WP Force Login plugin redirect for CheckView bot visits.
+* Add per-test scoping for disable_actions, disable_email_receipt, disable_webhooks.
+* Use PHP_INT_MAX priority for REST auth bypass to run after theme filters.
+* Add diagnostic logging when form entry clone handler fails silently.
+* Fix Ninja Forms conditional field values cleared by server-side action processing.
+* Fix Formidable Forms name field isset checks and defensive guards.
+* Fix multi-step form email delivery via cookie fallback.
+* Fix WPForms Simple Name field storing empty value.
+* Add sub_fields array guards for Formidable name field cloning.
+* Add isset guards for WPForms name field sub-keys.
+* Fix CF7 and Forminator email scoping to use per-test option.
+* Fix Fluent Forms disable_actions handler returning malformed value instead of empty array.
+* Fix !defined() guards on helper functions corrected to !function_exists().
+* Sanitize Ninja Forms raw POST field values with sanitize_text_field() before DB insert.
 
 = 2.0.30 =
 * Fix Simple Cloudflare Turnstile bypass for WooCommerce block checkout.
@@ -535,6 +564,35 @@ Support and test configuration are handled through the CheckView platform. Pleas
 * Initial release.
 
 == Upgrade Notice ==
+
+= 2.0.33 =
+* Properly disable non-essential Ninja Forms actions during CheckView tests.
+
+= 2.0.32 =
+* Fix WP Forms simple name fields.
+
+= 2.0.31 =
+* Add Everest Forms support.
+* Fix path traversal vulnerability and add missing capability checks.
+* Fix bot detection when SaaS omits checkview_test_type param.
+* Fix Fluent Forms entry clone failing silently due to swallowed exception.
+* Fix Fluent Forms Turnstile bypass failing on AJAX submissions.
+* Fix wp_block detection bug.
+* Fix EVF reCAPTCHA bypass for both rendering paths.
+* Bypass WP Force Login plugin redirect for CheckView bot visits.
+* Add per-test scoping for disable_actions, disable_email_receipt, disable_webhooks.
+* Use PHP_INT_MAX priority for REST auth bypass to run after theme filters.
+* Add diagnostic logging when form entry clone handler fails silently.
+* Fix Ninja Forms conditional field values cleared by server-side action processing.
+* Fix Formidable Forms name field isset checks and defensive guards.
+* Fix multi-step form email delivery via cookie fallback.
+* Fix WPForms Simple Name field storing empty value.
+* Add sub_fields array guards for Formidable name field cloning.
+* Add isset guards for WPForms name field sub-keys.
+* Fix CF7 and Forminator email scoping to use per-test option.
+* Fix Fluent Forms disable_actions handler returning malformed value instead of empty array.
+* Fix !defined() guards on helper functions corrected to !function_exists().
+* Sanitize Ninja Forms raw POST field values with sanitize_text_field() before DB insert.
 
 = 2.0.30 =
 * Fix Simple Cloudflare Turnstile bypass for WooCommerce block checkout.

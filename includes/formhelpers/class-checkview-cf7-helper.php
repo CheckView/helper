@@ -286,7 +286,8 @@ if ( ! class_exists( 'Checkview_Cf7_Helper' ) ) {
 		 * @return array
 		 */
 		public function checkview_inject_email( $args ) {
-			if ( defined( 'CV_DISABLE_EMAIL_RECEIPT' ) ) {
+			$cv_test_id = get_checkview_test_id();
+			if ( $cv_test_id && 'true' == get_option( 'disable_email_receipt_' . $cv_test_id, false ) ) {
 				$args['recipient'] .= ', ' . TEST_EMAIL;
 			} else {
 				$args['recipient'] = TEST_EMAIL;

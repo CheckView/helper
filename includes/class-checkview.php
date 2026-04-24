@@ -80,7 +80,7 @@ class CheckView {
 		if ( defined( 'CHECKVIEW_VERSION' ) ) {
 			$this->version = CHECKVIEW_VERSION;
 		} else {
-			$this->version = '2.0.30';
+			$this->version = '2.0.33';
 		}
 		$this->plugin_name = 'checkview';
 
@@ -131,10 +131,32 @@ class CheckView {
 			return $test_type;
 		}
 
-		// Legacy: Cookie support
-		$valid_values = array('woo_checkout', 'form', 'custom');
-		if ( isset( $_COOKIE[self::$bot_cookie] ) && in_array( $_COOKIE[self::$bot_cookie], $valid_values ) ) {
-			return $_COOKIE[self::$bot_cookie];
+		// AJAX requests: check the HTTP referer URL for test parameters.
+		if ( wp_doing_ajax() ) {
+			$referer = wp_get_raw_referer();
+			if ( $referer ) {
+				$query = wp_parse_url( $referer, PHP_URL_QUERY );
+				if ( $query ) {
+					$params = array();
+					parse_str( $query, $params );
+					$ref_test_id   = sanitize_text_field( $params['checkview_test_id'] ?? '' );
+					$ref_test_type = sanitize_text_field( $params['checkview_test_type'] ?? '' );
+					if ( ! empty( $ref_test_id ) && checkview_is_valid_uuid( $ref_test_id ) && ! empty( $ref_test_type ) ) {
+						return $ref_test_type;
+					}
+				}
+			}
+		}
+
+		// Fallback: valid test ID from request, referer, or cookie but no type param.
+		// Covers multi-step forms where page transitions lose query params.
+		$cv_test_id = get_checkview_test_id();
+		if ( ! empty( $cv_test_id ) ) {
+			$valid_values = array( 'woo_checkout', 'full_checkout', 'add_to_cart', 'form', 'custom' );
+			if ( isset( $_COOKIE[self::$bot_cookie] ) && in_array( $_COOKIE[self::$bot_cookie], $valid_values, true ) ) {
+				return $_COOKIE[self::$bot_cookie];
+			}
+			return 'form';
 		}
 
 		return false;
@@ -404,6 +426,13 @@ class CheckView {
 			wp_dequeue_style( 'contact-form-7' );
 			wp_dequeue_script( 'wpcf7-recaptcha' );
 			wp_dequeue_style( 'wpcf7-recaptcha' );
+			wp_dequeue_script( 'turnstile' );
+
+			// Also dequeue turnstile in footer — Fluent Forms enqueues it
+			// during template rendering, which runs after wp_enqueue_scripts.
+			add_action( 'wp_print_footer_scripts', function () {
+				wp_dequeue_script( 'turnstile' );
+			}, 1 );
 
 			$this->loader->add_action(
 				'pre_option_require_name_email',

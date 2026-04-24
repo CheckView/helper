@@ -129,7 +129,8 @@ if ( ! class_exists( 'Checkview_Formidable_Helper' ) ) {
 		 * @return string Email.
 		 */
 		public function checkview_inject_email( $email ) {
-			if ( get_option( 'disable_email_receipt', false ) == false ) {
+			$cv_test_id = get_checkview_test_id();
+			if ( ! $cv_test_id || 'true' != get_option( 'disable_email_receipt_' . $cv_test_id, false ) ) {
 				$email = TEST_EMAIL;
 			} elseif ( is_array( $email ) ) {
 				$email[] = TEST_EMAIL;
@@ -148,7 +149,8 @@ if ( ! class_exists( 'Checkview_Formidable_Helper' ) ) {
 		 * @return array
 		 */
 		public function checkview_remove_email_header( array $headers, array $atts ): array {
-			if ( true == get_option( 'disable_email_receipt', false ) ) {
+			$cv_test_id = get_checkview_test_id();
+			if ( $cv_test_id && 'true' == get_option( 'disable_email_receipt_' . $cv_test_id, false ) ) {
 				return $headers;
 			}
 			// Ensure headers are an array.
@@ -224,19 +226,48 @@ if ( ! class_exists( 'Checkview_Formidable_Helper' ) ) {
 					continue;
 				}
 
+				// Skip fields not in the form definition (e.g., deleted
+				// fields or repeater child fields from a different form).
+				if ( ! isset( $fields[ $field->field_id ] ) ) {
+					continue;
+				}
+
 				if ( 'name' === $fields[ $field->field_id ]['type'] ) {
 					$field_values = maybe_unserialize( $field->meta_value );
+
+					// Handle non-array values (corrupted data, plain
+					// string, or failed unserialize).
+					if ( ! is_array( $field_values ) ) {
+						$field_values = array(
+							'first'  => is_string( $field_values ) ? $field_values : '',
+							'middle' => '',
+							'last'   => '',
+						);
+					}
+
+					// Safe key extraction — Formidable's array_filter
+					// strips empty sub-keys before serializing.
+					$first  = isset( $field_values['first'] ) ? $field_values['first'] : '';
+					$middle = isset( $field_values['middle'] ) ? $field_values['middle'] : '';
+					$last   = isset( $field_values['last'] ) ? $field_values['last'] : '';
+
 					$name_format = $fields[ $field->field_id ]['name_layout'];
+					$sub_fields  = isset( $fields[ $field->field_id ]['sub_fields'] ) ? $fields[ $field->field_id ]['sub_fields'] : array();
 
 					switch ( $name_format ) {
 						case 'first_middle_last':
+							if ( count( $sub_fields ) < 3 ) {
+								Checkview_Admin_Logs::add( 'ip-logs', 'Expected 3 sub_fields for first_middle_last, got ' . count( $sub_fields ) . ' for field ' . $field->field_id );
+								break;
+							}
+
 							// First.
 							$entry_metadata = array(
 								'uid' => $checkview_test_id,
 								'form_id' => $form_id,
 								'entry_id' => $entry_id,
-								'meta_key' => $fields[ $field->field_id ]['sub_fields'][0]['field_id'],
-								'meta_value' => $field_values['first'],
+								'meta_key' => $sub_fields[0]['field_id'],
+								'meta_value' => $first,
 							);
 
 							$result = $wpdb->insert( $entry_meta_table, $entry_metadata );
@@ -245,13 +276,13 @@ if ( ! class_exists( 'Checkview_Formidable_Helper' ) ) {
 								$count++;
 							}
 
-							// middle.
+							// Middle.
 							$entry_metadata = array(
 								'uid' => $checkview_test_id,
 								'form_id' => $form_id,
 								'entry_id' => $entry_id,
-								'meta_key' => $fields[ $field->field_id ]['sub_fields'][1]['field_id'],
-								'meta_value' => $field_values['middle'],
+								'meta_key' => $sub_fields[1]['field_id'],
+								'meta_value' => $middle,
 							);
 
 							$result = $wpdb->insert( $entry_meta_table, $entry_metadata );
@@ -260,13 +291,13 @@ if ( ! class_exists( 'Checkview_Formidable_Helper' ) ) {
 								$count++;
 							}
 
-							// last.
+							// Last.
 							$entry_metadata = array(
 								'uid' => $checkview_test_id,
 								'form_id' => $form_id,
 								'entry_id' => $entry_id,
-								'meta_key' => $fields[ $field->field_id ]['sub_fields'][2]['field_id'],
-								'meta_value' => $field_values['last'],
+								'meta_key' => $sub_fields[2]['field_id'],
+								'meta_value' => $last,
 							);
 
 							$result = $wpdb->insert( $entry_meta_table, $entry_metadata );
@@ -277,13 +308,18 @@ if ( ! class_exists( 'Checkview_Formidable_Helper' ) ) {
 
 							break;
 						case 'first_last':
+							if ( count( $sub_fields ) < 2 ) {
+								Checkview_Admin_Logs::add( 'ip-logs', 'Expected 2 sub_fields for first_last, got ' . count( $sub_fields ) . ' for field ' . $field->field_id );
+								break;
+							}
+
 							// First.
 							$entry_metadata = array(
 								'uid' => $checkview_test_id,
 								'form_id' => $form_id,
 								'entry_id' => $entry_id,
-								'meta_key' => $fields[ $field->field_id ]['sub_fields'][0]['field_id'],
-								'meta_value' => $field_values['first'],
+								'meta_key' => $sub_fields[0]['field_id'],
+								'meta_value' => $first,
 							);
 
 							$result = $wpdb->insert( $entry_meta_table, $entry_metadata );
@@ -292,13 +328,13 @@ if ( ! class_exists( 'Checkview_Formidable_Helper' ) ) {
 								$count++;
 							}
 
-							// last.
+							// Last.
 							$entry_metadata = array(
 								'uid' => $checkview_test_id,
 								'form_id' => $form_id,
 								'entry_id' => $entry_id,
-								'meta_key' => $fields[ $field->field_id ]['sub_fields'][1]['field_id'],
-								'meta_value' => $field_values['last'],
+								'meta_key' => $sub_fields[1]['field_id'],
+								'meta_value' => $last,
 							);
 
 							$result = $wpdb->insert( $entry_meta_table, $entry_metadata );
@@ -309,13 +345,18 @@ if ( ! class_exists( 'Checkview_Formidable_Helper' ) ) {
 
 							break;
 						case 'last_first':
+							if ( count( $sub_fields ) < 2 ) {
+								Checkview_Admin_Logs::add( 'ip-logs', 'Expected 2 sub_fields for last_first, got ' . count( $sub_fields ) . ' for field ' . $field->field_id );
+								break;
+							}
+
 							// First.
 							$entry_metadata = array(
 								'uid' => $checkview_test_id,
 								'form_id' => $form_id,
 								'entry_id' => $entry_id,
-								'meta_key' => $fields[ $field->field_id ]['sub_fields'][1]['field_id'],
-								'meta_value' => $field_values['first'],
+								'meta_key' => $sub_fields[1]['field_id'],
+								'meta_value' => $first,
 							);
 
 							$result = $wpdb->insert( $entry_meta_table, $entry_metadata );
@@ -324,13 +365,13 @@ if ( ! class_exists( 'Checkview_Formidable_Helper' ) ) {
 								$count++;
 							}
 
-							// last.
+							// Last.
 							$entry_metadata = array(
 								'uid' => $checkview_test_id,
 								'form_id' => $form_id,
 								'entry_id' => $entry_id,
-								'meta_key' => $fields[ $field->field_id ]['sub_fields'][0]['field_id'],
-								'meta_value' => $field_values['last'],
+								'meta_key' => $sub_fields[0]['field_id'],
+								'meta_value' => $last,
 							);
 
 							$result = $wpdb->insert( $entry_meta_table, $entry_metadata );
@@ -339,6 +380,9 @@ if ( ! class_exists( 'Checkview_Formidable_Helper' ) ) {
 								$count++;
 							}
 
+							break;
+						default:
+							Checkview_Admin_Logs::add( 'ip-logs', 'Unknown name layout: ' . ( $name_format ?? 'null' ) );
 							break;
 					}
 				} else {
@@ -393,6 +437,9 @@ if ( ! class_exists( 'Checkview_Formidable_Helper' ) ) {
 					switch ( $type ) {
 						case 'name':
 							$field_options        = maybe_unserialize( $field->field_options );
+							$name_format          = ( is_array( $field_options ) && isset( $field_options['name_layout'] ) )
+								? $field_options['name_layout']
+								: 'first_last';
 							$fields[ $field->id ] = array(
 								'type'        => $field->type,
 								'key'         => $field->field_key,
@@ -400,9 +447,8 @@ if ( ! class_exists( 'Checkview_Formidable_Helper' ) ) {
 								'formId'      => $form_id,
 								'Name'        => $field->name,
 								'label'       => $field->name,
-								'name_layout' => $field_options['name_layout'],
+								'name_layout' => $name_format,
 							);
-							$name_format          = $field_options['name_layout'];
 							$index                = $field->id;
 
 							if ( 'first_last' === $name_format ) {
@@ -524,7 +570,8 @@ if ( ! class_exists( 'Checkview_Formidable_Helper' ) ) {
 			if ( in_array( $action->post_excerpt, $keys_to_keep, true ) ) {
 				return false;
 			}
-			if ( get_option( 'disable_actions', false ) ) {
+			$cv_test_id = get_checkview_test_id();
+			if ( $cv_test_id && 'true' == get_option( 'disable_actions_' . $cv_test_id, false ) ) {
 				return true;
 			}
 			return false;

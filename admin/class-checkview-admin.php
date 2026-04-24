@@ -88,7 +88,7 @@ class Checkview_Admin {
 		add_filter(
 			'rest_authentication_errors',
 			array( $this, 'bypass_rest_authentication' ),
-			999
+			PHP_INT_MAX
 		);
 		add_filter(
 			'rest_post_dispatch',
@@ -435,6 +435,7 @@ class Checkview_Admin {
 
 		$disable_email_receipt = isset( $_REQUEST['disable_email_receipt'] ) ? sanitize_text_field( wp_unslash( $_REQUEST['disable_email_receipt'] ) ) : false;
 		$disable_webhooks = isset( $_REQUEST['disable_webhooks'] ) ? sanitize_text_field( wp_unslash( $_REQUEST['disable_webhooks'] ) ) : false;
+		$disable_actions = isset( $_REQUEST['disable_actions'] ) ? sanitize_text_field( wp_unslash( $_REQUEST['disable_actions'] ) ) : false;
 		$referrer_url = sanitize_url( wp_get_raw_referer(), array( 'http', 'https' ) );
 
 		// If not Ajax submission and found test_id.
@@ -518,7 +519,7 @@ class Checkview_Admin {
 
 			Checkview_Admin_Logs::add( 'ip-logs', 'Defined constant [CV_DISABLE_EMAIL_RECEIPT] as [' . CV_DISABLE_EMAIL_RECEIPT . '].' );
 
-			cv_update_option('disable_email_receipt', 'true', true);
+			cv_update_option( 'disable_email_receipt_' . $cv_test_id, 'true', false );
 		}
 
 		if ( ! defined( 'CV_DISABLE_WEBHOOKS' ) && $disable_webhooks ) {
@@ -526,7 +527,11 @@ class Checkview_Admin {
 
 			Checkview_Admin_Logs::add( 'ip-logs', 'Defined constant [CV_DISABLE_WEBHOOKS] as [' . CV_DISABLE_WEBHOOKS . '].' );
 
-			cv_update_option('disable_webhooks', 'true', true);
+			cv_update_option( 'disable_webhooks_' . $cv_test_id, 'true', false );
+		}
+
+		if ( $disable_actions ) {
+			cv_update_option( 'disable_actions_' . $cv_test_id, 'true', false );
 		}
 
 		delete_transient( 'checkview_forms_test_transient' );
@@ -572,6 +577,12 @@ class Checkview_Admin {
 			Checkview_Admin_Logs::add( 'ip-logs', 'Loading WS Form helper.' );
 
 			require_once CHECKVIEW_INC_DIR . 'formhelpers/class-checkview-wsf-helper.php';
+		}
+
+		if ( is_plugin_active( 'everest-forms/everest-forms.php' ) ) {
+			Checkview_Admin_Logs::add( 'ip-logs', 'Loading Everest Forms helper.' );
+
+			require_once CHECKVIEW_INC_DIR . 'formhelpers/class-checkview-everest-forms-helper.php';
 		}
 
 		if ( is_plugin_active( 'contact-form-7/wp-contact-form-7.php' ) ) {

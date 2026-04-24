@@ -69,7 +69,7 @@ if ( ! function_exists( 'checkview_my_hcap_activate' ) ) {
 			return $activate;
 		}
 		// Deactive for tests.
-		if ( isset( $_REQUEST['checkview_test_id'] ) || 'checkview-saas' === get_option( $ip ) ) {
+		if ( ( function_exists( 'checkview_get_visitor_ip' ) && CheckView::is_bot() ) || 'checkview-saas' === get_option( $ip ) ) {
 			return false;
 		}
 		return $activate;
@@ -118,7 +118,16 @@ if ( ! function_exists( 'remove_gravityforms_recaptcha_addon' ) ) {
 	 */
 	function remove_gravityforms_recaptcha_addon() {
 		// Make sure the class exists before trying to remove the action.
-		if ( class_exists( 'GF_RECAPTCHA_Bootstrap' ) && isset( $_REQUEST['checkview_test_id'] ) ) {
+		if ( class_exists( 'GF_RECAPTCHA_Bootstrap' )
+			&& isset( $_REQUEST['checkview_test_id'] )
+			&& is_string( $_REQUEST['checkview_test_id'] )
+			// SYNC: Must match checkview_is_valid_uuid() in checkview-functions.php
+			&& preg_match(
+				'/^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/i',
+				sanitize_text_field( wp_unslash( $_REQUEST['checkview_test_id'] ) )
+			)
+			&& ! empty( $_REQUEST['checkview_test_type'] )
+		) {
 			remove_action( 'gform_loaded', array( 'GF_RECAPTCHA_Bootstrap', 'load_addon' ), 5 );
 		}
 	}
@@ -140,7 +149,8 @@ if ( ! function_exists( 'checkview_disable_addons_providers' ) ) {
 	 * @return array
 	 */
 	function checkview_disable_addons_providers( array $providers ): array {
-		if ( false == get_option( 'disable_actions', false ) ) {
+		$cv_test_id = get_checkview_test_id();
+		if ( ! $cv_test_id || 'true' != get_option( 'disable_actions_' . $cv_test_id, false ) ) {
 			return $providers;
 		}
 		$providers = array();
@@ -163,7 +173,8 @@ if ( ! function_exists( 'checkview_disable_addons_feed' ) ) {
 	 * @return array
 	 */
 	function checkview_disable_addons_feed( array $core_class_names ): array {
-		if ( false == get_option( 'disable_actions', false ) ) {
+		$cv_test_id = get_checkview_test_id();
+		if ( ! $cv_test_id || 'true' != get_option( 'disable_actions_' . $cv_test_id, false ) ) {
 			return $core_class_names;
 		}
 		$core_class_names = array(
@@ -240,5 +251,19 @@ if ( is_plugin_active( 'defender-security/wp-defender.php' ) ) {
 			return $whitelisted_ips;
 		},
 		10
+	);
+}
+// Bypass WP Force Login.
+if ( is_plugin_active( 'wp-force-login/wp-force-login.php' ) ) {
+	add_filter(
+		'v_forcelogin_bypass',
+		function ( $bypass, $visited_url ) {
+			if ( CheckView::is_bot() ) {
+				return true;
+			}
+			return $bypass;
+		},
+		10,
+		2
 	);
 }

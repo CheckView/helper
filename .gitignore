@@ -7,3 +7,4 @@ web/*
 scripts/dist
 .idea
 CLAUDE.md
+*-har.json
