@@ -206,6 +206,7 @@ Support and test configuration are handled through the CheckView platform. Pleas
 == Changelog ==
 
 = 2.0.33 =
+* Add Elementor Forms support.
 * Properly disable non-essential Ninja Forms actions during CheckView tests.
 
 = 2.0.32 =
@@ -567,6 +568,7 @@ Support and test configuration are handled through the CheckView platform. Pleas
 
 = 2.0.33 =
 * Properly disable non-essential Ninja Forms actions during CheckView tests.
+* Add Elementor Forms support.
 
 = 2.0.32 =
 * Fix WP Forms simple name fields.
