@@ -855,7 +855,7 @@ if ( ! function_exists( 'checkview_get_wp_block_pages' ) ) {
 		// WPDBPREPARE.
 		return $wpdb->get_results(
 			$wpdb->prepare(
-				"SELECT * FROM {$wpdb->prefix}posts WHERE 1=1 AND (post_content LIKE %s) AND post_status=%s AND post_type NOT IN ('kadence_wootemplate', 'revision')",
+				"SELECT * FROM {$wpdb->prefix}posts WHERE 1=1 AND (post_content LIKE %s) AND post_status=%s AND post_type NOT IN ('kadence_wootemplate', 'kadence_element', 'revision')",
 				'%wp:block {\"ref\":' . $block_id . '}%',
 				'publish'
 			)

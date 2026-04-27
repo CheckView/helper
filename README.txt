@@ -206,6 +206,8 @@ Support and test configuration are handled through the CheckView platform. Pleas
 == Changelog ==
 
 = 2.0.33 =
+* Fix form page dropdown returning Kadence Element (popup/hook) container URLs instead of real display URLs.
+* Add `kadence_element` post type to the form-host page exclusion list across all supported form plugins, reusable block recursion, and the WPForms location-meta lookup.
 * Properly disable non-essential Ninja Forms actions during CheckView tests.
 
 = 2.0.32 =
