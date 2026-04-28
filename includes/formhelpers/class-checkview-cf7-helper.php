@@ -211,7 +211,11 @@ if ( ! class_exists( 'Checkview_Cf7_Helper' ) ) {
 					if ( in_array( $key, $uploaded_files ) ) {
 						$file = is_array( $files[ $key ] ) ? reset( $files[ $key ] ) : $files[ $key ];
 						$file_name = empty( $file ) ? '' : $time_now . '-' . $key . '-' . basename( $file );
+						// Store under suffixed key for backward compat (no current readers, but preserved).
 						$form_data[ $key . 'cv_cf7_file' ] = $file_name;
+						// Also store under original field name so CheckView SaaS validation
+						// (which looks up by input name/id) can find the uploaded file.
+						$form_data[ $key ] = $file_name;
 					}
 				}
 
