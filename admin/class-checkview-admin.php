@@ -435,7 +435,9 @@ class Checkview_Admin {
 
 		$disable_email_receipt = isset( $_REQUEST['disable_email_receipt'] ) ? sanitize_text_field( wp_unslash( $_REQUEST['disable_email_receipt'] ) ) : false;
 		$disable_webhooks = isset( $_REQUEST['disable_webhooks'] ) ? sanitize_text_field( wp_unslash( $_REQUEST['disable_webhooks'] ) ) : false;
-		$disable_actions = isset( $_REQUEST['disable_actions'] ) ? sanitize_text_field( wp_unslash( $_REQUEST['disable_actions'] ) ) : false;
+		$disable_actions = isset( $_REQUEST['disable_actions'] )
+			? sanitize_text_field( wp_unslash( $_REQUEST['disable_actions'] ) )
+			: '';
 		$referrer_url = sanitize_url( wp_get_raw_referer(), array( 'http', 'https' ) );
 
 		// If not Ajax submission and found test_id.
@@ -530,7 +532,7 @@ class Checkview_Admin {
 			cv_update_option( 'disable_webhooks_' . $cv_test_id, 'true', false );
 		}
 
-		if ( $disable_actions ) {
+		if ( 'true' === $disable_actions ) {
 			cv_update_option( 'disable_actions_' . $cv_test_id, 'true', false );
 		}
 
