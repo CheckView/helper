@@ -1112,55 +1112,6 @@ if ( ! function_exists( 'checkview_delete_tables_data' ) ) {
 	// Attach the function to the cron event.
 	add_action( 'checkview_delete_table_cron_hook', 'checkview_delete_tables_data' );
 }
-
-if ( ! function_exists( 'checkview_gf_should_defer_delete' ) ) {
-	/**
-	 * Whether to defer GF entry deletion via cron. Defaults to true (the fix).
-	 *
-	 * Customers can opt out via `define( 'CHECKVIEW_GF_DEFER_ENTRY_DELETE', false );`
-	 * in wp-config.php as an emergency rollback to legacy synchronous deletion.
-	 *
-	 * @return bool
-	 */
-	function checkview_gf_should_defer_delete() {
-		if ( defined( 'CHECKVIEW_GF_DEFER_ENTRY_DELETE' ) && false === CHECKVIEW_GF_DEFER_ENTRY_DELETE ) {
-			return false;
-		}
-		return true;
-	}
-}
-
-if ( ! function_exists( 'checkview_gf_run_deferred_entry_delete' ) ) {
-	/**
-	 * Cron handler: deletes a GF entry deferred from form submission.
-	 *
-	 * The deletion is deferred so GF async feed processing (GF_Background_Process)
-	 * has time to load the entry and fire third-party integrations. Without this
-	 * delay, GF_Feed_Processor::task() aborts with "entry not found".
-	 *
-	 * @param int $entry_id GF entry ID.
-	 * @return void
-	 */
-	function checkview_gf_run_deferred_entry_delete( $entry_id ) {
-		if ( ! class_exists( 'GFAPI' ) ) {
-			return; // Gravity Forms not active anymore — nothing to delete.
-		}
-		$result = GFAPI::delete_entry( (int) $entry_id );
-		// Log only real failures. Skip 'invalid_entry_id' — that's the expected
-		// case when the entry was already cleaned up (admin manual delete, etc.)
-		// and would otherwise spam ip-logs (logs file grows unbounded).
-		if ( is_wp_error( $result )
-			&& 'invalid_entry_id' !== $result->get_error_code()
-			&& class_exists( 'Checkview_Admin_Logs' ) ) {
-			Checkview_Admin_Logs::add(
-				'ip-logs',
-				'GF deferred entry delete failed for entry [' . (int) $entry_id . ']: ' . $result->get_error_message()
-			);
-		}
-	}
-	add_action( 'checkview_gf_deferred_entry_delete', 'checkview_gf_run_deferred_entry_delete' );
-}
-
 add_action(
 	'wp_ajax_checkview_get_status',
 	'checkview_get_option_data_handler'
