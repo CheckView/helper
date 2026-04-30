@@ -224,12 +224,16 @@ if ( ! class_exists( 'Checkview_Gforms_Helper' ) ) {
 		}
 
 		/**
-		 * Stores the test results and finishes the testing session.
+		 * Clones the GF submission to cv_entry tables, schedules deferred deletion
+		 * of the source GF entry, and finishes the testing session.
 		 *
-		 * Deletes test submission from Formidable database table.
+		 * Deletion is deferred ~15 min to allow GF async feed processing
+		 * (Mailchimp, Webhooks, etc.) to load the entry and fire third-party
+		 * integrations. See checkview_gf_should_defer_delete() for the
+		 * emergency-rollback escape hatch.
 		 *
 		 * @param array  $entry Form entry data.
-		 * @param object $form Form object.
+		 * @param object $form  Form object.
 		 * @return void
 		 */
 		public function checkview_clone_entry( $entry, $form ) {
@@ -243,7 +247,21 @@ if ( ! class_exists( 'Checkview_Gforms_Helper' ) ) {
 			self::checkview_clone_gf_entry( $entry['id'], $form_id, $checkview_test_id );
 
 			if ( isset( $entry['id'] ) ) {
-				GFAPI::delete_entry( $entry['id'] );
+				$entry_id = (int) $entry['id'];
+				if ( checkview_gf_should_defer_delete() ) {
+					// Defer entry deletion so GF async feed processing
+					// (GF_Background_Process) has time to load the entry and fire
+					// third-party integrations. Without this delay,
+					// GF_Feed_Processor::task() aborts with "entry not found".
+					wp_schedule_single_event(
+						time() + 15 * MINUTE_IN_SECONDS,
+						'checkview_gf_deferred_entry_delete',
+						array( $entry_id )
+					);
+				} else {
+					// Emergency-rollback escape hatch — legacy synchronous deletion.
+					GFAPI::delete_entry( $entry_id );
+				}
 			}
 
 			complete_checkview_test( $checkview_test_id );
