@@ -149,7 +149,7 @@ if ( ! class_exists( 'Checkview_Fluent_Forms_Helper' ) ) {
 			add_filter(
 				'fluentform/global_notification_active_types',
 				array( $this, 'checkview_disable_form_actions' ),
-				99,
+				PHP_INT_MAX,
 				2,
 			);
 
@@ -369,10 +369,28 @@ if ( ! class_exists( 'Checkview_Fluent_Forms_Helper' ) ) {
 		 */
 		public function checkview_disable_form_actions( $notifications, $form_id ) {
 			$cv_test_id = get_checkview_test_id();
-			if ( $cv_test_id && 'true' == get_option( 'disable_actions_' . $cv_test_id, false ) ) {
-				return array();
+			if ( ! $cv_test_id || 'true' !== get_option( 'disable_actions_' . $cv_test_id, false ) ) {
+				return $notifications;
 			}
-			return $notifications;
+			if ( ! is_array( $notifications ) || empty( $notifications ) ) {
+				return $notifications;
+			}
+			// Preserve native Fluent Forms feeds only; drop third-party integrations
+			// (slack, mailchimp_feeds, webhook, zapier, hubspot, pipedrive, etc.) during
+			// CheckView automated tests so assert_email_received still receives the
+			// confirmation mail to <test_run_id>@test-mail.checkview.io.
+			//
+			// Native key list verified against Fluent Forms 6.2.2 upstream source —
+			// EmailNotificationActions.php registers $types['notifications'] (the email
+			// feed). If a future Fluent version RENAMES this key, assert_email_received
+			// will time out on the next run, prompting an update here. If Fluent ADDS a
+			// new native non-email key (e.g. a hypothetical 'auto_responder' feed), it
+			// will be silently filtered out — acceptable in the test context since the
+			// email feed still fires. Visible failure on rename is preferred over a
+			// silent fallback to "all feeds fire" which would let real integrations run
+			// during automated tests.
+			$native_keys = array( 'notifications' );
+			return array_intersect_key( $notifications, array_flip( $native_keys ) );
 		}
 
 		/**
