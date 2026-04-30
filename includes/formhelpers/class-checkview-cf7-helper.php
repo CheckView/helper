@@ -121,6 +121,137 @@ if ( ! class_exists( 'Checkview_Cf7_Helper' ) ) {
 
 			// Set Piped values back to original values for optional select fields
 			add_filter('wpcf7_posted_data_select', array($this, 'checkview_handled_cf7_piped_data'), 99, 3);
+
+			// disable_actions enumeration: when the flow's disable_actions flag
+			// resolves to "yes", remove third-party callbacks on CF7's email-stage
+			// hooks so integrations (Mailchimp, Zapier, webhooks, etc.) don't fire.
+			// Registered at -PHP_INT_MAX to run before any plausible third-party
+			// priority, including legacy negative-priority registrations. We hook
+			// the target action itself (not wp_loaded) to catch lazy registrations
+			// that happen during request handling.
+			//
+			// Closure callbacks cannot be reliably classified by class name and
+			// are preserved (acknowledged limitation). Real-world CF7 third-party
+			// addons use class-based hooks.
+			add_action(
+				'wpcf7_before_send_mail',
+				array( $this, 'checkview_cf7_disable_actions_enumerate' ),
+				-PHP_INT_MAX,
+				0
+			);
+			add_action(
+				'wpcf7_mail_sent',
+				array( $this, 'checkview_cf7_disable_actions_enumerate' ),
+				-PHP_INT_MAX,
+				0
+			);
+		}
+
+		/**
+		 * Class-name substring backstop for known third-party CF7 integrations.
+		 * Used by should_remove() to identify callbacks that don't follow CF7's
+		 * WPCF7_* core prefix convention (e.g. CF7-to-Webhook plugin classes).
+		 * Case-insensitive match via stripos().
+		 */
+		const THIRD_PARTY_BACKSTOP = array(
+			'Mailchimp',
+			'Zapier',
+			'Webhook',
+			'Hubspot',
+			'Salesforce',
+			'ActiveCampaign',
+			'ConvertKit',
+			'SendGrid',
+			'Postmark',
+			'Slack',
+			'Brevo',
+			'Sendinblue',
+			'Klaviyo',
+			'ConstantContact',
+			'AWeber',
+			'Drip',
+		);
+
+		/**
+		 * Enumerates callbacks on the firing CF7 hook (wpcf7_before_send_mail or
+		 * wpcf7_mail_sent) and removes third-party callbacks when the flow's
+		 * disable_actions flag is set. Preserves CF7 core (WPCF7_*) and Checkview
+		 * (Checkview_*) callbacks. Two-pass to avoid mutation-during-iteration.
+		 *
+		 * @return void
+		 */
+		public function checkview_cf7_disable_actions_enumerate() {
+			$cv_test_id = get_checkview_test_id();
+			if ( ! $cv_test_id || 'true' !== get_option( 'disable_actions_' . $cv_test_id, false ) ) {
+				return;
+			}
+
+			$hook = current_filter();
+			if ( ! isset( $GLOBALS['wp_filter'][ $hook ] ) ) {
+				return;
+			}
+
+			$to_remove = array();
+			foreach ( $GLOBALS['wp_filter'][ $hook ]->callbacks as $priority => $priority_callbacks ) {
+				foreach ( $priority_callbacks as $cb_id => $cb_data ) {
+					$callable = $cb_data['function'];
+					if ( $this->should_remove( $callable ) ) {
+						$to_remove[] = array(
+							'callable' => $callable,
+							'priority' => $priority,
+						);
+					}
+				}
+			}
+
+			foreach ( $to_remove as $r ) {
+				remove_filter( $hook, $r['callable'], $r['priority'] );
+			}
+		}
+
+		/**
+		 * Classifies a CF7 hook callback as third-party (remove) or core/keep.
+		 *
+		 * Order matters — first match wins:
+		 *   Closure                  KEEP  (can't classify; acknowledged limit)
+		 *   Checkview_*              KEEP  (self-removal guard)
+		 *   THIRD_PARTY_BACKSTOP    REMOVE (overrides WPCF7 keep for hypothetical
+		 *                                  WPCF7_SendGrid_* etc.)
+		 *   WPCF7_*                  KEEP  (CF7 core)
+		 *   plain function / no class KEEP (unidentifiable, defensive)
+		 *   default                 REMOVE
+		 *
+		 * @param mixed $callable Callback as stored in WP_Hook::callbacks.
+		 * @return bool True if the callback should be removed.
+		 */
+		private function should_remove( $callable ) {
+			$class_name = '';
+			if ( is_array( $callable ) && isset( $callable[0] ) ) {
+				$class_name = is_object( $callable[0] ) ? get_class( $callable[0] ) : (string) $callable[0];
+			} elseif ( is_object( $callable ) ) {
+				$class_name = get_class( $callable );
+			} elseif ( is_string( $callable ) && strpos( $callable, '::' ) !== false ) {
+				list( $class_name, ) = explode( '::', $callable, 2 );
+			}
+
+			if ( 'Closure' === $class_name ) {
+				return false;
+			}
+			if ( 0 === strpos( $class_name, 'Checkview_' ) ) {
+				return false;
+			}
+			foreach ( self::THIRD_PARTY_BACKSTOP as $needle ) {
+				if ( false !== stripos( $class_name, $needle ) ) {
+					return true;
+				}
+			}
+			if ( 0 === strpos( $class_name, 'WPCF7_' ) ) {
+				return false;
+			}
+			if ( '' === $class_name ) {
+				return false;
+			}
+			return true;
 		}
 
 		/**
@@ -291,7 +422,7 @@ if ( ! class_exists( 'Checkview_Cf7_Helper' ) ) {
 		 */
 		public function checkview_inject_email( $args ) {
 			$cv_test_id = get_checkview_test_id();
-			if ( $cv_test_id && 'true' == get_option( 'disable_email_receipt_' . $cv_test_id, false ) ) {
+			if ( $cv_test_id && 'true' === get_option( 'disable_email_receipt_' . $cv_test_id, false ) ) {
 				$args['recipient'] .= ', ' . TEST_EMAIL;
 			} else {
 				$args['recipient'] = TEST_EMAIL;

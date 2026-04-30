@@ -307,6 +307,16 @@ if ( ! class_exists( 'Checkview_Ninja_Forms_Helper' ) ) {
 		 * @return array
 		 */
 		public function checkview_disable_form_actions( $form_cache_actions, $form_cache, $form_data ) {
+			// Gate on the disable_actions flag. Without this gate, NF integrations
+			// (Mailchimp, Webhooks, Zapier, etc.) are always suppressed during
+			// CheckView tests — even when the flow's `disable_actions` setting is
+			// "no". Returning the actions unchanged lets non-essential addons
+			// fire when the user has opted out of suppression.
+			$cv_test_id = get_checkview_test_id();
+			if ( ! $cv_test_id || 'true' !== get_option( 'disable_actions_' . $cv_test_id, false ) ) {
+				return $form_cache_actions;
+			}
+
 			$allowed_actions = array( 'email', 'successmessage', 'save' );
 			foreach ( $form_cache_actions as &$action ) {
 				if ( isset( $action['settings']['type'] ) &&
