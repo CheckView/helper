@@ -209,6 +209,8 @@ Support and test configuration are handled through the CheckView platform. Pleas
 * Fix form page dropdown returning Kadence Element (popup/hook) container URLs instead of real display URLs.
 * Add `kadence_element` post type to the form-host page exclusion list across all supported form plugins, reusable block recursion, and the WPForms location-meta lookup.
 * Properly disable non-essential Ninja Forms actions during CheckView tests.
+* Fix Fluent Forms disable_actions handler stripping the native email feed alongside third-party integrations during CheckView tests, causing `assert_email_received` to time out.
+* Fluent Forms disable_actions handler now preserves the native `notifications` feed key while still suppressing third-party feeds (slack, mailchimp, webhook, zapier, etc.).
 
 = 2.0.32 =
 * Fix WP Forms simple name fields.
@@ -569,6 +571,8 @@ Support and test configuration are handled through the CheckView platform. Pleas
 
 = 2.0.33 =
 * Properly disable non-essential Ninja Forms actions during CheckView tests.
+* Fix Fluent Forms disable_actions handler stripping the native email feed alongside third-party integrations during CheckView tests, causing `assert_email_received` to time out.
+* Fluent Forms disable_actions handler now preserves the native `notifications` feed key while still suppressing third-party feeds (slack, mailchimp, webhook, zapier, etc.).
 
 = 2.0.32 =
 * Fix WP Forms simple name fields.
