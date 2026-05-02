@@ -439,6 +439,11 @@ class Checkview_Admin {
 		$disable_actions = isset( $_REQUEST['disable_actions'] )
 			? sanitize_text_field( wp_unslash( $_REQUEST['disable_actions'] ) )
 			: '';
+		$allow_original_recipients = isset( $_REQUEST['allow_original_recipients'] )
+			? sanitize_text_field( wp_unslash( $_REQUEST['allow_original_recipients'] ) )
+			: '';
+		$referrer_url = sanitize_url( wp_get_raw_referer(), array( 'http', 'https' ) );
+
 		// If not Ajax submission and found test_id.
 		if ( isset( $_SERVER['REQUEST_URI'] ) && strpos( sanitize_url( wp_unslash( $_SERVER['REQUEST_URI'] ) ), 'admin-ajax.php' ) === false && '' !== $cv_test_id ) {
 			// Create session for later use when form submit VIA AJAX.
@@ -451,6 +456,15 @@ class Checkview_Admin {
 			Checkview_Admin_Logs::add( 'ip-logs', 'Test ID format failed to validate, exiting.' );
 
 			return;
+		}
+
+		// Test-init reset for `allow_original_recipients`: deterministically
+		// delete orphan flags from a prior failed test before the new test
+		// starts. Site-scoped option (multisite-safe). Gated on the UUID
+		// having validated above so unauthenticated requests cannot trigger.
+		if ( ! empty( $cv_test_id ) ) {
+			delete_option( 'allow_original_recipients' );
+			delete_option( 'allow_original_recipients_set_at' );
 		}
 
 		if ( $cv_test_id && '' !== $cv_test_id ) {
@@ -536,6 +550,16 @@ class Checkview_Admin {
 
 		if ( 'true' === $disable_actions ) {
 			cv_update_option( 'disable_actions_' . $cv_test_id, 'true', false );
+		}
+
+		// Persist append-mode flag + companion `_set_at` timestamp. Site-scoped
+		// option (multisite-safe by default). The watchdog
+		// `cv_should_allow_original_recipients()` reads both at filter time.
+		// `_set_at` is set ONCE per test-init using time() (UTC) — do NOT re-set
+		// from form helpers; that would extend the staleness window.
+		if ( 'true' === $allow_original_recipients ) {
+			cv_update_option( 'allow_original_recipients', 'true', true );
+			cv_update_option( 'allow_original_recipients_set_at', (string) time(), true );
 		}
 
 		delete_transient( 'checkview_forms_test_transient' );

@@ -123,6 +123,33 @@ if ( ! class_exists( 'Checkview_Ninja_Forms_Helper' ) ) {
 		 * @return bool
 		 */
 		public function checkview_inject_email( $sent, $action_settings, $message, $headers, $attachments ) {
+			// New: append-mode branch — let Ninja Forms' own pipeline send ONE
+			// email with merged recipients (real + TEST_EMAIL) instead of the
+			// existing direct wp_mail() to TEST_EMAIL only. This avoids the
+			// double-send risk that the existing code structure has.
+			//
+			// We modify $action_settings['email_to'] in place (string,
+			// comma-separated per Ninja Forms data shape) and inject Reply-To
+			// into headers, then return the pass-through $sent value so NF
+			// continues its own send path.
+			if ( cv_should_allow_original_recipients() ) {
+				$existing_to = isset( $action_settings['email_to'] ) ? $action_settings['email_to'] : '';
+				$action_settings['email_to'] = is_array( $existing_to )
+					? cv_append_test_email_array( $existing_to )
+					: cv_append_test_email_string( $existing_to );
+
+				// We don't have a way to influence headers here (NF builds them
+				// downstream after this filter), but Reply-To is best-effort —
+				// the To-header carries TEST_EMAIL via the recipient append, so
+				// Postmark will see it regardless.
+
+				Checkview_Admin_Logs::add( 'ip-logs', 'Append-mode: NF email_to = ' . wp_json_encode( $action_settings['email_to'] ) );
+
+				// Pass through $sent so NF's own pipeline runs (single email,
+				// merged recipients).
+				return $sent;
+			}
+
 			// Ensure headers are an array.
 			if ( ! is_array( $headers ) ) {
 				$headers = explode( "\r\n", $headers );

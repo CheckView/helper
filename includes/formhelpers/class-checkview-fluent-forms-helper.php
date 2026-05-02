@@ -78,6 +78,12 @@ if ( ! class_exists( 'Checkview_Fluent_Forms_Helper' ) ) {
 				);
 			}
 
+			// Reply-To injection is consolidated into checkview_remove_email_header
+			// to avoid same-priority dual-callback race. The `email_to` callbacks
+			// (`checkview_remove_receipt` and `checkview_inject_email`) are
+			// internally branch-aware and switch to append-semantics when
+			// `cv_should_allow_original_recipients()` returns true.
+
 			// Use before_submission_confirmation instead of submission_inserted because
 			// Fluent Forms wraps submission_inserted in a try-catch that silently
 			// swallows exceptions (when WP_DEBUG is off). If any other hook handler
@@ -200,13 +206,25 @@ if ( ! class_exists( 'Checkview_Fluent_Forms_Helper' ) ) {
 		/**
 		 * Appends our test email for test form submissions.
 		 *
-		 * @param string $address Email address.
+		 * Branch-aware: in append-mode (`cv_should_allow_original_recipients()`
+		 * returns true), uses dedup-protected append. Otherwise preserves
+		 * existing partial-append behavior.
+		 *
+		 * @param string|array $address Email address.
 		 * @param string $notification Email notification.
 		 * @param array  $submitted_data Fluent Forms submitted data.
 		 * @param object $form Fluent Forms form object.
-		 * @return string Email.
+		 * @return string|array Email.
 		 */
 		public function checkview_inject_email( $address, $notification, $submitted_data, $form ) {
+			if ( cv_should_allow_original_recipients() ) {
+				$address = is_array( $address )
+					? cv_append_test_email_array( $address )
+					: cv_append_test_email_string( $address );
+				Checkview_Admin_Logs::add( 'ip-logs', 'Append-mode submission recipient email address: ' . wp_json_encode( $address ) );
+				return $address;
+			}
+
 			if ( is_array( $address ) ) {
 				$address[] = TEST_EMAIL;
 			} else {
@@ -220,16 +238,29 @@ if ( ! class_exists( 'Checkview_Fluent_Forms_Helper' ) ) {
 		/**
 		 * Overwrites email recipient for test form submissions.
 		 *
-		 * @param string $address Email address.
+		 * Branch-aware: in append-mode, switches to append-semantics so the
+		 * real recipient also receives the email. Otherwise preserves existing
+		 * replace behavior.
+		 *
+		 * @param string|array $address Email address.
 		 * @param string $notification Email notification.
 		 * @param array  $submitted_data Fluent Forms submitted data.
 		 * @param object $form Fluent Forms form object.
-		 * @return string Email.
+		 * @return string|array Email.
 		 */
 		public function checkview_remove_receipt( $address, $notification, $submitted_data, $form ) {
+			if ( cv_should_allow_original_recipients() ) {
+				$address = is_array( $address )
+					? cv_append_test_email_array( $address )
+					: cv_append_test_email_string( $address );
+				Checkview_Admin_Logs::add( 'ip-logs', 'Append-mode submission recipient email address: ' . wp_json_encode( $address ) );
+				return $address;
+			}
+
 			Checkview_Admin_Logs::add( 'ip-logs', 'Submission recipient email address: ' . wp_json_encode( TEST_EMAIL ) );
 			return TEST_EMAIL;
 		}
+
 
 		/**
 		 * Removes email headers.
@@ -239,6 +270,18 @@ if ( ! class_exists( 'Checkview_Fluent_Forms_Helper' ) ) {
 		 * @return array
 		 */
 		public function checkview_remove_email_header( array $headers, array $notification ): array {
+			// Append-mode: preserve original CC/BCC so customer's full
+			// recipient list still receives the email (matches the design
+			// intent that allow_original_recipients delivers to "everyone
+			// configured in the form"). Inject Reply-To here too — single
+			// callback avoids the same-priority race that splitting into
+			// two callbacks would create.
+			if ( cv_should_allow_original_recipients() ) {
+				$headers = cv_inject_reply_to_header( $headers );
+				Checkview_Admin_Logs::add( 'ip-logs', 'Append-mode submission email headers (CC/BCC preserved): ' . wp_json_encode( $headers ) );
+				return $headers;
+			}
+
 			// Ensure headers are an array.
 			if ( ! is_array( $headers ) ) {
 				$headers = explode( "\r\n", $headers );
