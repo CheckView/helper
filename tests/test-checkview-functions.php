@@ -27,4 +27,40 @@ class TestCheckviewFunctions extends WP_UnitTestCase {
 	public function test_should_defer_delete_default_is_true() {
 		$this->assertTrue( checkview_gf_should_defer_delete() );
 	}
+
+	/**
+	 * Confirms the FF deferred-delete cron handler is registered with the
+	 * 'checkview_ff_deferred_entry_delete' action. Regression guard for the
+	 * Fluent Forms async-feed fix.
+	 */
+	public function test_ff_deferred_delete_handler_is_registered() {
+		$priority = has_action( 'checkview_ff_deferred_entry_delete', 'checkview_ff_run_deferred_entry_delete' );
+		$this->assertNotFalse( $priority, 'checkview_ff_run_deferred_entry_delete must be registered on checkview_ff_deferred_entry_delete.' );
+	}
+
+	/**
+	 * checkview_ff_should_defer_delete() defaults to true (the fix is enabled).
+	 * Constant-based opt-out is tested in tests/test-ff-legacy-mode.php.
+	 */
+	public function test_ff_should_defer_delete_default_is_true() {
+		$this->assertTrue( checkview_ff_should_defer_delete() );
+	}
+
+	/**
+	 * Confirms the NF deferred-delete cron handler is registered with the
+	 * 'checkview_nf_deferred_entry_delete' action. Regression guard for the
+	 * Ninja Forms defense-in-depth fix.
+	 */
+	public function test_nf_deferred_delete_handler_is_registered() {
+		$priority = has_action( 'checkview_nf_deferred_entry_delete', 'checkview_nf_run_deferred_entry_delete' );
+		$this->assertNotFalse( $priority, 'checkview_nf_run_deferred_entry_delete must be registered on checkview_nf_deferred_entry_delete.' );
+	}
+
+	/**
+	 * checkview_nf_should_defer_delete() defaults to true (the fix is enabled).
+	 * Constant-based opt-out is tested in tests/test-nf-legacy-mode.php.
+	 */
+	public function test_nf_should_defer_delete_default_is_true() {
+		$this->assertTrue( checkview_nf_should_defer_delete() );
+	}
 }

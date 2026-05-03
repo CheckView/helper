@@ -149,9 +149,19 @@ if ( ! class_exists( 'Checkview_Ninja_Forms_Helper' ) ) {
 			}
 		}
 		/**
-		 * Stores the test results and finishes the testing session.
+		 * Clones the Ninja Forms submission to cv_entry tables, schedules
+		 * deferred deletion of the source `nf_sub` post, and finishes the
+		 * testing session.
 		 *
-		 * Deletes test submission from Formidable database table.
+		 * Deletion is deferred ~15 min as defense-in-depth. When the test
+		 * flow has `disable_actions=no` (integrations opted in), stock NF +
+		 * Add-Ons Pack runs Mailchimp/Webhooks synchronously inside the
+		 * actions pipeline before priority 99, so there is no known
+		 * async-feed orphaning today. Deferring mirrors the FF/GF fix so
+		 * any future NF add-on that queues async work keyed on the
+		 * `nf_sub` post ID won't silently fail. See
+		 * checkview_nf_should_defer_delete() for the emergency-rollback
+		 * escape hatch (CHECKVIEW_NF_DEFER_ENTRY_DELETE = false).
 		 *
 		 * @param array $form_data Form data.
 		 * @return void
@@ -265,7 +275,21 @@ if ( ! class_exists( 'Checkview_Ninja_Forms_Helper' ) ) {
 				Checkview_Admin_Logs::add( 'ip-logs', 'Failed to clone submission entry meta data.' );
 			}
 
-			wp_delete_post( $entry_id, true );
+			if ( $entry_id > 0 ) {
+				if ( checkview_nf_should_defer_delete() ) {
+					// Defer entry deletion as defense-in-depth so any future NF
+					// add-on that queues async work keyed on the `nf_sub` post ID
+					// has time to run before the post is gone.
+					wp_schedule_single_event(
+						time() + 15 * MINUTE_IN_SECONDS,
+						'checkview_nf_deferred_entry_delete',
+						array( (int) $entry_id )
+					);
+				} else {
+					// Emergency-rollback escape hatch — legacy synchronous deletion.
+					wp_delete_post( $entry_id, true );
+				}
+			}
 
 			complete_checkview_test( $checkview_test_id );
 		}
