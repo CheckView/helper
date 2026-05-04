@@ -256,13 +256,19 @@ if ( ! class_exists( 'Checkview_Fluent_Forms_Helper' ) ) {
 			return $array_values;
 		}
 		/**
-		 * Stores the test results and finishes the testing session.
+		 * Clones the Fluent Forms submission to cv_entry tables, schedules
+		 * deferred deletion of the source FF rows, and finishes the testing
+		 * session.
 		 *
-		 * Deletes test submission from Formidable database table.
+		 * Deletion is deferred ~15 min so Fluent Forms Pro async feed processing
+		 * (Mailchimp, Webhooks, Slack, Zapier, HubSpot, Pipedrive, etc.) has time
+		 * to load the submission and fire third-party integrations. See
+		 * checkview_ff_should_defer_delete() for the emergency-rollback escape
+		 * hatch (CHECKVIEW_FF_DEFER_ENTRY_DELETE = false).
 		 *
-		 * @param int    $entry_id Fluent Form ID.
-		 * @param array  $form_data Fluent Form data.
-		 * @param object $form Fluent Form object.
+		 * @param int    $entry_id  Fluent Forms submission ID.
+		 * @param array  $form_data Submitted form data.
+		 * @param object $form      Fluent Forms form object.
 		 * @return void
 		 */
 		public function checkview_clone_fluentform_entry( $entry_id, $form_data, $form ) {
@@ -347,15 +353,33 @@ if ( ! class_exists( 'Checkview_Fluent_Forms_Helper' ) ) {
 				Checkview_Admin_Logs::add( 'ip-logs', 'Cloned submission entry data (inserted ' . (int) $result . ' rows into ' . $entry_table . ').' );
 			}
 
-			// remove entry from Fluent forms tables.
-			$delete = wpFluent()->table( 'fluentform_submissions' )
-			->where( 'form_id', $form_id )
-			->where( 'id', '=', $entry_id )
-			->delete();
-			$delete = wpFluent()->table( 'fluentform_entry_details' )
-			->where( 'form_id', $form_id )
-			->where( 'submission_id', '=', $entry_id )
-			->delete();
+			// Remove entry from Fluent Forms tables.
+			//
+			// Deletion is deferred ~15 min to allow Fluent Forms Pro async feed
+			// processing (Mailchimp, Webhooks, Slack, Zapier, HubSpot, Pipedrive,
+			// etc.) to load the submission row and fire third-party integrations.
+			// Without this delay, queued feed handlers re-fetch the submission
+			// seconds later in a separate request and silently abort when the row
+			// is gone — exactly the GF async-feed bug, ported to FF Pro queues.
+			// See checkview_ff_should_defer_delete() for the emergency-rollback
+			// escape hatch (CHECKVIEW_FF_DEFER_ENTRY_DELETE = false).
+			if ( checkview_ff_should_defer_delete() ) {
+				wp_schedule_single_event(
+					time() + 15 * MINUTE_IN_SECONDS,
+					'checkview_ff_deferred_entry_delete',
+					array( (int) $entry_id, (int) $form_id )
+				);
+			} else {
+				// Emergency-rollback escape hatch — legacy synchronous deletion.
+				wpFluent()->table( 'fluentform_submissions' )
+					->where( 'form_id', $form_id )
+					->where( 'id', '=', $entry_id )
+					->delete();
+				wpFluent()->table( 'fluentform_entry_details' )
+					->where( 'form_id', $form_id )
+					->where( 'submission_id', '=', $entry_id )
+					->delete();
+			}
 
 			complete_checkview_test( $checkview_test_id );
 		}

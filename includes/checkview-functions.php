@@ -1161,6 +1161,122 @@ if ( ! function_exists( 'checkview_gf_run_deferred_entry_delete' ) ) {
 	add_action( 'checkview_gf_deferred_entry_delete', 'checkview_gf_run_deferred_entry_delete' );
 }
 
+if ( ! function_exists( 'checkview_ff_should_defer_delete' ) ) {
+	/**
+	 * Whether to defer Fluent Forms entry deletion via cron. Defaults to true (the fix).
+	 *
+	 * Customers can opt out via `define( 'CHECKVIEW_FF_DEFER_ENTRY_DELETE', false );`
+	 * in wp-config.php as an emergency rollback to legacy synchronous deletion.
+	 *
+	 * @return bool
+	 */
+	function checkview_ff_should_defer_delete() {
+		if ( defined( 'CHECKVIEW_FF_DEFER_ENTRY_DELETE' ) && false === CHECKVIEW_FF_DEFER_ENTRY_DELETE ) {
+			return false;
+		}
+		return true;
+	}
+}
+
+if ( ! function_exists( 'checkview_ff_run_deferred_entry_delete' ) ) {
+	/**
+	 * Cron handler: deletes a Fluent Forms entry deferred from form submission.
+	 *
+	 * The deletion is deferred so Fluent Forms Pro async feed processing
+	 * (Mailchimp, Webhooks, Slack, Zapier, HubSpot, Pipedrive, etc.) has time to
+	 * load the submission row and fire third-party integrations. Without this
+	 * delay, queued feed handlers re-fetch the submission ~seconds later and
+	 * silently abort when the row is gone.
+	 *
+	 * @param int $entry_id Fluent Forms submission ID.
+	 * @param int $form_id  Fluent Forms form ID.
+	 * @return void
+	 */
+	function checkview_ff_run_deferred_entry_delete( $entry_id = 0, $form_id = 0 ) {
+		if ( ! function_exists( 'wpFluent' ) ) {
+			return; // Fluent Forms not active anymore — nothing to delete.
+		}
+		$entry_id = (int) $entry_id;
+		$form_id  = (int) $form_id;
+
+		// Defensive: refuse to run with degenerate IDs. FF auto-increments id from 1
+		// and form_id is never zero for real submissions, so a 0/negative pair can
+		// only come from coercion of garbage args (string/array/null) and would
+		// otherwise execute WHERE id=0 AND form_id=0 — a no-op today, but a footgun
+		// if FF ever seeds either column with 0.
+		if ( $entry_id <= 0 || $form_id <= 0 ) {
+			return;
+		}
+
+		wpFluent()->table( 'fluentform_submissions' )
+			->where( 'form_id', $form_id )
+			->where( 'id', '=', $entry_id )
+			->delete();
+		wpFluent()->table( 'fluentform_entry_details' )
+			->where( 'form_id', $form_id )
+			->where( 'submission_id', '=', $entry_id )
+			->delete();
+	}
+	add_action( 'checkview_ff_deferred_entry_delete', 'checkview_ff_run_deferred_entry_delete', 10, 2 );
+}
+
+if ( ! function_exists( 'checkview_nf_should_defer_delete' ) ) {
+	/**
+	 * Whether to defer Ninja Forms entry deletion via cron. Defaults to true
+	 * (the fix).
+	 *
+	 * Customers can opt out via `define( 'CHECKVIEW_NF_DEFER_ENTRY_DELETE', false );`
+	 * in wp-config.php as an emergency rollback to legacy synchronous deletion.
+	 *
+	 * @return bool
+	 */
+	function checkview_nf_should_defer_delete() {
+		if ( defined( 'CHECKVIEW_NF_DEFER_ENTRY_DELETE' ) && false === CHECKVIEW_NF_DEFER_ENTRY_DELETE ) {
+			return false;
+		}
+		return true;
+	}
+}
+
+if ( ! function_exists( 'checkview_nf_run_deferred_entry_delete' ) ) {
+	/**
+	 * Cron handler: deletes a Ninja Forms submission deferred from form
+	 * submission. NF stores submissions as a custom post type (`nf_sub`), so
+	 * deletion is via `wp_delete_post()`.
+	 *
+	 * Defense-in-depth: when `disable_actions=no` (integrations opted in),
+	 * stock NF + Add-Ons Pack runs Mailchimp/Webhooks synchronously inside
+	 * the actions pipeline before the priority-99 cleanup, so there is no
+	 * known async-feed orphaning today. (When `disable_actions=true` —
+	 * the default for tests — those add-ons are stripped from the actions
+	 * list and never run, sync or async.) Deferring matches the FF/GF
+	 * pattern so any future NF add-on that queues async work keyed on the
+	 * `nf_sub` post ID won't silently fail.
+	 *
+	 * @param int $entry_id NF submission post ID.
+	 * @return void
+	 */
+	function checkview_nf_run_deferred_entry_delete( $entry_id = 0 ) {
+		$entry_id = (int) $entry_id;
+		if ( $entry_id <= 0 ) {
+			return;
+		}
+		// Post-type confinement: refuse to delete anything that isn't an NF
+		// submission. wp_delete_post() is type-agnostic, so without this
+		// guard a stale/poisoned cron event with an arbitrary post ID could
+		// force-delete unrelated content (pages, products, attachments).
+		// The FF/GF analogues are inherently scoped (FF to FF tables, GF via
+		// GFAPI::delete_entry); NF needs an explicit check to match.
+		if ( 'nf_sub' !== get_post_type( $entry_id ) ) {
+			return;
+		}
+		// The post may already be gone (admin manual delete, etc.) —
+		// wp_delete_post returns false in that case and is a no-op.
+		wp_delete_post( $entry_id, true );
+	}
+	add_action( 'checkview_nf_deferred_entry_delete', 'checkview_nf_run_deferred_entry_delete' );
+}
+
 add_action(
 	'wp_ajax_checkview_get_status',
 	'checkview_get_option_data_handler'

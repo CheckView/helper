@@ -125,4 +125,108 @@ class Checkview_Ninja_Forms_Helper_Test extends WP_UnitTestCase {
 		delete_option( 'disable_actions_' . $test_id );
 		unset( $_REQUEST['checkview_test_id'] );
 	}
+
+	public function tearDown(): void {
+		// Clean up any scheduled deferred-delete events from individual tests.
+		wp_clear_scheduled_hook( 'checkview_nf_deferred_entry_delete' );
+		parent::tearDown();
+	}
+
+	/**
+	 * Asserts that checkview_clone_entry schedules the deferred-delete cron
+	 * event with the entry id as args, using a delay >= 15 minutes.
+	 *
+	 * Skipped when the legacy-mode escape-hatch constant has been defined
+	 * (e.g. after tests/test-nf-legacy-mode.php runs in the same process),
+	 * since the schedule path is intentionally bypassed in that mode.
+	 */
+	public function test_clone_entry_schedules_deferred_delete() {
+		if ( ! checkview_nf_should_defer_delete() ) {
+			$this->markTestSkipped( 'Defer disabled via CHECKVIEW_NF_DEFER_ENTRY_DELETE — schedule path not exercised.' );
+		}
+
+		// Create a real `nf_sub` post so the deletion target is valid; clone
+		// also reads $_POST['formData'], which we can leave empty for this test.
+		$entry_id = wp_insert_post(
+			array(
+				'post_type'   => 'nf_sub',
+				'post_status' => 'publish',
+				'post_title'  => 'CV NF test sub',
+			)
+		);
+		$this->assertNotInstanceOf( 'WP_Error', $entry_id );
+		$this->assertGreaterThan( 0, $entry_id );
+
+		$form_data = array(
+			'form_id' => 5150,
+			'actions' => array(
+				'save' => array(
+					'sub_id' => (int) $entry_id,
+				),
+			),
+			'fields'  => array(),
+		);
+
+		$_REQUEST['checkview_test_id'] = 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee';
+		$this->helper->checkview_clone_entry( $form_data );
+		unset( $_REQUEST['checkview_test_id'] );
+
+		$scheduled = wp_next_scheduled( 'checkview_nf_deferred_entry_delete', array( (int) $entry_id ) );
+		$this->assertNotFalse( $scheduled, 'Deferred-delete event should be scheduled.' );
+		$this->assertGreaterThanOrEqual( time() + ( 15 * MINUTE_IN_SECONDS ) - 60, $scheduled, 'Schedule should be at least ~15 min in the future.' );
+
+		// The post should still exist (deletion is deferred, not synchronous).
+		$this->assertEquals( 'nf_sub', get_post_type( $entry_id ), 'Source post should still exist after clone (deletion deferred).' );
+
+		// Cleanup.
+		wp_delete_post( $entry_id, true );
+	}
+
+	/**
+	 * Asserts that the deferred handler actually deletes the `nf_sub` post
+	 * when run.
+	 */
+	public function test_deferred_handler_deletes_entry() {
+		$entry_id = wp_insert_post(
+			array(
+				'post_type'   => 'nf_sub',
+				'post_status' => 'publish',
+				'post_title'  => 'CV NF deferred handler test',
+			)
+		);
+		$this->assertNotInstanceOf( 'WP_Error', $entry_id );
+		$this->assertGreaterThan( 0, $entry_id );
+
+		// Sanity: post exists before handler runs.
+		$this->assertEquals( 'nf_sub', get_post_type( $entry_id ) );
+
+		checkview_nf_run_deferred_entry_delete( $entry_id );
+
+		$this->assertNull( get_post( $entry_id ), 'Handler should have deleted the nf_sub post.' );
+	}
+
+	/**
+	 * Asserts that the deferred handler refuses to delete posts that are
+	 * not of post type `nf_sub`. Defends against a poisoned/typo'd cron
+	 * event force-deleting unrelated content (pages, products, attachments).
+	 */
+	public function test_deferred_handler_refuses_foreign_post_type() {
+		$post_id = wp_insert_post(
+			array(
+				'post_type'   => 'post',
+				'post_status' => 'publish',
+				'post_title'  => 'CV NF foreign post-type guard test',
+			)
+		);
+		$this->assertNotInstanceOf( 'WP_Error', $post_id );
+		$this->assertGreaterThan( 0, $post_id );
+		$this->assertEquals( 'post', get_post_type( $post_id ) );
+
+		checkview_nf_run_deferred_entry_delete( $post_id );
+
+		$this->assertNotNull( get_post( $post_id ), 'Handler must refuse to delete non-nf_sub posts.' );
+
+		// Cleanup.
+		wp_delete_post( $post_id, true );
+	}
 }
