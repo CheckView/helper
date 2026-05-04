@@ -206,11 +206,19 @@ Support and test configuration are handled through the CheckView platform. Pleas
 == Changelog ==
 
 = 2.0.33 =
+* Fix Ninja Forms reCAPTCHA bypass: non-essential NF actions (reCAPTCHA, webhooks, payment, CRM) are now disabled unconditionally during CheckView tests so `ninja_forms_after_submission` can fire and submissions can be captured.
+* Add Gravity Forms reCAPTCHA Add-On (v2.x) bypass via `gform_validation` filter at `PHP_INT_MAX`, registered only when `is_bot()` is true.
+* Tighten security on `remove_gravityforms_recaptcha_addon()` — now requires a valid UUIDv4 + test_type instead of a bare `isset()` check.
+* Switch `checkview_my_hcap_activate()` from `isset()` to `CheckView::is_bot()` and guard `checkview_get_visitor_ip()` before the bot check to avoid fatals on hCaptcha activation.
 * Fix form page dropdown returning Kadence Element (popup/hook) container URLs instead of real display URLs.
 * Add `kadence_element` post type to the form-host page exclusion list across all supported form plugins, reusable block recursion, and the WPForms location-meta lookup.
-* Properly disable non-essential Ninja Forms actions during CheckView tests.
-* Fix Fluent Forms disable_actions handler stripping the native email feed alongside third-party integrations during CheckView tests, causing `assert_email_received` to time out.
-* Fluent Forms disable_actions handler now preserves the native `notifications` feed key while still suppressing third-party feeds (slack, mailchimp, webhook, zapier, etc.).
+* Fix Contact Form 7 file uploads not being discoverable by CheckView SaaS validation: files are now also stored under the original input name (in addition to the legacy `{name}cv_cf7_file` key) so `assert_form_submitted` correctly verifies CF7 uploads instead of silently passing on broken forms.
+* Fix Fluent Forms disable_actions handler stripping the native email feed alongside third-party integrations during CheckView tests, causing `assert_email_received` to time out. The handler now preserves the native `notifications` feed key while still suppressing third-party feeds (slack, mailchimp, webhook, zapier, etc.).
+* Fix Gravity Forms async feed integrations (Mailchimp, Webhooks, Zapier, etc.) silently failing on CheckView tests: GF entry deletion is now deferred 15 minutes via `wp_schedule_single_event` so `GF_Background_Process` can re-fetch the entry. Emergency rollback: `define( 'CHECKVIEW_GF_DEFER_ENTRY_DELETE', false )`.
+* Fix Fluent Forms Pro async feed integrations (Mailchimp, Webhook, Slack, Zapier, HubSpot, Pipedrive) silently failing on CheckView tests: FF submission deletion is now deferred so `GlobalNotificationHandler`'s queued Action Scheduler feeds can complete. Emergency rollback: `define( 'CHECKVIEW_FF_DEFER_ENTRY_DELETE', false )`.
+* Defer Ninja Forms submission deletion as defense-in-depth against future async NF add-ons (current Add-Ons Pack runs Mailchimp/Webhooks before priority 99 and is unaffected). Cron handler is confined to `post_type='nf_sub'` so a poisoned cron event cannot delete unrelated content. Emergency rollback: `define( 'CHECKVIEW_NF_DEFER_ENTRY_DELETE', false )`.
+* Wire the `disable_actions` flow-level toggle end-to-end on Contact Form 7 and Ninja Forms — previously CF7 had no support and NF always suppressed regardless of the flag. New CF7 enumerator removes third-party callbacks on `wpcf7_before_send_mail` / `wpcf7_mail_sent` while preserving WPCF7 core, Closures, and CheckView's own callbacks. NF now respects the per-test option instead of suppressing unconditionally.
+* Harden the `disable_actions` request-param parser to strict equality (`'true' === $disable_actions`) so the literal string `'false'` is no longer treated as truthy.
 
 = 2.0.32 =
 * Fix WP Forms simple name fields.
