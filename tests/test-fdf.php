@@ -22,39 +22,6 @@ class Test_Checkview_Formidable_Helper extends WP_UnitTestCase {
 		$this->assertEquals( TEST_EMAIL, $result );
 	}
 
-	// public function test_checkview_log_form_test_entry() {
-	// global $wpdb;
-
-	// $checkview_formidable_helper = new Checkview_Formidable_Helper();
-	// $form_id = 123;
-	// $entry_id = 456;
-
-	// Test data.
-	// $test_data = array(
-	// 'form_id' => $form_id,
-	// 'status' => 'publish',
-	// 'source_url' => 'http://example.com',
-	// 'date_created' => current_time( 'mysql' ),
-	// 'date_updated' => current_time( 'mysql' ),
-	// 'uid' => 'test_uid',
-	// 'form_type' => 'Formidable',
-	// );
-
-	// Insert test data into the database.
-	// $wpdb->insert( $wpdb->prefix . 'cv_entry', $test_data );
-	// $inserted_entry_id = $wpdb->insert_id;
-
-	// Test the function.
-	// $checkview_formidable_helper->checkview_log_form_test_entry( $entry_id, $form_id );
-
-	// Check if the data was inserted correctly.
-	// $entry_data = $wpdb->get_row( $wpdb->prepare( 'SELECT * FROM ' . $wpdb->prefix . 'cv_entry WHERE id=%d', $inserted_entry_id ), ARRAY_A );
-	// $this->assertEquals( 'test_uid', $entry_data['uid'] );
-
-	// Clean up.
-	// $wpdb->query( $wpdb->prepare( 'DELETE FROM ' . $wpdb->prefix . 'cv_entry WHERE id=%d', $inserted_entry_id ) );
-	// }
-
 	public function test_get_form_fields() {
 		$checkview_formidable_helper = new Checkview_Formidable_Helper();
 		$form_id                     = rand( 1, 100 );
@@ -96,6 +63,73 @@ class Test_Checkview_Formidable_Helper extends WP_UnitTestCase {
 		foreach ( $test_data as $data ) {
 			$wpdb->query( $wpdb->prepare( 'DELETE FROM ' . $wpdb->prefix . 'frm_fields WHERE id=%d', $data['id'] ) );
 		}
+	}
+
+	public function test_disable_form_actions_keeps_email_action_when_flag_set() {
+		$test_id                         = 'aaaaaaaa-bbbb-4ccc-9ddd-eeeeeeeeeeee';
+		$_REQUEST['checkview_test_id']   = $test_id;
+		$_REQUEST['checkview_test_type'] = 'form';
+		update_option( 'disable_actions_' . $test_id, 'true', false );
+
+		$helper = new Checkview_Formidable_Helper();
+		$action = (object) array( 'post_excerpt' => 'email' );
+		$result = $helper->checkview_disable_form_actions( true, $action, null, null, 'create' );
+		$this->assertFalse( $result, 'Email action must run (false = do not skip) even when disable_actions is set.' );
+
+		delete_option( 'disable_actions_' . $test_id );
+		unset( $_REQUEST['checkview_test_id'], $_REQUEST['checkview_test_type'] );
+	}
+
+	public function test_disable_form_actions_keeps_register_action_when_flag_set() {
+		$test_id                         = 'aaaaaaaa-bbbb-4ccc-9ddd-eeeeeeeeeeee';
+		$_REQUEST['checkview_test_id']   = $test_id;
+		$_REQUEST['checkview_test_type'] = 'form';
+		update_option( 'disable_actions_' . $test_id, 'true', false );
+
+		$helper = new Checkview_Formidable_Helper();
+		$action = (object) array( 'post_excerpt' => 'register' );
+		$result = $helper->checkview_disable_form_actions( true, $action, null, null, 'create' );
+		$this->assertFalse( $result );
+
+		delete_option( 'disable_actions_' . $test_id );
+		unset( $_REQUEST['checkview_test_id'], $_REQUEST['checkview_test_type'] );
+	}
+
+	public function test_disable_form_actions_keeps_on_submit_action_when_flag_set() {
+		$test_id                         = 'aaaaaaaa-bbbb-4ccc-9ddd-eeeeeeeeeeee';
+		$_REQUEST['checkview_test_id']   = $test_id;
+		$_REQUEST['checkview_test_type'] = 'form';
+		update_option( 'disable_actions_' . $test_id, 'true', false );
+
+		$helper = new Checkview_Formidable_Helper();
+		$action = (object) array( 'post_excerpt' => 'on_submit' );
+		$result = $helper->checkview_disable_form_actions( true, $action, null, null, 'create' );
+		$this->assertFalse( $result );
+
+		delete_option( 'disable_actions_' . $test_id );
+		unset( $_REQUEST['checkview_test_id'], $_REQUEST['checkview_test_type'] );
+	}
+
+	public function test_disable_form_actions_skips_third_party_when_flag_set() {
+		$test_id                         = 'aaaaaaaa-bbbb-4ccc-9ddd-eeeeeeeeeeee';
+		$_REQUEST['checkview_test_id']   = $test_id;
+		$_REQUEST['checkview_test_type'] = 'form';
+		update_option( 'disable_actions_' . $test_id, 'true', false );
+
+		$helper = new Checkview_Formidable_Helper();
+		$action = (object) array( 'post_excerpt' => 'mailchimp' );
+		$result = $helper->checkview_disable_form_actions( false, $action, null, null, 'create' );
+		$this->assertTrue( $result, 'Third-party action must be skipped (true = skip) when disable_actions is set.' );
+
+		delete_option( 'disable_actions_' . $test_id );
+		unset( $_REQUEST['checkview_test_id'], $_REQUEST['checkview_test_type'] );
+	}
+
+	public function test_disable_form_actions_third_party_runs_without_flag() {
+		$helper = new Checkview_Formidable_Helper();
+		$action = (object) array( 'post_excerpt' => 'mailchimp' );
+		$result = $helper->checkview_disable_form_actions( false, $action, null, null, 'create' );
+		$this->assertFalse( $result, 'Third-party action runs (false = do not skip) when disable_actions is unset.' );
 	}
 
 	public function test_remove_recaptcha_field_from_list() {

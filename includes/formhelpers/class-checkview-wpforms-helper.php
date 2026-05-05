@@ -70,6 +70,13 @@ if ( ! class_exists( 'Checkview_Wpforms_Helper' ) ) {
 				20
 			);
 
+			// IMPORTANT: register as `array( $this, 'method' )`, not as a static
+			// `array( __CLASS__, 'method' )` — checkview_wpforms_disable_addons()
+			// whitelists this callback via `instanceof Checkview_Wpforms_Helper`
+			// on $cb['function'][0]. A static-method registration would store a
+			// string class name in slot 0, fail the instance check, and our own
+			// cloning callback would be silently purged alongside third-party
+			// listeners under disable_actions.
 			add_action(
 				'wpforms_process_complete',
 				array(
@@ -137,6 +144,89 @@ if ( ! class_exists( 'Checkview_Wpforms_Helper' ) ) {
 				99,
 				1
 			);
+
+			add_action(
+				'wpforms_process',
+				array(
+					$this,
+					'checkview_wpforms_disable_addons',
+				),
+				1,
+				3
+			);
+		}
+
+		/**
+		 * Suppress third-party integrations on wpforms_process_complete when the
+		 * test flow's disable_actions flag is set.
+		 *
+		 * Hooks early on wpforms_process (which fires before wpforms_process_complete)
+		 * and walks the global $wp_filter, removing every callback registered on
+		 * wpforms_process_complete and its form-id-scoped variant — except this
+		 * helper's own checkview_log_wpform_test_entry, which clones the submission
+		 * into the cv_entry / cv_entry_meta tables. Whitelisting by class instance
+		 * (not priority) survives any future priority change to our own callback.
+		 *
+		 * Why blanket removal: WPForms providers (Mailchimp, ActiveCampaign,
+		 * ConvertKit, Salesforce, Drip, Sendinblue, Zoho), the User Registration
+		 * addon, the Post Submissions addon, the Webhooks addon, and any custom
+		 * site code all hook wpforms_process_complete. Stripping individual
+		 * form_data keys would miss addons (User Registration / Post Submissions)
+		 * that read from $form_data['settings'] sub-keys and any custom code that
+		 * doesn't read form_data at all. Removing all listeners is the same
+		 * pattern the everest-forms helper uses.
+		 *
+		 * Preserved side effects (NOT on this hook):
+		 * - Native email notifications fire via WPForms_Process::process_emails(),
+		 *   a direct call after the action returns, so assert_email_received still
+		 *   receives the confirmation mail at <test_run_id>@test-mail.checkview.io.
+		 * - Entry save into wpforms_entries happens earlier in entry_save(); the
+		 *   row exists by the time our cloning callback runs.
+		 *
+		 * @param array $fields    Form fields.
+		 * @param array $entry     Entry data.
+		 * @param array $form_data Form data and settings.
+		 *
+		 * @return void
+		 */
+		public function checkview_wpforms_disable_addons( $fields, $entry, $form_data ) {
+			$cv_test_id = get_checkview_test_id();
+			if ( ! $cv_test_id || 'true' !== get_option( 'disable_actions_' . $cv_test_id, false ) ) {
+				return;
+			}
+
+			global $wp_filter;
+			$form_id = isset( $form_data['id'] ) ? (int) $form_data['id'] : 0;
+			$hooks   = array( 'wpforms_process_complete' );
+			if ( $form_id ) {
+				$hooks[] = 'wpforms_process_complete_' . $form_id;
+			}
+
+			$removed_count = 0;
+			foreach ( $hooks as $hook ) {
+				if ( ! isset( $wp_filter[ $hook ] ) || empty( $wp_filter[ $hook ]->callbacks ) ) {
+					continue;
+				}
+				foreach ( $wp_filter[ $hook ]->callbacks as $priority => $callbacks ) {
+					foreach ( $callbacks as $cb_id => $cb ) {
+						if (
+							is_array( $cb['function'] ) &&
+							isset( $cb['function'][0] ) &&
+							is_object( $cb['function'][0] ) &&
+							$cb['function'][0] instanceof Checkview_Wpforms_Helper
+						) {
+							continue;
+						}
+						unset( $wp_filter[ $hook ]->callbacks[ $priority ][ $cb_id ] );
+						$removed_count++;
+					}
+					if ( empty( $wp_filter[ $hook ]->callbacks[ $priority ] ) ) {
+						unset( $wp_filter[ $hook ]->callbacks[ $priority ] );
+					}
+				}
+			}
+
+			Checkview_Admin_Logs::add( 'ip-logs', 'WPForms: removed ' . $removed_count . ' third-party listener(s) from wpforms_process_complete under disable_actions.' );
 		}
 
 		/**
