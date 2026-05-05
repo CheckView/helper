@@ -414,6 +414,13 @@ if ( ! class_exists( 'Checkview_Fluent_Forms_Helper' ) ) {
 			// silent fallback to "all feeds fire" which would let real integrations run
 			// during automated tests.
 			$native_keys = array( 'notifications' );
+			$dropped     = array_diff_key( $notifications, array_flip( $native_keys ) );
+			foreach ( array_keys( $dropped ) as $key ) {
+				Checkview_Admin_Logs::add(
+					'ip-logs',
+					'Disabled FF action type [' . $key . '] for CheckView test.'
+				);
+			}
 			return array_intersect_key( $notifications, array_flip( $native_keys ) );
 		}
 

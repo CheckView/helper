@@ -468,6 +468,15 @@ if ( ! class_exists( 'Checkview_Gforms_Helper' ) ) {
 		public function checkview_disable_addons_feed( $feeds, $entry, $form ) {
 			$cv_test_id = get_checkview_test_id();
 			if ( $cv_test_id && 'true' == get_option( 'disable_actions_' . $cv_test_id, false ) ) {
+				if ( is_array( $feeds ) ) {
+					foreach ( $feeds as $feed ) {
+						$slug = isset( $feed['addon_slug'] ) ? $feed['addon_slug'] : ( isset( $feed['form_id'] ) ? 'feed_id_' . ( $feed['id'] ?? '?' ) : 'unknown' );
+						Checkview_Admin_Logs::add(
+							'ip-logs',
+							'Disabled GF addon feed [' . $slug . '] for CheckView test.'
+						);
+					}
+				}
 				return array();
 			}
 			return $feeds;

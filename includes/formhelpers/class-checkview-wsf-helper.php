@@ -309,6 +309,10 @@ if ( ! class_exists( 'Checkview_WSF_Helper' ) ) {
 			}
 			$cv_test_id = get_checkview_test_id();
 			if ( $cv_test_id && 'true' == get_option( 'disable_actions_' . $cv_test_id, false ) ) {
+				Checkview_Admin_Logs::add(
+					'ip-logs',
+					'Disabled WSF action type [' . ( $config['id'] ?? 'unknown' ) . '] for CheckView test.'
+				);
 				return false;
 			}
 			return $run;
