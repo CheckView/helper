@@ -206,6 +206,9 @@ if ( ! function_exists( 'complete_checkview_test' ) ) {
 			)
 		);
 
+		// $wpdb->delete returns false on real DB error, 0 if no matching rows
+		// (already-cleaned-up case, e.g. shutdown handler firing after a sync
+		// caller already cleaned up). Only log false (the actual failure mode).
 		if ( false === $result ) {
 			Checkview_Admin_Logs::add( 'ip-logs', 'Failed to delete rows from session table [' . $session_table . '].' );
 		}
@@ -213,7 +216,13 @@ if ( ! function_exists( 'complete_checkview_test' ) ) {
 		$entry_id = get_option( $checkview_test_id . '_wsf_entry_id', '' );
 		$form_id  = get_option( $checkview_test_id . '_wsf_frm_id', '' );
 
-		if ( ! empty( $form_id ) && ! empty( $entry_id ) ) {
+		// Skip WS Form db_delete when running in shutdown context — WS Form's
+		// plugin state (DB layer, caches) may already be torn down at shutdown
+		// and db_delete can fail unsafely. Sync form-helper callers (which run
+		// during their submission hooks, not shutdown) still execute this
+		// branch. WS Form cleanup is irrelevant for Woo-flow shutdown calls
+		// anyway since Woo orders aren't WS Form entries.
+		if ( ! empty( $form_id ) && ! empty( $entry_id ) && ! doing_action( 'shutdown' ) ) {
 			if ( class_exists( 'WS_Form_Submit' ) ) {
 				$ws_form_submit = new WS_Form_Submit();
 				$ws_form_submit->id = $entry_id;
@@ -228,8 +237,15 @@ if ( ! function_exists( 'complete_checkview_test' ) ) {
 		cv_delete_option( $checkview_test_id . '_wsf_frm_id' );
 		cv_delete_option( $visitor_ip );
 
-		setcookie( 'checkview_test_id', '', time() - 6600, COOKIEPATH, COOKIE_DOMAIN );
-		setcookie( 'checkview_test_id' . $checkview_test_id, '', time() - 6600, COOKIEPATH, COOKIE_DOMAIN );
+		// setcookie() silently fails when headers have been sent (which is the
+		// norm at shutdown time, the new deferred caller). Form-helper sync
+		// callers run during their submission hooks where headers aren't yet
+		// flushed, so the guard lets cookie cleanup work for them while
+		// avoiding silent failures at shutdown.
+		if ( ! headers_sent() ) {
+			setcookie( 'checkview_test_id', '', time() - 6600, COOKIEPATH, COOKIE_DOMAIN );
+			setcookie( 'checkview_test_id' . $checkview_test_id, '', time() - 6600, COOKIEPATH, COOKIE_DOMAIN );
+		}
 
 		cv_delete_option( 'disable_actions_' . $checkview_test_id );
 		cv_delete_option( 'disable_email_receipt_' . $checkview_test_id );
@@ -245,6 +261,104 @@ if ( ! function_exists( 'complete_checkview_test' ) ) {
 		cv_delete_option( 'checkview_wpforms_turnstile-secret-key' );
 
 		Checkview_Admin_Logs::add( 'ip-logs', 'Test complete.' );
+	}
+}
+
+if ( ! function_exists( 'cv_is_suppressible_test_order' ) ) {
+	/**
+	 * Determines whether webhooks/actions on a WooCommerce order should be
+	 * suppressed because the order belongs to an active CheckView test.
+	 *
+	 * Implements the safety invariant: suppression engages only when BOTH
+	 *   (1) the order has a valid `checkview_test_id` UUID meta (set by
+	 *       `checkview_stamp_order_meta` at order creation time when
+	 *       `CV_TEST_ID` was defined), AND
+	 *   (2) a per-test option (`disable_webhooks_<uuid>` or
+	 *       `disable_actions_<uuid>`) is still set to `'true'` (test is still
+	 *       active in our system; cleanup happens at request end via
+	 *       `complete_checkview_test`).
+	 *
+	 * Either condition missing → fall through, deliver the webhook / fire the
+	 * action. Default-on safety, not default-off.
+	 *
+	 * Reusable by:
+	 *   - the WooCommerce webhook filter (`checkview_filter_webhooks`)
+	 *   - per-addon filters (e.g. Mailchimp's `mailchimp_should_push_order`)
+	 *   - any future addon gate that needs the same invariant
+	 *
+	 * Includes a kill-switch short-circuit at the top: if the
+	 * `cv_suppression_kill_switch` option is set to `'true'` (via WP-CLI for
+	 * incident response), this function returns false immediately and no
+	 * suppression engages anywhere.
+	 *
+	 * @param mixed $order WC_Order, order ID (int), or numeric string.
+	 *                     Webhook delivery callers pass `$arg` which can be
+	 *                     either int or string depending on serialisation.
+	 *
+	 * @return bool True if suppression should engage, false otherwise.
+	 */
+	function cv_is_suppressible_test_order( $order ) {
+		// H8 kill switch — incident response escape hatch.
+		if ( get_option( 'cv_suppression_kill_switch' ) === 'true' ) {
+			return false;
+		}
+
+		// Coerce $order if int OR numeric string (WC webhook delivery passes
+		// $arg as either, depending on caller — JSON-decoded order IDs can
+		// arrive as strings under certain serialisation paths).
+		if ( ! is_object( $order ) ) {
+			if ( is_numeric( $order ) ) {
+				$order = wc_get_order( $order );
+			} else {
+				return false; // not an order ID we can resolve
+			}
+		}
+		if ( ! is_object( $order ) || ! method_exists( $order, 'get_meta' ) ) {
+			return false;
+		}
+
+		// Invariant 1: order has a valid checkview_test_id UUID meta.
+		$test_id = $order->get_meta( 'checkview_test_id' );
+		if ( ! $test_id || ! checkview_is_valid_uuid( $test_id ) ) {
+			return false;
+		}
+
+		// Invariant 2: per-test option still active (either flag triggers
+		// suppression — matches the SaaS-side single-toggle design where one
+		// flag sends both query params and both options get set).
+		$suppress = ( get_option( 'disable_webhooks_' . $test_id ) === 'true' )
+				|| ( get_option( 'disable_actions_' . $test_id ) === 'true' );
+
+		$order_id = (int) $order->get_id();
+
+		if ( ! $suppress ) {
+			// Gate-failed log (deduped per order per request) — helps debug
+			// "I configured Disable Actions but it's not suppressing"
+			// support tickets without spamming on real-customer orders that
+			// won't have the meta in the first place.
+			static $logged_failures = array();
+			if ( ! isset( $logged_failures[ $order_id ] ) ) {
+				Checkview_Admin_Logs::add(
+					'ip-logs',
+					"Suppress gate failed for order #{$order_id} (test {$test_id}): no active suppression option found"
+				);
+				$logged_failures[ $order_id ] = true;
+			}
+			return false;
+		}
+
+		// Suppression approved. Log as intentional (compliance audit angle:
+		// distinguishable from a delivery failure). Deduped per order
+		// per request.
+		static $logged_suppress = array();
+		if ( ! isset( $logged_suppress[ $order_id ] ) ) {
+			Checkview_Admin_Logs::add(
+				'ip-logs',
+				"SUPPRESS for test order #{$order_id} (test {$test_id}) — intentional, per Disable Actions setting"
+			);
+			$logged_suppress[ $order_id ] = true;
+		}
+		return true;
 	}
 }
 

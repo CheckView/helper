@@ -99,6 +99,32 @@ require plugin_dir_path( __FILE__ ) . 'includes/checkview-helper-functions.php';
 require plugin_dir_path( __FILE__ ) . 'includes/class-checkview.php';
 
 /**
+ * Seed the suppression kill-switch option with autoload=yes.
+ *
+ * H8 incident-response escape hatch: ops can flip
+ * `cv_suppression_kill_switch` to `'true'` via WP-CLI to bypass all
+ * webhook/action suppression on a customer site, even on stamped test
+ * orders. The option is read on every webhook delivery
+ * (`cv_is_suppressible_test_order`), so we want it autoloaded for cache-hit
+ * reads instead of a DB query per webhook.
+ *
+ * Registers on `init` (priority 1) instead of `register_activation_hook`
+ * because activation hooks only fire on (re)activation — existing customer
+ * sites that auto-update would never run the seed. Init-hook seeding
+ * self-heals on first request after deploy. Cost: one cached `get_option`
+ * per request until seeded once, then no-ops cheaply forever.
+ */
+add_action(
+	'init',
+	function () {
+		if ( false === get_option( 'cv_suppression_kill_switch' ) ) {
+			add_option( 'cv_suppression_kill_switch', 'false', '', 'yes' );
+		}
+	},
+	1
+);
+
+/**
  * Initiates the main CheckView class.
  *
  * @since 1.0.0
