@@ -7,7 +7,7 @@ Tested up to: 6.9
 Requires PHP: 7.0.0
 License: GPLv3
 License URI: http://www.gnu.org/licenses/gpl-3.0.html
-Stable tag: 2.0.33
+Stable tag: 2.0.34
 
 [CheckView](https://checkview.io/) automates WordPress form and WooCommerce testing, monitoring key flows to catch failures early before they cost you leads or sales everyday.
 
@@ -204,6 +204,9 @@ Support and test configuration are handled through the CheckView platform. Pleas
 3. CheckView general settings.
 
 == Changelog ==
+
+= 2.0.34 =
+* Properly implement disable_actions for WPForms.
 
 = 2.0.33 =
 * Fix form page dropdown returning Kadence Element (popup/hook) container URLs instead of real display URLs.
@@ -568,6 +571,9 @@ Support and test configuration are handled through the CheckView platform. Pleas
 * Initial release.
 
 == Upgrade Notice ==
+
+= 2.0.34 =
+* Properly implement disable_actions for WPForms.
 
 = 2.0.33 =
 * Properly disable non-essential Ninja Forms actions during CheckView tests.
