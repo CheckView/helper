@@ -40,6 +40,40 @@ class Test_Checkview_Gforms_Helper extends WP_UnitTestCase {
 
 
 
+	public function test_constructor_registers_honeypot_bypass_filters() {
+		$this->assertSame( PHP_INT_MAX, has_filter( 'gform_abort_submission_with_confirmation', '__return_false' ) );
+		$this->assertSame( PHP_INT_MAX, has_filter( 'gform_entry_is_spam', '__return_false' ) );
+	}
+
+	public function test_maybe_hide_recaptcha_strips_spam_protection_fields() {
+		$make_field = function ( $type ) {
+			$f       = new stdClass();
+			$f->type = $type;
+			return $f;
+		};
+		$form   = array(
+			'fields' => array(
+				$make_field( 'text' ),
+				$make_field( 'honeypot' ),
+				$make_field( 'captcha' ),
+				$make_field( 'turnstile' ),
+				$make_field( 'hcaptcha' ),
+				$make_field( 'email' ),
+			),
+		);
+		$result = $this->helper->maybe_hide_recaptcha( $form );
+		$types  = array();
+		foreach ( $result['fields'] as $field ) {
+			$types[] = $field->type;
+		}
+		$this->assertContains( 'text', $types );
+		$this->assertContains( 'email', $types );
+		$this->assertNotContains( 'honeypot', $types );
+		$this->assertNotContains( 'captcha', $types );
+		$this->assertNotContains( 'turnstile', $types );
+		$this->assertNotContains( 'hcaptcha', $types );
+	}
+
 	public function test_checkview_disable_zero_spam_addon() {
 		$form_id      = rand( 1, 100 );
 		$should_check = true;

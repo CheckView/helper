@@ -122,6 +122,40 @@ if ( ! class_exists( 'Checkview_Gforms_Helper' ) ) {
 				999
 			);
 
+			// Defensive backstop against the GF 2.7+ honeypot abort path.
+			// Normally Playwright posts the JS-injected `version_hash` back
+			// fine, so honeypot doesn't trip on most sites — but if anything
+			// interferes with that round-trip (e.g. a third-party plugin
+			// that wraps GF's submit button and bypasses GF's pre-submit JS,
+			// or aggressive page caching that serves a stale `version_hash`),
+			// `GF_Honeypot_Handler::handle_abort_submission` short-circuits
+			// `GFFormDisplay::process_form()` BEFORE `handle_submission()`,
+			// returning a success-style confirmation with no saved entry and
+			// no `gform_after_submission` — which surfaces as
+			// `submission-not-found` because `checkview_clone_entry` never
+			// runs. Forcing the abort filter false guarantees the entry is
+			// saved regardless of whether the honeypot heuristic was happy.
+			//
+			// Hook at the submission/validation path (not on
+			// `gform_form_post_get_meta`) so the bypass does not pollute
+			// the persistent `gravityforms_meta` object cache on
+			// Redis/Memcached-backed hosts.
+			// PHP_INT_MAX so we beat any third-party spam plugin that
+			// hooks the same filter at a high priority (Akismet for GF,
+			// CleanTalk, Zero Spam, GravityWiz Anti-Spam, etc.).
+			add_filter(
+				'gform_abort_submission_with_confirmation',
+				'__return_false',
+				PHP_INT_MAX
+			);
+			// Defensive: prevents the cloned entry from being flagged
+			// `status='spam'` if any other GF spam plugin slips through.
+			add_filter(
+				'gform_entry_is_spam',
+				'__return_false',
+				PHP_INT_MAX
+			);
+
 			add_filter(
 				'gform_pre_render',
 				array( $this, 'maybe_hide_recaptcha' )
@@ -175,9 +209,11 @@ if ( ! class_exists( 'Checkview_Gforms_Helper' ) ) {
 		public function maybe_hide_recaptcha( $form ) {
 			$fields = $form['fields'];
 
+			$spam_field_types = array( 'captcha', 'hcaptcha', 'turnstile', 'honeypot' );
+
 			foreach ( $form['fields'] as $key => $field ) {
-				if ( 'captcha' === $field->type || 'hcaptcha' === $field->type || 'turnstile' === $field->type ) {
-					Checkview_Admin_Logs::add( 'ip-logs', 'Unset captcha field type [' . $field->type . '].' );
+				if ( in_array( $field->type, $spam_field_types, true ) ) {
+					Checkview_Admin_Logs::add( 'ip-logs', 'Unset spam-protection field type [' . $field->type . '].' );
 
 					unset( $fields[ $key ] );
 				}
