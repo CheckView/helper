@@ -1496,3 +1496,62 @@ if ( ! function_exists( 'cv_delete_option' ) ) {
 		return true;
 	}
 }
+
+if ( ! function_exists( 'checkview_get_cv_entry_string_limits' ) ) {
+	/**
+	 * Returns the cv_entry string-column max-length map.
+	 *
+	 * Single source of truth mirroring the schema declared in
+	 * Checkview_Activator::checkview_run_sql(). When the schema widens or
+	 * narrows a varchar, update both places.
+	 *
+	 * Columns intentionally omitted:
+	 *   - uid varchar(255): generated internally (UUID, ~36 chars).
+	 *   - response longtext: no varchar limit.
+	 *   - meta_key/meta_value: belong to cv_entry_meta, not cv_entry.
+	 *
+	 * @return array<string,int> Column name => max char length.
+	 */
+	function checkview_get_cv_entry_string_limits() {
+		return array(
+			'ip'             => 45,
+			'source_url'     => 200,
+			'user_agent'     => 250,
+			'currency'       => 5,
+			'payment_status' => 15,
+			'payment_method' => 30,
+			'transaction_id' => 50,
+			'status'         => 20,
+			'form_type'      => 20,
+		);
+	}
+}
+
+if ( ! function_exists( 'checkview_truncate_for_cv_entry' ) ) {
+	/**
+	 * Truncates string fields of a cv_entry-bound row to the schema's
+	 * varchar limits.
+	 *
+	 * WordPress's wpdb::process_field_lengths() rejects inserts whose
+	 * string values exceed the destination column's declared length,
+	 * returning false from wpdb::insert() with last_error set to
+	 * "Processing the value for the following field failed: <col>. The
+	 * supplied value may be too long or contains invalid data." This
+	 * helper pre-truncates so the insert succeeds and the prefix is
+	 * preserved.
+	 *
+	 * Only mutates keys present in checkview_get_cv_entry_string_limits()
+	 * and only when the value is a string. Other keys pass through.
+	 *
+	 * @param array $row Associative row about to be passed to wpdb::insert.
+	 * @return array Row with overflowing string fields truncated.
+	 */
+	function checkview_truncate_for_cv_entry( array $row ) {
+		foreach ( checkview_get_cv_entry_string_limits() as $col => $max ) {
+			if ( isset( $row[ $col ] ) && is_string( $row[ $col ] ) ) {
+				$row[ $col ] = substr( $row[ $col ], 0, $max );
+			}
+		}
+		return $row;
+	}
+}

@@ -430,7 +430,7 @@ if ( ! class_exists( 'Checkview_Gforms_Helper' ) ) {
 				Checkview_Admin_Logs::add( 'ip-logs', 'Cloned submission entry meta data (inserted ' . $count . ' rows into ' . $entry_meta_table . ').' );
 			} else {
 				if ( count( $rows ) > 0 ) {
-					Checkview_Admin_Logs::add( 'ip-logs', 'Failed to clone submission entry meta data.' );
+					Checkview_Admin_Logs::add( 'ip-logs', 'Failed to clone submission entry meta data. wpdb->last_error=[' . $wpdb->last_error . ']' );
 				}
 			}
 
@@ -443,10 +443,17 @@ if ( ! class_exists( 'Checkview_Gforms_Helper' ) ) {
 			$entry_table = $wpdb->prefix . 'cv_entry';
 			$row['uid'] = $uid;
 			$row['form_type'] = 'GravityForms';
+
+			// gf_entry's varchars are wider than cv_entry's (e.g.,
+			// transaction_id 255 vs 50, payment_method 255 vs 30) so a
+			// wholesale row copy can hit wpdb::process_field_lengths()
+			// rejection on payment forms.
+			$row = checkview_truncate_for_cv_entry( $row );
+
 			$result = $wpdb->insert( $entry_table, $row );
 
 			if ( ! $result ) {
-				Checkview_Admin_Logs::add( 'ip-logs', 'Failed to clone submission entry data.' );
+				Checkview_Admin_Logs::add( 'ip-logs', 'Failed to clone submission entry data. wpdb->last_error=[' . $wpdb->last_error . ']' );
 			} else {
 				Checkview_Admin_Logs::add( 'ip-logs', 'Cloned submission entry data (inserted ' . (int) $result . ' rows into ' . $entry_table . ').' );
 			}
