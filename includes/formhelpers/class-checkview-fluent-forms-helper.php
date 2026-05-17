@@ -334,7 +334,7 @@ if ( ! class_exists( 'Checkview_Fluent_Forms_Helper' ) ) {
 				'uid' => $checkview_test_id,
 				'form_type' => 'FluentForms',
 				'form_id' => $form_id,
-				'source_url' => isset( $row['source_url'] ) ? $row['source_url'] : 'n/a',
+				'source_url' => isset( $row['source_url'] ) ? substr( $row['source_url'], 0, 200 ) : 'n/a',
 				'response' => isset( $row['response'] ) ? $row['response'] : 'n/a',
 				'user_agent' => isset( $row['browser'] ) ? $row['browser'] : 'n/a',
 				'ip' => isset( $row['ip'] ) ? $row['ip'] : 'n/a',

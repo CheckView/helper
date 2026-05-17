@@ -203,7 +203,7 @@ if ( ! class_exists( 'Checkview_WSF_Helper' ) ) {
 			$entry_data  = array(
 				'form_id' => $form_id,
 				'status' => 'publish',
-				'source_url' => isset( $_SERVER['HTTP_REFERER'] ) ? sanitize_url( wp_unslash( $_SERVER['HTTP_REFERER'] ) ) : '',
+				'source_url' => isset( $_SERVER['HTTP_REFERER'] ) ? substr( sanitize_url( wp_unslash( $_SERVER['HTTP_REFERER'] ) ), 0, 200 ) : '',
 				'date_created' => current_time( 'mysql' ),
 				'date_updated' => current_time( 'mysql' ),
 				'uid' => $checkview_test_id,

@@ -443,6 +443,9 @@ if ( ! class_exists( 'Checkview_Gforms_Helper' ) ) {
 			$entry_table = $wpdb->prefix . 'cv_entry';
 			$row['uid'] = $uid;
 			$row['form_type'] = 'GravityForms';
+			if ( isset( $row['source_url'] ) ) {
+				$row['source_url'] = substr( $row['source_url'], 0, 200 );
+			}
 			$result = $wpdb->insert( $entry_table, $row );
 
 			if ( ! $result ) {
