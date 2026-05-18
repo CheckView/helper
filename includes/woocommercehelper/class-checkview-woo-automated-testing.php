@@ -30,8 +30,8 @@ class Checkview_Woo_Automated_Testing {
 	 * so the meta lands before WC enqueues any `order.updated` webhook
 	 * for the same save.
 	 *
-	 * Test 21 in the helper test suite asserts this invariant — DO NOT change
-	 * to a value ≥ 200 without also moving the test priority floor up.
+	 * DO NOT change to a value ≥ 200 without first auditing every addon
+	 * registered on `woocommerce_new_order` for downstream meta reads.
 	 *
 	 * @since 2.0.34
 	 *
@@ -853,9 +853,11 @@ class Checkview_Woo_Automated_Testing {
 			// branch the suppression check above falls through and the
 			// deletion event reaches Shippo et al. for an order they never
 			// got an `order.created` for (we suppressed that earlier).
-			// `checkview_delete_orders` sets a 1h transient before deleting
-			// each of OUR test orders; if that transient is present, the
-			// deletion was driven by us and should be suppressed downstream.
+			// `checkview_delete_orders` sets a 3-day transient before
+			// deleting each of OUR test orders; if that transient is present,
+			// the deletion was driven by us and should be suppressed
+			// downstream (TTL covers WC's webhook-retry backoff which can
+			// extend to multiple days on a failing endpoint).
 			if ( ! $order && 0 === strpos( (string) $topic, 'order.' ) ) {
 				if ( get_transient( 'cv_deleted_test_order_' . (int) $arg ) ) {
 					return false;
@@ -1047,7 +1049,11 @@ class Checkview_Woo_Automated_Testing {
 						// the WC webhook filter can suppress the resulting
 						// `order.deleted` event (the order is gone by then,
 						// so the filter has no other way to identify it).
-						set_transient( 'cv_deleted_test_order_' . (int) $order, 1, HOUR_IN_SECONDS );
+						// TTL is generous — WC's webhook retry schedule can
+						// extend to multiple days on a failing endpoint, and
+						// each retry re-runs `should_deliver`. Three days
+						// covers the published WC AS backoff schedule.
+						set_transient( 'cv_deleted_test_order_' . (int) $order, 1, 3 * DAY_IN_SECONDS );
 
 						$order_object->delete( true );
 
