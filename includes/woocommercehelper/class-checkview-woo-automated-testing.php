@@ -839,6 +839,21 @@ class Checkview_Woo_Automated_Testing {
 			if ( $order && cv_is_suppressible_test_order( $order ) ) {
 				return false;
 			}
+
+			// `order.deleted` topic: by the time WC dispatches this webhook,
+			// `wc_get_order($arg)` returns false because the order has been
+			// removed from the DB by `checkview_delete_orders`. Without this
+			// branch the suppression check above falls through and the
+			// deletion event reaches Shippo et al. for an order they never
+			// got an `order.created` for (we suppressed that earlier).
+			// `checkview_delete_orders` sets a 1h transient before deleting
+			// each of OUR test orders; if that transient is present, the
+			// deletion was driven by us and should be suppressed downstream.
+			if ( ! $order && 0 === strpos( (string) $topic, 'order.' ) ) {
+				if ( get_transient( 'cv_deleted_test_order_' . (int) $arg ) ) {
+					return false;
+				}
+			}
 		}
 
 		return $should_deliver;
@@ -952,39 +967,58 @@ class Checkview_Woo_Automated_Testing {
 	/**
 	 * Deletes CheckView orders from the database.
 	 *
-	 * @param integer $order_id Woocommerce Order ID.
+	 * If `$order_id` is supplied (the wp-cron-scheduled case from
+	 * `checkview_schedule_delete_orders`), delete only that one order +
+	 * its customer. If empty (the legacy admin-init sweep + manual call
+	 * sites), fall back to deleting ALL orders that carry the
+	 * `payment_made_by=checkview` marker or `payment_method=checkview`.
+	 *
+	 * Before deleting each test order we set a 1h transient
+	 * `cv_deleted_test_order_<id>=1`, which is read by
+	 * `checkview_filter_webhooks` to suppress the resulting
+	 * `order.deleted` webhook — otherwise Shippo et al. receive a
+	 * deletion event for an order they never got `order.created` for
+	 * (we suppressed that earlier during the test).
+	 *
+	 * @param integer $order_id Woocommerce Order ID (optional). When set,
+	 *                          delete only this order. When empty, sweep
+	 *                          all CheckView-marked orders.
 	 * @return bool
 	 */
 	public static function checkview_delete_orders( $order_id = '' ) {
 		Checkview_Admin_Logs::add( 'ip-logs', 'Deleting CheckView orders from the database...' );
 
 		$orders = array();
-		$args = array(
-			'limit' => -1,
-			'type' => 'shop_order',
-			'meta_key' => 'payment_made_by', // Postmeta key field.
-			'meta_value' => 'checkview', // Postmeta value field.
-			'meta_compare' => '=',
-			'return' => 'ids',
-		);
 
-		if ( function_exists( 'wc_get_orders' ) ) {
+		// Targeted deletion: if a specific $order_id was scheduled (the
+		// per-order wp-cron path from checkview_schedule_delete_orders),
+		// honor it. Without this, a 1h cron tick fired for Test A's order
+		// would sweep ALL marked orders including any in-flight Test B
+		// order from a concurrent test on the same site.
+		if ( '' !== $order_id && (int) $order_id > 0 ) {
+			$orders = array( (int) $order_id );
+		} elseif ( function_exists( 'wc_get_orders' ) ) {
+			$args = array(
+				'limit'        => -1,
+				'type'         => 'shop_order',
+				'meta_key'     => 'payment_made_by', // Postmeta key field.
+				'meta_value'   => 'checkview',       // Postmeta value field.
+				'meta_compare' => '=',
+				'return'       => 'ids',
+			);
 			$orders = wc_get_orders( $args );
+
+			$orders_cv = wc_get_orders(
+				array(
+					'limit'          => -1,
+					'type'           => 'shop_order',
+					'payment_method' => 'checkview',
+					'return'         => 'ids',
+				)
+			);
+
+			$orders = array_unique( array_merge( $orders, $orders_cv ) );
 		}
-
-		$orders_cv = array();
-		$args = array(
-			'limit' => -1,
-			'type' => 'shop_order',
-			'payment_method' => 'checkview',
-			'return' => 'ids',
-		);
-
-		if ( function_exists( 'wc_get_orders' ) ) {
-			$orders_cv = wc_get_orders( $args );
-		}
-
-		$orders = array_unique( array_merge( $orders, $orders_cv ) );
 
 		Checkview_Admin_Logs::add( 'cron-logs', 'Found ' . count( $orders ) . ' CheckView orders to delete.' );
 
@@ -1001,6 +1035,13 @@ class Checkview_Woo_Automated_Testing {
 						}
 
 						$customer_id = $order_object->get_customer_id();
+
+						// Mark this order as a CheckView-driven deletion so
+						// the WC webhook filter can suppress the resulting
+						// `order.deleted` event (the order is gone by then,
+						// so the filter has no other way to identify it).
+						set_transient( 'cv_deleted_test_order_' . (int) $order, 1, HOUR_IN_SECONDS );
+
 						$order_object->delete( true );
 
 						delete_transient( 'checkview_store_orders_transient' );
