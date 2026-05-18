@@ -722,19 +722,35 @@ class Checkview_Woo_Automated_Testing {
 				0
 			);
 
-			// H9: gate Mailchimp for WooCommerce's order push behind the same
-			// safety invariant. Mailchimp uses direct WC action hooks → AS
-			// queue, bypassing WC's webhook system, so the H3 webhook filter
-			// alone doesn't catch it. This filter fires synchronously inside
-			// `mailchimp_handle_or_queue()` BEFORE the order is queued for
-			// async push.
+			// Mailchimp kill-switch. PR #203 originally tried to gate Mailchimp
+			// via a `mailchimp_should_push_order` filter — but that filter
+			// does not exist in Mailchimp for WooCommerce 6.1 (source-grep
+			// confirmed). Replacement: when CV_TEST_ID is defined AND the
+			// SaaS has signalled suppression via `disable_actions=true` or
+			// `disable_webhooks=true`, filter Mailchimp's
+			// `mailchimp_is_configured()` to false. That guard sits at the
+			// top of ~16 Mailchimp handlers (order push, cart push, customer
+			// sync, AS-dequeued jobs, pixel emit). One filter kills them
+			// all, AS jobs queued before the filter armed re-check on
+			// dequeue, no remove_action needed.
+			//
+			// Also filter `mailchimp_allowed_to_use_cookie => false` (kills
+			// the browser-side tracking cookie path) and
+			// `mailchimp_carts_disabled => true` (the actual subscriber-leak
+			// path: every cart mutation queues the customer email to
+			// Mailchimp Audience before the order is even placed).
+			//
+			// Hooked on `init @ 99` — runs AFTER
+			// `checkview_init_current_test` (`init @ 10`) defines CV_TEST_ID
+			// and writes the `disable_*_<uuid>` options, BEFORE any WC order
+			// event (`woocommerce_init`, `woocommerce_new_order`, etc).
 			if ( class_exists( 'MailChimp_WooCommerce' ) ) {
-				$this->loader->add_filter(
-					'mailchimp_should_push_order',
+				$this->loader->add_action(
+					'init',
 					$this,
-					'checkview_filter_mailchimp_should_push_order',
-					10,
-					1
+					'checkview_mailchimp_killswitch',
+					99,
+					0
 				);
 			}
 		} else {
@@ -829,49 +845,56 @@ class Checkview_Woo_Automated_Testing {
 	}
 
 	/**
-	 * Suppresses Mailchimp for WooCommerce order pushes for active CheckView
-	 * test orders.
+	 * Mailchimp kill-switch — replaces dead H9 filter.
 	 *
-	 * H9: Mailchimp's WC plugin uses direct WC action hooks
-	 * (`woocommerce_new_order @ priority 200`, `woocommerce_order_status_changed`,
-	 * `woocommerce_update_order`) → Action Scheduler queue → asynchronous
-	 * `wp_remote_post()` to api.mailchimp.com. It bypasses WC's webhook system
-	 * entirely, so the H3 webhook filter alone doesn't catch it.
+	 * PR #203 hooked a filter named `mailchimp_should_push_order` that does
+	 * not exist anywhere in Mailchimp for WooCommerce 6.1 (verified by
+	 * source grep on a live customer install). That method was a no-op.
 	 *
-	 * Fortunately Mailchimp exposes a per-order pre-queue filter
-	 * `mailchimp_should_push_order` invoked synchronously inside
-	 * `mailchimp_handle_or_queue()`. Returning false short-circuits the queue
-	 * write, preventing the deferred API call from ever being scheduled.
+	 * Replacement strategy: filter `mailchimp_is_configured()` to false
+	 * when CV_TEST_ID is defined AND the user has the per-test
+	 * "Disable Form Integrations" toggle on. `mailchimp_is_configured()`
+	 * is the guard at the top of ~16 Mailchimp handlers (order push, cart
+	 * push, customer sync, pixel emit, AS-dequeued single-order job, etc).
+	 * Filtering it to false makes every handler an early-return no-op. AS
+	 * jobs that were already enqueued before our filter armed re-check on
+	 * dequeue and become no-ops too — covering the AS-deferred path
+	 * without a `remove_action` chase.
 	 *
-	 * For our return false to engage, the order must already carry the
-	 * `checkview_test_id` meta when this filter fires — which is why
-	 * `checkview_stamp_order_meta` MUST be registered at
-	 * `woocommerce_new_order @ priority < 200` (see STAMP_PRIORITY).
+	 * Also filter:
+	 *   - `mailchimp_allowed_to_use_cookie` → false: blocks the browser-
+	 *     side tracking cookie path.
+	 *   - `mailchimp_carts_disabled` → true: blocks cart-sync triggers
+	 *     (this is the actual subscriber-leak path — every cart mutation
+	 *     queues the customer email to Mailchimp Audience before the
+	 *     order has even been placed).
 	 *
-	 * Filter signature confirmed via Mailchimp source: invoked with ONE
-	 * argument (`$order_id`), and the call site checks `=== false` to skip
-	 * queueing. Returning null pass-through preserves any other plugin's
-	 * filter that may have legitimately returned false.
+	 * Option gate (mirrors `cv_is_suppressible_test_order` for the WC
+	 * webhook filter): only engage when the SaaS sent `disable_actions=true`
+	 * or `disable_webhooks=true` for this test. Without this gate the
+	 * kill-switch would fire on EVERY CheckView test, blocking Mailchimp
+	 * even on tests where the user explicitly wanted to exercise the
+	 * integration.
 	 *
-	 * @param mixed $order_id Order ID from Mailchimp's invocation. Note: the
-	 *                        plugin passes this as `$job->id` from a
-	 *                        `MailChimp_WooCommerce_Single_Order` job; verified
-	 *                        to be the WC order ID (not an internal job ID).
+	 * Only engages when CV_TEST_ID is defined — real customer requests
+	 * never reach this branch.
 	 *
-	 * @return mixed `false` to suppress the Mailchimp push, `null` (pass-through)
-	 *               otherwise.
+	 * @since 2.0.34
+	 *
+	 * @return void
 	 */
-	public function checkview_filter_mailchimp_should_push_order( $order_id ) {
-		if ( ! $order_id ) {
-			return null; // nothing to evaluate; pass through.
+	public function checkview_mailchimp_killswitch() {
+		if ( ! defined( 'CV_TEST_ID' ) || ! CV_TEST_ID ) {
+			return;
 		}
-
-		$order = wc_get_order( $order_id );
-		if ( $order && cv_is_suppressible_test_order( $order ) ) {
-			return false;
+		$suppress = ( get_option( 'disable_actions_' . CV_TEST_ID ) === 'true' )
+				|| ( get_option( 'disable_webhooks_' . CV_TEST_ID ) === 'true' );
+		if ( ! $suppress ) {
+			return;
 		}
-
-		return null;
+		add_filter( 'mailchimp_is_configured',         '__return_false', PHP_INT_MAX );
+		add_filter( 'mailchimp_allowed_to_use_cookie', '__return_false', PHP_INT_MAX );
+		add_filter( 'mailchimp_carts_disabled',        '__return_true',  PHP_INT_MAX );
 	}
 
 	/**
