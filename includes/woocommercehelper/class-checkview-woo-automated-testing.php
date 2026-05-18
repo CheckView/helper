@@ -689,6 +689,23 @@ class Checkview_Woo_Automated_Testing {
 				1
 			);
 
+			// Also stamp on every order save so WC Block Checkout drafts get
+			// their `checkview_test_id` meta BEFORE any
+			// `order.updated@checkout-draft` webhook is enqueued for Shippo
+			// et al. `woocommerce_after_order_object_save` fires from
+			// `WC_Abstract_Order::save()` on EVERY save and resolves per
+			// `$object_type`, so it covers WC_Order (not refunds) on both
+			// HPOS and legacy stores. Reentrancy from our own `$order->save()`
+			// call inside the stamper is bounded by the static `$in_progress`
+			// guard and the existing first-wins meta check.
+			$this->loader->add_action(
+				'woocommerce_after_order_object_save',
+				$this,
+				'checkview_stamp_order_meta_from_save',
+				self::STAMP_PRIORITY,
+				1
+			);
+
 			$this->loader->add_action(
 				'woocommerce_order_status_changed',
 				$this,
@@ -1042,32 +1059,78 @@ class Checkview_Woo_Automated_Testing {
 		if ( ! function_exists( 'wc_get_order' ) ) {
 			return; // WC not loaded; bail safely
 		}
-
-		$order = wc_get_order( $order_id );
-		if ( ! $order ) {
+		// Don't stamp orders that are being torn down by the cleanup cron —
+		// `$order->delete()` fires save() hooks during the delete sequence,
+		// which would re-stamp + re-save a half-deleted order.
+		if ( doing_action( 'checkview_delete_orders_action' ) ) {
 			return;
 		}
-
-		// Idempotency guard — first-wins on `checkview_test_id`. Keeps the
-		// original test association on failed-payment retries where the
-		// same order is touched twice.
-		if ( $order->get_meta( 'checkview_test_id' ) ) {
+		// Reentrancy guard — `$order->save()` below fires
+		// `woocommerce_after_order_object_save` which re-enters via the
+		// `checkview_stamp_order_meta_from_save` adapter. The meta-present
+		// idempotency check catches the loop, but make the guard explicit
+		// so future refactors can't reintroduce recursion. `try/finally`
+		// guarantees release even if `wc_get_order()` or `$order->save()`
+		// throws.
+		static $in_progress = array();
+		if ( isset( $in_progress[ $order_id ] ) ) {
 			return;
 		}
+		$in_progress[ $order_id ] = true;
+		try {
 
-		$order->update_meta_data( 'payment_made_by', 'checkview' );
-		$order->update_meta_data( 'checkview_test_id', CV_TEST_ID );
-		$order->save();
+			$order = wc_get_order( $order_id );
+			if ( ! $order ) {
+				return;
+			}
 
-		Checkview_Admin_Logs::add( 'ip-logs', 'Stamped CheckView meta on order [' . $order->get_id() . '] for test [' . CV_TEST_ID . '].' );
+			// Idempotency guard — first-wins on `checkview_test_id`. Keeps the
+			// original test association on failed-payment retries where the
+			// same order is touched twice.
+			if ( $order->get_meta( 'checkview_test_id' ) ) {
+				return;
+			}
 
-		// Clear the test cookie HERE (during the request, before headers
-		// flush) — guarded by headers_sent() to avoid silent failure if a
-		// theme accidentally flushed early.
-		if ( ! headers_sent() ) {
-			unset( $_COOKIE['checkview_test_id'] );
-			setcookie( 'checkview_test_id', '', time() - 6600, COOKIEPATH, COOKIE_DOMAIN );
+			$order->update_meta_data( 'payment_made_by', 'checkview' );
+			$order->update_meta_data( 'checkview_test_id', CV_TEST_ID );
+			$order->save();
+
+			Checkview_Admin_Logs::add( 'ip-logs', 'Stamped CheckView meta on order [' . $order->get_id() . '] for test [' . CV_TEST_ID . '].' );
+
+			// Clear the test cookie HERE (during the request, before headers
+			// flush) — guarded by headers_sent() to avoid silent failure if a
+			// theme accidentally flushed early.
+			if ( ! headers_sent() ) {
+				unset( $_COOKIE['checkview_test_id'] );
+				setcookie( 'checkview_test_id', '', time() - 6600, COOKIEPATH, COOKIE_DOMAIN );
+			}
+
+		} finally {
+			unset( $in_progress[ $order_id ] );
 		}
+	}
+
+	/**
+	 * Adapter for `woocommerce_after_order_object_save` — that hook passes
+	 * the order object; our canonical stamper takes an order ID. Hook fires
+	 * on every order save (HPOS + legacy), so this resolves to a no-op
+	 * outside CheckView test requests via the stamper's CV_TEST_ID guard.
+	 *
+	 * The action name is `woocommerce_after_<object_type>_object_save` and
+	 * resolves to `woocommerce_after_order_object_save` for WC_Order only —
+	 * refunds (`object_type=order_refund`) fire a different action and are
+	 * NOT stamped by this adapter.
+	 *
+	 * @param mixed $order Order object passed by WC. Should be a WC_Order
+	 *                     instance, but we defensively check.
+	 *
+	 * @return void
+	 */
+	public function checkview_stamp_order_meta_from_save( $order ) {
+		if ( ! is_object( $order ) || ! method_exists( $order, 'get_id' ) ) {
+			return;
+		}
+		$this->checkview_stamp_order_meta( $order->get_id() );
 	}
 
 	/**
