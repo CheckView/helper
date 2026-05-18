@@ -836,12 +836,14 @@ class Checkview_Woo_Automated_Testing {
 	public function checkview_filter_webhooks( $should_deliver, $webhook_object, $arg ) {
 		$topic = $webhook_object->get_topic();
 
-		// customer.* topics are user-scoped, not order-scoped — don't gate them.
-		if ( ! empty( $topic ) && 0 === strpos( $topic, 'customer.' ) ) {
-			return $should_deliver;
-		}
-
-		if ( ! empty( $arg ) ) {
+		// Order-scoped topics: `order.*`, `subscription.*`. $arg is an order
+		// (or subscription, which WC stores as an order). The canonical
+		// path: resolve order, check `cv_is_suppressible_test_order` for
+		// the meta + options invariants.
+		if ( ! empty( $arg ) && (
+			0 === strpos( (string) $topic, 'order.' )
+			|| 0 === strpos( (string) $topic, 'subscription.' )
+		) ) {
 			$order = wc_get_order( $arg );
 			if ( $order && cv_is_suppressible_test_order( $order ) ) {
 				return false;
@@ -858,11 +860,33 @@ class Checkview_Woo_Automated_Testing {
 			// the deletion was driven by us and should be suppressed
 			// downstream (TTL covers WC's webhook-retry backoff which can
 			// extend to multiple days on a failing endpoint).
-			if ( ! $order && 0 === strpos( (string) $topic, 'order.' ) ) {
+			if ( ! $order ) {
 				if ( get_transient( 'cv_deleted_test_order_' . (int) $arg ) ) {
 					return false;
 				}
 			}
+
+			return $should_deliver;
+		}
+
+		// Non-order-scoped topics (`customer.*`, `product.*`, `coupon.*`):
+		// $arg is NOT an order ID, so the meta-based check above doesn't
+		// apply. But these CAN fire during a CheckView test — e.g. WC fires
+		// `customer.created` when the checkout creates a guest-account for
+		// the test's synthetic email. If we just passed through (PR #203
+		// did), those webhooks ship the test customer/product/coupon to
+		// Shippo/Mailchimp/etc.
+		//
+		// Gate them on CV_TEST_ID being defined AND the same option pair
+		// `cv_is_suppressible_test_order` uses. If the request is a
+		// CheckView test with active suppression, drop the delivery.
+		// Otherwise pass through (real-customer customer/product/coupon
+		// events deliver normally — they don't have CV_TEST_ID defined).
+		if ( defined( 'CV_TEST_ID' ) && CV_TEST_ID && (
+			get_option( 'disable_webhooks_' . CV_TEST_ID ) === 'true'
+			|| get_option( 'disable_actions_' . CV_TEST_ID ) === 'true'
+		) ) {
+			return false;
 		}
 
 		return $should_deliver;
@@ -875,23 +899,39 @@ class Checkview_Woo_Automated_Testing {
 	 * not exist anywhere in Mailchimp for WooCommerce 6.1 (verified by
 	 * source grep on a live customer install). That method was a no-op.
 	 *
-	 * Replacement strategy: filter `mailchimp_is_configured()` to false
-	 * when CV_TEST_ID is defined AND the user has the per-test
-	 * "Disable Form Integrations" toggle on. `mailchimp_is_configured()`
-	 * is the guard at the top of ~16 Mailchimp handlers (order push, cart
-	 * push, customer sync, pixel emit, AS-dequeued single-order job, etc).
-	 * Filtering it to false makes every handler an early-return no-op. AS
-	 * jobs that were already enqueued before our filter armed re-check on
-	 * dequeue and become no-ops too — covering the AS-deferred path
-	 * without a `remove_action` chase.
+	 * Replacement strategy: install three Mailchimp filters when CV_TEST_ID
+	 * is defined AND the user has the per-test "Disable Form Integrations"
+	 * toggle on. Filter behavior in MC for WC 6.1 (verified by reading
+	 * `includes/class-mailchimp-woocommerce-service.php` and
+	 * `bootstrap.php` in the installed plugin source):
 	 *
-	 * Also filter:
-	 *   - `mailchimp_allowed_to_use_cookie` → false: blocks the browser-
-	 *     side tracking cookie path.
-	 *   - `mailchimp_carts_disabled` → true: blocks cart-sync triggers
-	 *     (this is the actual subscriber-leak path — every cart mutation
-	 *     queues the customer email to Mailchimp Audience before the
-	 *     order has even been placed).
+	 *   - `mailchimp_allowed_to_use_cookie` → false: **LOAD-BEARING**.
+	 *     This is the only one of the three that MC 6.1 actually consults
+	 *     via `apply_filters()` (in `bootstrap.php:mailchimp_allowed_to_use_cookie`).
+	 *     Blocking it disables the browser-side tracking cookie path,
+	 *     which is upstream of cart/subscriber/order sync.
+	 *
+	 *   - `mailchimp_is_configured` → false: **DEFENSIVE, may no-op today**.
+	 *     The function of the same name in `bootstrap.php` returns
+	 *     `(bool) (mailchimp_get_api_key() && mailchimp_get_list_id())`
+	 *     directly — no `apply_filters()` call. Mailchimp may add the
+	 *     filter in future versions; if so, our hook engages then.
+	 *
+	 *   - `mailchimp_carts_disabled` → true: **DEFENSIVE, may no-op today**.
+	 *     The function returns the option value directly with no
+	 *     `apply_filters()` call. Same rationale.
+	 *
+	 * Why these two stay despite being current no-ops: zero runtime cost,
+	 * forward-compatible with Mailchimp's API evolution, and the comment
+	 * documents the rationale so future maintainers don't remove them.
+	 *
+	 * Empirical suppression on nicholaslodge with toggle ON ALSO benefits
+	 * from a secondary effect: WC's webhook filter (separate path) blocks
+	 * `order.*` deliveries, and the SaaS-side `/store/deleteorders` call
+	 * wipes the order before Mailchimp's AS-deferred `Single_Order::process()`
+	 * dequeues — so its `getRealOrderNumber()` lookup fails and the push
+	 * aborts. That secondary effect is fragile (depends on race timing)
+	 * but reinforces the cookie-filter block.
 	 *
 	 * Option gate (mirrors `cv_is_suppressible_test_order` for the WC
 	 * webhook filter): only engage when the SaaS sent `disable_actions=true`
