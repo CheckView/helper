@@ -16,6 +16,26 @@
  */
 class Checkview_Woo_Automated_Testing {
 	/**
+	 * Priority at which `checkview_stamp_order_meta` is registered on
+	 * `woocommerce_new_order`.
+	 *
+	 * H1+H9 coupling: this priority MUST be strictly less than 200 because
+	 * Mailchimp for WooCommerce registers `handleOrderCreate` on
+	 * `woocommerce_new_order @ priority 200`, which then synchronously fires
+	 * the `mailchimp_should_push_order` filter that H9 hooks. For our
+	 * suppression filter to see the `checkview_test_id` order meta, the
+	 * stamping function must run first.
+	 *
+	 * Test 21 in the helper test suite asserts this invariant — DO NOT change
+	 * to a value ≥ 200 without also moving the test priority floor up.
+	 *
+	 * @since 2.0.34
+	 *
+	 * @var int
+	 */
+	const STAMP_PRIORITY = 1;
+
+	/**
 	 * Plugin name.
 	 *
 	 * @since 1.0.0
@@ -650,13 +670,56 @@ class Checkview_Woo_Automated_Testing {
 				2
 			);
 
+			// H1 split (replaces the old combined `checkview_add_custom_fields_after_purchase`):
+			// - `checkview_stamp_order_meta` runs early on `woocommerce_new_order @ priority STAMP_PRIORITY`
+			//   so the order meta is in place BEFORE any addon's hook on the same event fires
+			//   (e.g. Mailchimp for WooCommerce hooks `handleOrderCreate` at priority 200, so we
+			//   stamp at priority 1 — STAMP_PRIORITY < 200 is the load-bearing invariant for H9).
+			// - `checkview_schedule_order_cleanup` keeps the existing `woocommerce_order_status_changed`
+			//   registration so order deletion is scheduled after the order has its final status.
+			// - `checkview_complete_test_deferred` runs at `shutdown` so per-test options stay alive
+			//   for the entire request — addons firing later in the request (Mailchimp's filter,
+			//   any `woocommerce_webhook_should_deliver` filter) can still read the option to
+			//   decide whether to suppress.
+			$this->loader->add_action(
+				'woocommerce_new_order',
+				$this,
+				'checkview_stamp_order_meta',
+				self::STAMP_PRIORITY,
+				1
+			);
+
 			$this->loader->add_action(
 				'woocommerce_order_status_changed',
 				$this,
-				'checkview_add_custom_fields_after_purchase',
+				'checkview_schedule_order_cleanup',
 				10,
 				3
 			);
+
+			$this->loader->add_action(
+				'shutdown',
+				$this,
+				'checkview_complete_test_deferred',
+				10,
+				0
+			);
+
+			// H9: gate Mailchimp for WooCommerce's order push behind the same
+			// safety invariant. Mailchimp uses direct WC action hooks → AS
+			// queue, bypassing WC's webhook system, so the H3 webhook filter
+			// alone doesn't catch it. This filter fires synchronously inside
+			// `mailchimp_handle_or_queue()` BEFORE the order is queued for
+			// async push.
+			if ( class_exists( 'MailChimp_WooCommerce' ) ) {
+				$this->loader->add_filter(
+					'mailchimp_should_push_order',
+					$this,
+					'checkview_filter_mailchimp_should_push_order',
+					10,
+					1
+				);
+			}
 		} else {
 			Checkview_Admin_Logs::add( 'ip-logs', 'No Woo hooks were ran (WooCommerce was not found or client is requesting admin area).' );
 		}
@@ -706,44 +769,92 @@ class Checkview_Woo_Automated_Testing {
 
 
 	/**
-	 * Stops delivery of webhooks for CheckView orders.
+	 * Stops delivery of WooCommerce webhooks for active CheckView test orders.
+	 *
+	 * H3 rewrite: previously branched on `'order.'` and `'subscription.'`
+	 * topic prefixes and gated on `payment_method/payment_made_by === 'checkview'`
+	 * with `defined('CV_DISABLE_WEBHOOKS')`. The new design delegates to
+	 * `cv_is_suppressible_test_order()` which implements the unified safety
+	 * invariant (UUID order meta + active per-test option) — gateway-agnostic
+	 * and topic-broadened (covers `order.*`, `subscription.*`, `coupon.*`,
+	 * `product.*`).
+	 *
+	 * `customer.*` topics are explicitly excluded because they are user-scoped
+	 * (not order-scoped) — `wc_get_order()` on a customer ID would either
+	 * return false (typical) or coincidentally resolve to a different
+	 * resource's order (extremely rare ID overlap), and either way the
+	 * downstream gate would correctly fail. Excluding them upfront avoids
+	 * any ambiguity and keeps the customer-scoped topic delivery path clean.
 	 *
 	 * @param bool   $should_deliver Delivery status.
 	 * @param object $webhook_object Webhook object.
-	 * @param array  $arg Args to support.
+	 * @param mixed  $arg Resource ID for the webhook topic (typically an order
+	 *                    ID for order/subscription topics; can arrive as int
+	 *                    or numeric string depending on caller).
 	 * @return bool
 	 */
 	public function checkview_filter_webhooks( $should_deliver, $webhook_object, $arg ) {
-
 		$topic = $webhook_object->get_topic();
 
-		if ( ! empty( $topic ) && ! empty( $arg ) && 'order.' === substr( $topic, 0, 6 ) ) {
+		// customer.* topics are user-scoped, not order-scoped — don't gate them.
+		if ( ! empty( $topic ) && 0 === strpos( $topic, 'customer.' ) ) {
+			return $should_deliver;
+		}
 
+		if ( ! empty( $arg ) ) {
 			$order = wc_get_order( $arg );
-
-			if ( ! empty( $order ) ) {
-				$payment_method  = ( \is_object( $order ) && \method_exists( $order, 'get_payment_method' ) ) ? $order->get_payment_method() : false;
-				$payment_made_by = $order->get_meta( 'payment_made_by' );
-				$should_suppress = defined( 'CV_DISABLE_WEBHOOKS' );
-				if ( ( 'checkview' === $payment_method || 'checkview' === $payment_made_by ) && $should_suppress ) {
-					return false;
-				}
-			}
-		} elseif ( ! empty( $topic ) && ! empty( $arg ) && 'subscription.' === substr( $topic, 0, 13 ) ) {
-
-			$order = wc_get_order( $arg );
-
-			if ( ! empty( $order ) ) {
-				$payment_method  = ( \is_object( $order ) && \method_exists( $order, 'get_payment_method' ) ) ? $order->get_payment_method() : false;
-				$payment_made_by = is_object( $order ) ? $order->get_meta( 'payment_made_by' ) : '';
-				$should_suppress = defined( 'CV_DISABLE_WEBHOOKS' );
-				if ( ( 'checkview' === $payment_method || 'checkview' === $payment_made_by ) && $should_suppress ) {
-					return false;
-				}
+			if ( $order && cv_is_suppressible_test_order( $order ) ) {
+				return false;
 			}
 		}
 
 		return $should_deliver;
+	}
+
+	/**
+	 * Suppresses Mailchimp for WooCommerce order pushes for active CheckView
+	 * test orders.
+	 *
+	 * H9: Mailchimp's WC plugin uses direct WC action hooks
+	 * (`woocommerce_new_order @ priority 200`, `woocommerce_order_status_changed`,
+	 * `woocommerce_update_order`) → Action Scheduler queue → asynchronous
+	 * `wp_remote_post()` to api.mailchimp.com. It bypasses WC's webhook system
+	 * entirely, so the H3 webhook filter alone doesn't catch it.
+	 *
+	 * Fortunately Mailchimp exposes a per-order pre-queue filter
+	 * `mailchimp_should_push_order` invoked synchronously inside
+	 * `mailchimp_handle_or_queue()`. Returning false short-circuits the queue
+	 * write, preventing the deferred API call from ever being scheduled.
+	 *
+	 * For our return false to engage, the order must already carry the
+	 * `checkview_test_id` meta when this filter fires — which is why
+	 * `checkview_stamp_order_meta` MUST be registered at
+	 * `woocommerce_new_order @ priority < 200` (see STAMP_PRIORITY).
+	 *
+	 * Filter signature confirmed via Mailchimp source: invoked with ONE
+	 * argument (`$order_id`), and the call site checks `=== false` to skip
+	 * queueing. Returning null pass-through preserves any other plugin's
+	 * filter that may have legitimately returned false.
+	 *
+	 * @param mixed $order_id Order ID from Mailchimp's invocation. Note: the
+	 *                        plugin passes this as `$job->id` from a
+	 *                        `MailChimp_WooCommerce_Single_Order` job; verified
+	 *                        to be the WC order ID (not an internal job ID).
+	 *
+	 * @return mixed `false` to suppress the Mailchimp push, `null` (pass-through)
+	 *               otherwise.
+	 */
+	public function checkview_filter_mailchimp_should_push_order( $order_id ) {
+		if ( ! $order_id ) {
+			return null; // nothing to evaluate; pass through.
+		}
+
+		$order = wc_get_order( $order_id );
+		if ( $order && cv_is_suppressible_test_order( $order ) ) {
+			return false;
+		}
+
+		return null;
 	}
 
 	/**
@@ -888,31 +999,145 @@ class Checkview_Woo_Automated_Testing {
 	}
 
 	/**
-	 * Adds custom meta to CheckView test orders.
+	 * Stamps `payment_made_by` and `checkview_test_id` meta onto a newly-created
+	 * WooCommerce order if the current request is a CheckView test.
+	 *
+	 * H1 (round 7): split out from the original combined
+	 * `checkview_add_custom_fields_after_purchase`. This function ONLY stamps
+	 * meta; it does NOT call `complete_checkview_test()` or schedule cleanup.
+	 *
+	 * Hooked on `woocommerce_new_order @ priority STAMP_PRIORITY` so it runs
+	 * BEFORE addons hooking the same event at higher priorities (e.g. Mailchimp
+	 * at @ priority 200). H9's Mailchimp filter
+	 * (`checkview_filter_mailchimp_should_push_order`) reads this meta to
+	 * decide whether to suppress; if stamping ran later, the filter would see
+	 * an unstamped order and silently fail to suppress.
+	 *
+	 * Round-7 hardening: the original function trusted `$_COOKIE['checkview_test_id']`
+	 * alone — a real customer with a stale 110-min cookie would have had their
+	 * order incorrectly stamped. This version uses the per-request `CV_TEST_ID`
+	 * constant (defined by `checkview_init_current_test()` after `is_bot()`
+	 * passes IP whitelist + query param validation), which cannot leak to a
+	 * real customer's request.
+	 *
+	 * Round-9 hardening: includes a `wc_get_order` guard for sites where
+	 * WC isn't loaded, and clears the `checkview_test_id` cookie here (during
+	 * the request, before headers flush) — moved out of `complete_checkview_test()`
+	 * which now runs at shutdown where `setcookie()` would silently fail.
+	 *
+	 * Idempotent with first-wins policy: if the order already has a
+	 * `checkview_test_id` meta from a prior request (e.g. failed-payment retry),
+	 * we keep the original stamp instead of overwriting. Preserves the original
+	 * test association.
+	 *
+	 * @since 2.0.34
+	 *
+	 * @param int $order_id WooCommerce order ID.
+	 * @return void
+	 */
+	public function checkview_stamp_order_meta( $order_id ) {
+		if ( ! defined( 'CV_TEST_ID' ) || ! CV_TEST_ID ) {
+			return; // not a CheckView test request
+		}
+		if ( ! function_exists( 'wc_get_order' ) ) {
+			return; // WC not loaded; bail safely
+		}
+
+		$order = wc_get_order( $order_id );
+		if ( ! $order ) {
+			return;
+		}
+
+		// Idempotency guard — first-wins on `checkview_test_id`. Keeps the
+		// original test association on failed-payment retries where the
+		// same order is touched twice.
+		if ( $order->get_meta( 'checkview_test_id' ) ) {
+			return;
+		}
+
+		$order->update_meta_data( 'payment_made_by', 'checkview' );
+		$order->update_meta_data( 'checkview_test_id', CV_TEST_ID );
+		$order->save();
+
+		Checkview_Admin_Logs::add( 'ip-logs', 'Stamped CheckView meta on order [' . $order->get_id() . '] for test [' . CV_TEST_ID . '].' );
+
+		// Clear the test cookie HERE (during the request, before headers
+		// flush) — guarded by headers_sent() to avoid silent failure if a
+		// theme accidentally flushed early.
+		if ( ! headers_sent() ) {
+			unset( $_COOKIE['checkview_test_id'] );
+			setcookie( 'checkview_test_id', '', time() - 6600, COOKIEPATH, COOKIE_DOMAIN );
+		}
+	}
+
+	/**
+	 * Schedules deletion of a CheckView test order at status-change time.
+	 *
+	 * H1 (round 7): split out from the original combined
+	 * `checkview_add_custom_fields_after_purchase`. Preserves the existing
+	 * `woocommerce_order_status_changed @ priority 10` registration so cleanup
+	 * is scheduled after the order has its final status (matches pre-split
+	 * behaviour for backwards compatibility).
+	 *
+	 * Verifies the order's `checkview_test_id` meta matches the current request's
+	 * `CV_TEST_ID` to prevent incorrectly scheduling cleanup for orders that
+	 * weren't stamped by THIS test (e.g. cross-test status changes during
+	 * concurrent runs, or admin manual transitions on stale stamped orders).
+	 *
+	 * @since 2.0.34
 	 *
 	 * @param int    $order_id Order ID.
 	 * @param string $old_status Order's old status.
 	 * @param string $new_status Order's new status.
 	 * @return void
 	 */
-	public function checkview_add_custom_fields_after_purchase( $order_id, $old_status, $new_status ) {
-		if ( isset( $_COOKIE['checkview_test_id'] ) && '' !== $_COOKIE['checkview_test_id'] && checkview_is_valid_uuid( sanitize_text_field( wp_unslash( $_COOKIE['checkview_test_id'] ) ) ) ) {
-			$order = new WC_Order( $order_id );
-			$order->update_meta_data( 'payment_made_by', 'checkview' );
-			$order->update_meta_data( 'checkview_test_id', sanitize_text_field( wp_unslash( $_COOKIE['checkview_test_id'] ) ) );
-
-			Checkview_Admin_Logs::add( 'ip-logs', 'Added meta data to test order.' );
-
-			complete_checkview_test( sanitize_text_field( wp_unslash( $_COOKIE['checkview_test_id'] ) ) );
-
-			$order->save();
-
-			Checkview_Admin_Logs::add( 'ip-logs', 'Saved new order [' . $order->get_id() . '].' );
-
-			unset( $_COOKIE['checkview_test_id'] );
-			setcookie( 'checkview_test_id', '', time() - 6600, COOKIEPATH, COOKIE_DOMAIN );
-			checkview_schedule_delete_orders( $order_id );
+	public function checkview_schedule_order_cleanup( $order_id, $old_status, $new_status ) {
+		if ( ! defined( 'CV_TEST_ID' ) || ! CV_TEST_ID ) {
+			return; // not a test request
 		}
+		if ( ! function_exists( 'wc_get_order' ) ) {
+			return;
+		}
+
+		$order = wc_get_order( $order_id );
+		if ( ! $order || $order->get_meta( 'checkview_test_id' ) !== CV_TEST_ID ) {
+			return; // not OUR test order
+		}
+
+		checkview_schedule_delete_orders( $order_id );
+	}
+
+	/**
+	 * Calls `complete_checkview_test()` at shutdown to clean up per-test
+	 * options and session state.
+	 *
+	 * H1 (round 7): split out from the original combined
+	 * `checkview_add_custom_fields_after_purchase`. Deferring cleanup to
+	 * `shutdown` is critical for H9 — Mailchimp's
+	 * `mailchimp_should_push_order` filter (and any other in-request
+	 * suppression filter) reads the per-test options
+	 * (`disable_webhooks_<id>`, `disable_actions_<id>`) to decide whether to
+	 * suppress. If we cleaned up earlier (e.g. on `woocommerce_new_order`
+	 * alongside stamping), Mailchimp would read deleted options and
+	 * `cv_is_suppressible_test_order` would return false → silent suppression
+	 * failure. Running at shutdown lets all in-request hooks see the options
+	 * alive, then cleans up after the request completes.
+	 *
+	 * Empty-state guard: `shutdown` fires for every WP request (admin pages,
+	 * front-end, REST, AJAX, cron, CLI), so without the guard we'd call
+	 * `complete_checkview_test('')` on every non-CheckView request and try
+	 * to delete options with empty-string keys. The guard makes this a no-op
+	 * outside test requests.
+	 *
+	 * @since 2.0.34
+	 *
+	 * @return void
+	 */
+	public function checkview_complete_test_deferred() {
+		if ( ! defined( 'CV_TEST_ID' ) || ! CV_TEST_ID ) {
+			return; // not a test request — don't delete options with empty key
+		}
+		complete_checkview_test( CV_TEST_ID );
 	}
 
 	/**
