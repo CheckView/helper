@@ -1108,26 +1108,45 @@ class Checkview_Woo_Automated_Testing {
 	}
 
 	/**
-	 * Calls `complete_checkview_test()` at shutdown to clean up per-test
-	 * options and session state.
+	 * Calls `complete_checkview_test()` at shutdown of the request that
+	 * actually completes a test order, cleaning up per-test options + session.
 	 *
-	 * H1 (round 7): split out from the original combined
-	 * `checkview_add_custom_fields_after_purchase`. Deferring cleanup to
-	 * `shutdown` is critical for H9 — Mailchimp's
-	 * `mailchimp_should_push_order` filter (and any other in-request
-	 * suppression filter) reads the per-test options
-	 * (`disable_webhooks_<id>`, `disable_actions_<id>`) to decide whether to
-	 * suppress. If we cleaned up earlier (e.g. on `woocommerce_new_order`
-	 * alongside stamping), Mailchimp would read deleted options and
-	 * `cv_is_suppressible_test_order` would return false → silent suppression
-	 * failure. Running at shutdown lets all in-request hooks see the options
-	 * alive, then cleans up after the request completes.
+	 * Why gated on completion `did_action`:
+	 *   The previous unconditional behavior fired `complete_checkview_test`
+	 *   at the shutdown of EVERY test-bearing request — including the very
+	 *   first navigation that wrote the `disable_webhooks_<uuid>` /
+	 *   `disable_actions_<uuid>` options. That immediately deleted them.
+	 *   Subsequent navigations re-wrote and re-deleted them, and the
+	 *   order-creating `wc-ajax=checkout` / `/wc/store/v1/checkout` POST
+	 *   (which does NOT carry the `?disable_*` query params — Playwright
+	 *   only injects on `isNavigationRequest`) found no options to read,
+	 *   so suppression no-op'd and webhooks fired to Shippo with the
+	 *   404 "Invalid ID" payload (because `checkview_delete_orders` had
+	 *   already wiped the order by the time WC built the webhook payload).
 	 *
-	 * Empty-state guard: `shutdown` fires for every WP request (admin pages,
-	 * front-end, REST, AJAX, cron, CLI), so without the guard we'd call
-	 * `complete_checkview_test('')` on every non-CheckView request and try
-	 * to delete options with empty-string keys. The guard makes this a no-op
-	 * outside test requests.
+	 *   Gating on completion `did_action()` preserves the options across
+	 *   intermediate test navigations, then cleans up only on the request
+	 *   that placed the order.
+	 *
+	 * Form helpers (CF7, GF, NF, WPForms, FluentForms, WSF, Formidable,
+	 * Forminator, Everest) call `complete_checkview_test()` synchronously
+	 * inside their submission hooks and don't depend on this shutdown path
+	 * — gating to Woo completion actions doesn't affect form-test cleanup.
+	 *
+	 * Known leak: tests that abort before any completion action fires
+	 * (Playwright crash, early assert failure, payment/validation error
+	 * before `woocommerce_new_order`) leave the per-test options behind.
+	 * UUIDs are unique per run so leaked options never affect later
+	 * tests; growth is bounded by abort rate. A follow-up should add an
+	 * hourly wp-cron sweep keyed on a sibling `_t` timestamp option.
+	 *
+	 * Long-lived worker note: `did_action()` is request-scoped — it counts
+	 * fires within the current PHP request. PHP-FPM / mod_php / Apache
+	 * tear down between requests, so each test-bearing request has its
+	 * own counter starting at zero. WP-CLI long-running commands or
+	 * Roadrunner-style workers would see accumulated counts from prior
+	 * iterations, but CheckView's test traffic only ever hits web-style
+	 * request lifecycles.
 	 *
 	 * @since 2.0.34
 	 *
@@ -1137,6 +1156,21 @@ class Checkview_Woo_Automated_Testing {
 		if ( ! defined( 'CV_TEST_ID' ) || ! CV_TEST_ID ) {
 			return; // not a test request — don't delete options with empty key
 		}
+
+		$completion_fired = did_action( 'woocommerce_new_order' )
+			|| did_action( 'woocommerce_thankyou' )
+			|| did_action( 'woocommerce_checkout_order_processed' )
+			|| did_action( 'woocommerce_store_api_checkout_order_processed' )
+			|| did_action( 'woocommerce_rest_insert_shop_order_object' );
+
+		if ( ! $completion_fired ) {
+			Checkview_Admin_Logs::add(
+				'ip-logs',
+				'Shutdown cleanup skipped for ' . CV_TEST_ID . ' — no order completion this request'
+			);
+			return;
+		}
+
 		complete_checkview_test( CV_TEST_ID );
 	}
 
