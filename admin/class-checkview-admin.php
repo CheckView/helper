@@ -531,10 +531,14 @@ class Checkview_Admin {
 		// from the SaaS, and MUST NOT be cleared mid-test on subsequent AJAX
 		// requests that lack the param — downstream gates
 		// (`cv_is_suppressible_test_order`, `checkview_filter_webhooks`,
-		// `mailchimp_should_push_order` filter, etc.) read these options when
-		// the webhook/action fires, which can be many requests later. Only
-		// `complete_checkview_test()` (called via the deferred shutdown handler
-		// or sync from form helpers) deletes them, at the very end of the test.
+		// `checkview_mailchimp_killswitch`) read these options when the
+		// webhook/action fires, which can be many requests later. Only
+		// `complete_checkview_test()` deletes them — called either
+		// synchronously from form-helper submission hooks, or via
+		// `checkview_complete_test_deferred` on `shutdown` (which is gated
+		// on Woo order-completion `did_action()` checks so options survive
+		// intermediate test requests like cart visits and Store API cart
+		// fetches until the actual order-creating request's shutdown).
 		if ( ! defined( 'CV_DISABLE_WEBHOOKS' ) && $disable_webhooks ) {
 			define( 'CV_DISABLE_WEBHOOKS', 'true' );
 

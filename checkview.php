@@ -17,6 +17,7 @@
  * License:           GPL-2.0+
  * License URI:       http://www.gnu.org/licenses/gpl-2.0.txt
  * Text Domain:       checkview
+ * Requires PHP:      7.4
  * WC requires at least: 7.0
  * WC tested up to: 8.3
  * Domain Path:       /languages

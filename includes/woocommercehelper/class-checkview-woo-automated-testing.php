@@ -17,17 +17,21 @@
 class Checkview_Woo_Automated_Testing {
 	/**
 	 * Priority at which `checkview_stamp_order_meta` is registered on
-	 * `woocommerce_new_order`.
+	 * `woocommerce_new_order` (and via the adapter on
+	 * `woocommerce_after_order_object_save`).
 	 *
-	 * H1+H9 coupling: this priority MUST be strictly less than 200 because
-	 * Mailchimp for WooCommerce registers `handleOrderCreate` on
-	 * `woocommerce_new_order @ priority 200`, which then synchronously fires
-	 * the `mailchimp_should_push_order` filter that H9 hooks. For our
-	 * suppression filter to see the `checkview_test_id` order meta, the
-	 * stamping function must run first.
+	 * Why strictly less than 200: Mailchimp for WooCommerce registers
+	 * `MailChimp_Service::handleOrderCreate` on
+	 * `woocommerce_new_order @ priority 200`. For other addons (Shippo's
+	 * WC webhooks, Mailchimp's order-meta readers, etc) to see the
+	 * `checkview_test_id` meta when they run on the same hook, our
+	 * stamping function MUST run first. This priority is also the
+	 * "early enough" requirement for `woocommerce_after_order_object_save`
+	 * so the meta lands before WC enqueues any `order.updated` webhook
+	 * for the same save.
 	 *
-	 * Test 21 in the helper test suite asserts this invariant — DO NOT change
-	 * to a value ≥ 200 without also moving the test priority floor up.
+	 * DO NOT change to a value ≥ 200 without first auditing every addon
+	 * registered on `woocommerce_new_order` for downstream meta reads.
 	 *
 	 * @since 2.0.34
 	 *
@@ -674,7 +678,10 @@ class Checkview_Woo_Automated_Testing {
 			// - `checkview_stamp_order_meta` runs early on `woocommerce_new_order @ priority STAMP_PRIORITY`
 			//   so the order meta is in place BEFORE any addon's hook on the same event fires
 			//   (e.g. Mailchimp for WooCommerce hooks `handleOrderCreate` at priority 200, so we
-			//   stamp at priority 1 — STAMP_PRIORITY < 200 is the load-bearing invariant for H9).
+			//   stamp at priority 1).
+			// - `checkview_stamp_order_meta_from_save` runs on every order save
+			//   (`woocommerce_after_order_object_save @ STAMP_PRIORITY`) so WC Block Checkout
+			//   drafts get their meta BEFORE any `order.updated@checkout-draft` webhook fires.
 			// - `checkview_schedule_order_cleanup` keeps the existing `woocommerce_order_status_changed`
 			//   registration so order deletion is scheduled after the order has its final status.
 			// - `checkview_complete_test_deferred` runs at `shutdown` so per-test options stay alive
@@ -685,6 +692,23 @@ class Checkview_Woo_Automated_Testing {
 				'woocommerce_new_order',
 				$this,
 				'checkview_stamp_order_meta',
+				self::STAMP_PRIORITY,
+				1
+			);
+
+			// Also stamp on every order save so WC Block Checkout drafts get
+			// their `checkview_test_id` meta BEFORE any
+			// `order.updated@checkout-draft` webhook is enqueued for Shippo
+			// et al. `woocommerce_after_order_object_save` fires from
+			// `WC_Abstract_Order::save()` on EVERY save and resolves per
+			// `$object_type`, so it covers WC_Order (not refunds) on both
+			// HPOS and legacy stores. Reentrancy from our own `$order->save()`
+			// call inside the stamper is bounded by the static `$in_progress`
+			// guard and the existing first-wins meta check.
+			$this->loader->add_action(
+				'woocommerce_after_order_object_save',
+				$this,
+				'checkview_stamp_order_meta_from_save',
 				self::STAMP_PRIORITY,
 				1
 			);
@@ -705,19 +729,35 @@ class Checkview_Woo_Automated_Testing {
 				0
 			);
 
-			// H9: gate Mailchimp for WooCommerce's order push behind the same
-			// safety invariant. Mailchimp uses direct WC action hooks → AS
-			// queue, bypassing WC's webhook system, so the H3 webhook filter
-			// alone doesn't catch it. This filter fires synchronously inside
-			// `mailchimp_handle_or_queue()` BEFORE the order is queued for
-			// async push.
+			// Mailchimp kill-switch. PR #203 originally tried to gate Mailchimp
+			// via a `mailchimp_should_push_order` filter — but that filter
+			// does not exist in Mailchimp for WooCommerce 6.1 (source-grep
+			// confirmed). Replacement: when CV_TEST_ID is defined AND the
+			// SaaS has signalled suppression via `disable_actions=true` or
+			// `disable_webhooks=true`, filter Mailchimp's
+			// `mailchimp_is_configured()` to false. That guard sits at the
+			// top of ~16 Mailchimp handlers (order push, cart push, customer
+			// sync, AS-dequeued jobs, pixel emit). One filter kills them
+			// all, AS jobs queued before the filter armed re-check on
+			// dequeue, no remove_action needed.
+			//
+			// Also filter `mailchimp_allowed_to_use_cookie => false` (kills
+			// the browser-side tracking cookie path) and
+			// `mailchimp_carts_disabled => true` (the actual subscriber-leak
+			// path: every cart mutation queues the customer email to
+			// Mailchimp Audience before the order is even placed).
+			//
+			// Hooked on `init @ 99` — runs AFTER
+			// `checkview_init_current_test` (`init @ 10`) defines CV_TEST_ID
+			// and writes the `disable_*_<uuid>` options, BEFORE any WC order
+			// event (`woocommerce_init`, `woocommerce_new_order`, etc).
 			if ( class_exists( 'MailChimp_WooCommerce' ) ) {
-				$this->loader->add_filter(
-					'mailchimp_should_push_order',
+				$this->loader->add_action(
+					'init',
 					$this,
-					'checkview_filter_mailchimp_should_push_order',
-					10,
-					1
+					'checkview_mailchimp_killswitch',
+					99,
+					0
 				);
 			}
 		} else {
@@ -796,65 +836,129 @@ class Checkview_Woo_Automated_Testing {
 	public function checkview_filter_webhooks( $should_deliver, $webhook_object, $arg ) {
 		$topic = $webhook_object->get_topic();
 
-		// customer.* topics are user-scoped, not order-scoped — don't gate them.
-		if ( ! empty( $topic ) && 0 === strpos( $topic, 'customer.' ) ) {
-			return $should_deliver;
-		}
-
-		if ( ! empty( $arg ) ) {
+		// Order-scoped topics: `order.*`, `subscription.*`. $arg is an order
+		// (or subscription, which WC stores as an order). The canonical
+		// path: resolve order, check `cv_is_suppressible_test_order` for
+		// the meta + options invariants.
+		if ( ! empty( $arg ) && (
+			0 === strpos( (string) $topic, 'order.' )
+			|| 0 === strpos( (string) $topic, 'subscription.' )
+		) ) {
 			$order = wc_get_order( $arg );
 			if ( $order && cv_is_suppressible_test_order( $order ) ) {
 				return false;
 			}
+
+			// `order.deleted` topic: by the time WC dispatches this webhook,
+			// `wc_get_order($arg)` returns false because the order has been
+			// removed from the DB by `checkview_delete_orders`. Without this
+			// branch the suppression check above falls through and the
+			// deletion event reaches Shippo et al. for an order they never
+			// got an `order.created` for (we suppressed that earlier).
+			// `checkview_delete_orders` sets a 3-day transient before
+			// deleting each of OUR test orders; if that transient is present,
+			// the deletion was driven by us and should be suppressed
+			// downstream (TTL covers WC's webhook-retry backoff which can
+			// extend to multiple days on a failing endpoint).
+			if ( ! $order ) {
+				if ( get_transient( 'cv_deleted_test_order_' . (int) $arg ) ) {
+					return false;
+				}
+			}
+
+			return $should_deliver;
+		}
+
+		// Non-order-scoped topics (`customer.*`, `product.*`, `coupon.*`):
+		// $arg is NOT an order ID, so the meta-based check above doesn't
+		// apply. But these CAN fire during a CheckView test — e.g. WC fires
+		// `customer.created` when the checkout creates a guest-account for
+		// the test's synthetic email. If we just passed through (PR #203
+		// did), those webhooks ship the test customer/product/coupon to
+		// Shippo/Mailchimp/etc.
+		//
+		// Gate them on CV_TEST_ID being defined AND the same option pair
+		// `cv_is_suppressible_test_order` uses. If the request is a
+		// CheckView test with active suppression, drop the delivery.
+		// Otherwise pass through (real-customer customer/product/coupon
+		// events deliver normally — they don't have CV_TEST_ID defined).
+		if ( defined( 'CV_TEST_ID' ) && CV_TEST_ID && (
+			get_option( 'disable_webhooks_' . CV_TEST_ID ) === 'true'
+			|| get_option( 'disable_actions_' . CV_TEST_ID ) === 'true'
+		) ) {
+			return false;
 		}
 
 		return $should_deliver;
 	}
 
 	/**
-	 * Suppresses Mailchimp for WooCommerce order pushes for active CheckView
-	 * test orders.
+	 * Mailchimp kill-switch — replaces dead H9 filter.
 	 *
-	 * H9: Mailchimp's WC plugin uses direct WC action hooks
-	 * (`woocommerce_new_order @ priority 200`, `woocommerce_order_status_changed`,
-	 * `woocommerce_update_order`) → Action Scheduler queue → asynchronous
-	 * `wp_remote_post()` to api.mailchimp.com. It bypasses WC's webhook system
-	 * entirely, so the H3 webhook filter alone doesn't catch it.
+	 * PR #203 hooked a filter named `mailchimp_should_push_order` that does
+	 * not exist anywhere in Mailchimp for WooCommerce 6.1 (verified by
+	 * source grep on a live customer install). That method was a no-op.
 	 *
-	 * Fortunately Mailchimp exposes a per-order pre-queue filter
-	 * `mailchimp_should_push_order` invoked synchronously inside
-	 * `mailchimp_handle_or_queue()`. Returning false short-circuits the queue
-	 * write, preventing the deferred API call from ever being scheduled.
+	 * Replacement strategy: install three Mailchimp filters when CV_TEST_ID
+	 * is defined AND the user has the per-test "Disable Form Integrations"
+	 * toggle on. Filter behavior in MC for WC 6.1 (verified by reading
+	 * `includes/class-mailchimp-woocommerce-service.php` and
+	 * `bootstrap.php` in the installed plugin source):
 	 *
-	 * For our return false to engage, the order must already carry the
-	 * `checkview_test_id` meta when this filter fires — which is why
-	 * `checkview_stamp_order_meta` MUST be registered at
-	 * `woocommerce_new_order @ priority < 200` (see STAMP_PRIORITY).
+	 *   - `mailchimp_allowed_to_use_cookie` → false: **LOAD-BEARING**.
+	 *     This is the only one of the three that MC 6.1 actually consults
+	 *     via `apply_filters()` (in `bootstrap.php:mailchimp_allowed_to_use_cookie`).
+	 *     Blocking it disables the browser-side tracking cookie path,
+	 *     which is upstream of cart/subscriber/order sync.
 	 *
-	 * Filter signature confirmed via Mailchimp source: invoked with ONE
-	 * argument (`$order_id`), and the call site checks `=== false` to skip
-	 * queueing. Returning null pass-through preserves any other plugin's
-	 * filter that may have legitimately returned false.
+	 *   - `mailchimp_is_configured` → false: **DEFENSIVE, may no-op today**.
+	 *     The function of the same name in `bootstrap.php` returns
+	 *     `(bool) (mailchimp_get_api_key() && mailchimp_get_list_id())`
+	 *     directly — no `apply_filters()` call. Mailchimp may add the
+	 *     filter in future versions; if so, our hook engages then.
 	 *
-	 * @param mixed $order_id Order ID from Mailchimp's invocation. Note: the
-	 *                        plugin passes this as `$job->id` from a
-	 *                        `MailChimp_WooCommerce_Single_Order` job; verified
-	 *                        to be the WC order ID (not an internal job ID).
+	 *   - `mailchimp_carts_disabled` → true: **DEFENSIVE, may no-op today**.
+	 *     The function returns the option value directly with no
+	 *     `apply_filters()` call. Same rationale.
 	 *
-	 * @return mixed `false` to suppress the Mailchimp push, `null` (pass-through)
-	 *               otherwise.
+	 * Why these two stay despite being current no-ops: zero runtime cost,
+	 * forward-compatible with Mailchimp's API evolution, and the comment
+	 * documents the rationale so future maintainers don't remove them.
+	 *
+	 * Empirical suppression on nicholaslodge with toggle ON ALSO benefits
+	 * from a secondary effect: WC's webhook filter (separate path) blocks
+	 * `order.*` deliveries, and the SaaS-side `/store/deleteorders` call
+	 * wipes the order before Mailchimp's AS-deferred `Single_Order::process()`
+	 * dequeues — so its `getRealOrderNumber()` lookup fails and the push
+	 * aborts. That secondary effect is fragile (depends on race timing)
+	 * but reinforces the cookie-filter block.
+	 *
+	 * Option gate (mirrors `cv_is_suppressible_test_order` for the WC
+	 * webhook filter): only engage when the SaaS sent `disable_actions=true`
+	 * or `disable_webhooks=true` for this test. Without this gate the
+	 * kill-switch would fire on EVERY CheckView test, blocking Mailchimp
+	 * even on tests where the user explicitly wanted to exercise the
+	 * integration.
+	 *
+	 * Only engages when CV_TEST_ID is defined — real customer requests
+	 * never reach this branch.
+	 *
+	 * @since 2.0.34
+	 *
+	 * @return void
 	 */
-	public function checkview_filter_mailchimp_should_push_order( $order_id ) {
-		if ( ! $order_id ) {
-			return null; // nothing to evaluate; pass through.
+	public function checkview_mailchimp_killswitch() {
+		if ( ! defined( 'CV_TEST_ID' ) || ! CV_TEST_ID ) {
+			return;
 		}
-
-		$order = wc_get_order( $order_id );
-		if ( $order && cv_is_suppressible_test_order( $order ) ) {
-			return false;
+		$suppress = ( get_option( 'disable_actions_' . CV_TEST_ID ) === 'true' )
+				|| ( get_option( 'disable_webhooks_' . CV_TEST_ID ) === 'true' );
+		if ( ! $suppress ) {
+			return;
 		}
-
-		return null;
+		add_filter( 'mailchimp_is_configured',         '__return_false', PHP_INT_MAX );
+		add_filter( 'mailchimp_allowed_to_use_cookie', '__return_false', PHP_INT_MAX );
+		add_filter( 'mailchimp_carts_disabled',        '__return_true',  PHP_INT_MAX );
 	}
 
 	/**
@@ -912,39 +1016,58 @@ class Checkview_Woo_Automated_Testing {
 	/**
 	 * Deletes CheckView orders from the database.
 	 *
-	 * @param integer $order_id Woocommerce Order ID.
+	 * If `$order_id` is supplied (the wp-cron-scheduled case from
+	 * `checkview_schedule_delete_orders`), delete only that one order +
+	 * its customer. If empty (the legacy admin-init sweep + manual call
+	 * sites), fall back to deleting ALL orders that carry the
+	 * `payment_made_by=checkview` marker or `payment_method=checkview`.
+	 *
+	 * Before deleting each test order we set a 1h transient
+	 * `cv_deleted_test_order_<id>=1`, which is read by
+	 * `checkview_filter_webhooks` to suppress the resulting
+	 * `order.deleted` webhook — otherwise Shippo et al. receive a
+	 * deletion event for an order they never got `order.created` for
+	 * (we suppressed that earlier during the test).
+	 *
+	 * @param integer $order_id Woocommerce Order ID (optional). When set,
+	 *                          delete only this order. When empty, sweep
+	 *                          all CheckView-marked orders.
 	 * @return bool
 	 */
 	public static function checkview_delete_orders( $order_id = '' ) {
 		Checkview_Admin_Logs::add( 'ip-logs', 'Deleting CheckView orders from the database...' );
 
 		$orders = array();
-		$args = array(
-			'limit' => -1,
-			'type' => 'shop_order',
-			'meta_key' => 'payment_made_by', // Postmeta key field.
-			'meta_value' => 'checkview', // Postmeta value field.
-			'meta_compare' => '=',
-			'return' => 'ids',
-		);
 
-		if ( function_exists( 'wc_get_orders' ) ) {
+		// Targeted deletion: if a specific $order_id was scheduled (the
+		// per-order wp-cron path from checkview_schedule_delete_orders),
+		// honor it. Without this, a 1h cron tick fired for Test A's order
+		// would sweep ALL marked orders including any in-flight Test B
+		// order from a concurrent test on the same site.
+		if ( '' !== $order_id && (int) $order_id > 0 ) {
+			$orders = array( (int) $order_id );
+		} elseif ( function_exists( 'wc_get_orders' ) ) {
+			$args = array(
+				'limit'        => -1,
+				'type'         => 'shop_order',
+				'meta_key'     => 'payment_made_by', // Postmeta key field.
+				'meta_value'   => 'checkview',       // Postmeta value field.
+				'meta_compare' => '=',
+				'return'       => 'ids',
+			);
 			$orders = wc_get_orders( $args );
+
+			$orders_cv = wc_get_orders(
+				array(
+					'limit'          => -1,
+					'type'           => 'shop_order',
+					'payment_method' => 'checkview',
+					'return'         => 'ids',
+				)
+			);
+
+			$orders = array_unique( array_merge( $orders, $orders_cv ) );
 		}
-
-		$orders_cv = array();
-		$args = array(
-			'limit' => -1,
-			'type' => 'shop_order',
-			'payment_method' => 'checkview',
-			'return' => 'ids',
-		);
-
-		if ( function_exists( 'wc_get_orders' ) ) {
-			$orders_cv = wc_get_orders( $args );
-		}
-
-		$orders = array_unique( array_merge( $orders, $orders_cv ) );
 
 		Checkview_Admin_Logs::add( 'cron-logs', 'Found ' . count( $orders ) . ' CheckView orders to delete.' );
 
@@ -961,6 +1084,17 @@ class Checkview_Woo_Automated_Testing {
 						}
 
 						$customer_id = $order_object->get_customer_id();
+
+						// Mark this order as a CheckView-driven deletion so
+						// the WC webhook filter can suppress the resulting
+						// `order.deleted` event (the order is gone by then,
+						// so the filter has no other way to identify it).
+						// TTL is generous — WC's webhook retry schedule can
+						// extend to multiple days on a failing endpoint, and
+						// each retry re-runs `should_deliver`. Three days
+						// covers the published WC AS backoff schedule.
+						set_transient( 'cv_deleted_test_order_' . (int) $order, 1, 3 * DAY_IN_SECONDS );
+
 						$order_object->delete( true );
 
 						delete_transient( 'checkview_store_orders_transient' );
@@ -1006,12 +1140,25 @@ class Checkview_Woo_Automated_Testing {
 	 * `checkview_add_custom_fields_after_purchase`. This function ONLY stamps
 	 * meta; it does NOT call `complete_checkview_test()` or schedule cleanup.
 	 *
-	 * Hooked on `woocommerce_new_order @ priority STAMP_PRIORITY` so it runs
-	 * BEFORE addons hooking the same event at higher priorities (e.g. Mailchimp
-	 * at @ priority 200). H9's Mailchimp filter
-	 * (`checkview_filter_mailchimp_should_push_order`) reads this meta to
-	 * decide whether to suppress; if stamping ran later, the filter would see
-	 * an unstamped order and silently fail to suppress.
+	 * Hooked on TWO actions, both at STAMP_PRIORITY:
+	 *   - `woocommerce_new_order` — the original H1 hook, fires when a Woo
+	 *     order transitions out of draft (classic checkout, REST orders).
+	 *   - `woocommerce_after_order_object_save` (via the adapter
+	 *     `checkview_stamp_order_meta_from_save`) — fires on EVERY order
+	 *     save including Block Checkout draft creation. Catches the
+	 *     `order.updated@checkout-draft` webhook events that the
+	 *     `woocommerce_new_order`-only registration missed.
+	 *
+	 * Priority MUST stay strictly less than 200 because Mailchimp for
+	 * WooCommerce hooks `MailChimp_Service::handleOrderCreate @ 200` on
+	 * `woocommerce_new_order` and reads the order's `checkview_test_id`
+	 * meta during `onOrderSave`. If we stamped later, Mailchimp's check
+	 * would see an unstamped order and silently push to its audience.
+	 * (The kill-switch via `mailchimp_is_configured` filter on `init @ 99`
+	 * also disables that handler when the suppress option is set, but the
+	 * STAMP_PRIORITY invariant matters whenever the toggle is OFF and
+	 * Mailchimp legitimately runs — it still needs to see the meta to
+	 * write the correct attribution.)
 	 *
 	 * Round-7 hardening: the original function trusted `$_COOKIE['checkview_test_id']`
 	 * alone — a real customer with a stale 110-min cookie would have had their
@@ -1042,32 +1189,78 @@ class Checkview_Woo_Automated_Testing {
 		if ( ! function_exists( 'wc_get_order' ) ) {
 			return; // WC not loaded; bail safely
 		}
-
-		$order = wc_get_order( $order_id );
-		if ( ! $order ) {
+		// Don't stamp orders that are being torn down by the cleanup cron —
+		// `$order->delete()` fires save() hooks during the delete sequence,
+		// which would re-stamp + re-save a half-deleted order.
+		if ( doing_action( 'checkview_delete_orders_action' ) ) {
 			return;
 		}
-
-		// Idempotency guard — first-wins on `checkview_test_id`. Keeps the
-		// original test association on failed-payment retries where the
-		// same order is touched twice.
-		if ( $order->get_meta( 'checkview_test_id' ) ) {
+		// Reentrancy guard — `$order->save()` below fires
+		// `woocommerce_after_order_object_save` which re-enters via the
+		// `checkview_stamp_order_meta_from_save` adapter. The meta-present
+		// idempotency check catches the loop, but make the guard explicit
+		// so future refactors can't reintroduce recursion. `try/finally`
+		// guarantees release even if `wc_get_order()` or `$order->save()`
+		// throws.
+		static $in_progress = array();
+		if ( isset( $in_progress[ $order_id ] ) ) {
 			return;
 		}
+		$in_progress[ $order_id ] = true;
+		try {
 
-		$order->update_meta_data( 'payment_made_by', 'checkview' );
-		$order->update_meta_data( 'checkview_test_id', CV_TEST_ID );
-		$order->save();
+			$order = wc_get_order( $order_id );
+			if ( ! $order ) {
+				return;
+			}
 
-		Checkview_Admin_Logs::add( 'ip-logs', 'Stamped CheckView meta on order [' . $order->get_id() . '] for test [' . CV_TEST_ID . '].' );
+			// Idempotency guard — first-wins on `checkview_test_id`. Keeps the
+			// original test association on failed-payment retries where the
+			// same order is touched twice.
+			if ( $order->get_meta( 'checkview_test_id' ) ) {
+				return;
+			}
 
-		// Clear the test cookie HERE (during the request, before headers
-		// flush) — guarded by headers_sent() to avoid silent failure if a
-		// theme accidentally flushed early.
-		if ( ! headers_sent() ) {
-			unset( $_COOKIE['checkview_test_id'] );
-			setcookie( 'checkview_test_id', '', time() - 6600, COOKIEPATH, COOKIE_DOMAIN );
+			$order->update_meta_data( 'payment_made_by', 'checkview' );
+			$order->update_meta_data( 'checkview_test_id', CV_TEST_ID );
+			$order->save();
+
+			Checkview_Admin_Logs::add( 'ip-logs', 'Stamped CheckView meta on order [' . $order->get_id() . '] for test [' . CV_TEST_ID . '].' );
+
+			// Clear the test cookie HERE (during the request, before headers
+			// flush) — guarded by headers_sent() to avoid silent failure if a
+			// theme accidentally flushed early.
+			if ( ! headers_sent() ) {
+				unset( $_COOKIE['checkview_test_id'] );
+				setcookie( 'checkview_test_id', '', time() - 6600, COOKIEPATH, COOKIE_DOMAIN );
+			}
+
+		} finally {
+			unset( $in_progress[ $order_id ] );
 		}
+	}
+
+	/**
+	 * Adapter for `woocommerce_after_order_object_save` — that hook passes
+	 * the order object; our canonical stamper takes an order ID. Hook fires
+	 * on every order save (HPOS + legacy), so this resolves to a no-op
+	 * outside CheckView test requests via the stamper's CV_TEST_ID guard.
+	 *
+	 * The action name is `woocommerce_after_<object_type>_object_save` and
+	 * resolves to `woocommerce_after_order_object_save` for WC_Order only —
+	 * refunds (`object_type=order_refund`) fire a different action and are
+	 * NOT stamped by this adapter.
+	 *
+	 * @param mixed $order Order object passed by WC. Should be a WC_Order
+	 *                     instance, but we defensively check.
+	 *
+	 * @return void
+	 */
+	public function checkview_stamp_order_meta_from_save( $order ) {
+		if ( ! is_object( $order ) || ! method_exists( $order, 'get_id' ) ) {
+			return;
+		}
+		$this->checkview_stamp_order_meta( $order->get_id() );
 	}
 
 	/**
@@ -1108,26 +1301,45 @@ class Checkview_Woo_Automated_Testing {
 	}
 
 	/**
-	 * Calls `complete_checkview_test()` at shutdown to clean up per-test
-	 * options and session state.
+	 * Calls `complete_checkview_test()` at shutdown of the request that
+	 * actually completes a test order, cleaning up per-test options + session.
 	 *
-	 * H1 (round 7): split out from the original combined
-	 * `checkview_add_custom_fields_after_purchase`. Deferring cleanup to
-	 * `shutdown` is critical for H9 — Mailchimp's
-	 * `mailchimp_should_push_order` filter (and any other in-request
-	 * suppression filter) reads the per-test options
-	 * (`disable_webhooks_<id>`, `disable_actions_<id>`) to decide whether to
-	 * suppress. If we cleaned up earlier (e.g. on `woocommerce_new_order`
-	 * alongside stamping), Mailchimp would read deleted options and
-	 * `cv_is_suppressible_test_order` would return false → silent suppression
-	 * failure. Running at shutdown lets all in-request hooks see the options
-	 * alive, then cleans up after the request completes.
+	 * Why gated on completion `did_action`:
+	 *   The previous unconditional behavior fired `complete_checkview_test`
+	 *   at the shutdown of EVERY test-bearing request — including the very
+	 *   first navigation that wrote the `disable_webhooks_<uuid>` /
+	 *   `disable_actions_<uuid>` options. That immediately deleted them.
+	 *   Subsequent navigations re-wrote and re-deleted them, and the
+	 *   order-creating `wc-ajax=checkout` / `/wc/store/v1/checkout` POST
+	 *   (which does NOT carry the `?disable_*` query params — Playwright
+	 *   only injects on `isNavigationRequest`) found no options to read,
+	 *   so suppression no-op'd and webhooks fired to Shippo with the
+	 *   404 "Invalid ID" payload (because `checkview_delete_orders` had
+	 *   already wiped the order by the time WC built the webhook payload).
 	 *
-	 * Empty-state guard: `shutdown` fires for every WP request (admin pages,
-	 * front-end, REST, AJAX, cron, CLI), so without the guard we'd call
-	 * `complete_checkview_test('')` on every non-CheckView request and try
-	 * to delete options with empty-string keys. The guard makes this a no-op
-	 * outside test requests.
+	 *   Gating on completion `did_action()` preserves the options across
+	 *   intermediate test navigations, then cleans up only on the request
+	 *   that placed the order.
+	 *
+	 * Form helpers (CF7, GF, NF, WPForms, FluentForms, WSF, Formidable,
+	 * Forminator, Everest) call `complete_checkview_test()` synchronously
+	 * inside their submission hooks and don't depend on this shutdown path
+	 * — gating to Woo completion actions doesn't affect form-test cleanup.
+	 *
+	 * Known leak: tests that abort before any completion action fires
+	 * (Playwright crash, early assert failure, payment/validation error
+	 * before `woocommerce_new_order`) leave the per-test options behind.
+	 * UUIDs are unique per run so leaked options never affect later
+	 * tests; growth is bounded by abort rate. A follow-up should add an
+	 * hourly wp-cron sweep keyed on a sibling `_t` timestamp option.
+	 *
+	 * Long-lived worker note: `did_action()` is request-scoped — it counts
+	 * fires within the current PHP request. PHP-FPM / mod_php / Apache
+	 * tear down between requests, so each test-bearing request has its
+	 * own counter starting at zero. WP-CLI long-running commands or
+	 * Roadrunner-style workers would see accumulated counts from prior
+	 * iterations, but CheckView's test traffic only ever hits web-style
+	 * request lifecycles.
 	 *
 	 * @since 2.0.34
 	 *
@@ -1137,6 +1349,21 @@ class Checkview_Woo_Automated_Testing {
 		if ( ! defined( 'CV_TEST_ID' ) || ! CV_TEST_ID ) {
 			return; // not a test request — don't delete options with empty key
 		}
+
+		$completion_fired = did_action( 'woocommerce_new_order' )
+			|| did_action( 'woocommerce_thankyou' )
+			|| did_action( 'woocommerce_checkout_order_processed' )
+			|| did_action( 'woocommerce_store_api_checkout_order_processed' )
+			|| did_action( 'woocommerce_rest_insert_shop_order_object' );
+
+		if ( ! $completion_fired ) {
+			Checkview_Admin_Logs::add(
+				'ip-logs',
+				'Shutdown cleanup skipped for ' . CV_TEST_ID . ' — no order completion this request'
+			);
+			return;
+		}
+
 		complete_checkview_test( CV_TEST_ID );
 	}
 
