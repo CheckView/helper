@@ -222,12 +222,24 @@ if ( ! function_exists( 'complete_checkview_test' ) ) {
 		// during their submission hooks, not shutdown) still execute this
 		// branch. WS Form cleanup is irrelevant for Woo-flow shutdown calls
 		// anyway since Woo orders aren't WS Form entries.
+		//
+		// Wrapped in try/catch so a throw inside WS Form's internals (rare,
+		// but possible during plugin update windows or HPOS migration) does
+		// NOT short-circuit the per-test-option deletes below at lines 250-252.
+		// Without this catch, the disable_*_<uuid> options would leak.
 		if ( ! empty( $form_id ) && ! empty( $entry_id ) && ! doing_action( 'shutdown' ) ) {
 			if ( class_exists( 'WS_Form_Submit' ) ) {
-				$ws_form_submit = new WS_Form_Submit();
-				$ws_form_submit->id = $entry_id;
-				$ws_form_submit->form_id = $form_id;
-				$ws_form_submit->db_delete( true, true, true );
+				try {
+					$ws_form_submit = new WS_Form_Submit();
+					$ws_form_submit->id = $entry_id;
+					$ws_form_submit->form_id = $form_id;
+					$ws_form_submit->db_delete( true, true, true );
+				} catch ( \Throwable $e ) {
+					Checkview_Admin_Logs::add(
+						'ip-logs',
+						'WS_Form_Submit db_delete threw — continuing cleanup. Message: ' . $e->getMessage()
+					);
+				}
 			} else {
 				Checkview_Admin_Logs::add( 'ip-logs', 'WS_Form_Submit class does not exist.' );
 			}
