@@ -860,7 +860,17 @@ class Checkview_Woo_Automated_Testing {
 			// the deletion was driven by us and should be suppressed
 			// downstream (TTL covers WC's webhook-retry backoff which can
 			// extend to multiple days on a failing endpoint).
-			if ( ! $order ) {
+			//
+			// CRITICAL: scope this to the `order.deleted` topic specifically.
+			// Other order.* topics (created/updated) can also have `! $order`
+			// at AS-delivery time — e.g. when the SaaS-side
+			// `/store/deleteorders` REST call wipes the order between WC
+			// enqueueing `order.created` and AS dequeueing it. For toggle-OFF
+			// tests we WANT those deliveries to attempt (WC will build a 404
+			// payload, but at minimum Shippo's webhook receiver sees the
+			// event fire). Suppressing them here silenced legitimate
+			// toggle-OFF deliveries — a regression vs pre-PR baseline.
+			if ( ! $order && 'order.deleted' === $topic ) {
 				if ( get_transient( 'cv_deleted_test_order_' . (int) $arg ) ) {
 					return false;
 				}
