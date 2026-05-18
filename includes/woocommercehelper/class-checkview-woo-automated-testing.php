@@ -17,14 +17,18 @@
 class Checkview_Woo_Automated_Testing {
 	/**
 	 * Priority at which `checkview_stamp_order_meta` is registered on
-	 * `woocommerce_new_order`.
+	 * `woocommerce_new_order` (and via the adapter on
+	 * `woocommerce_after_order_object_save`).
 	 *
-	 * H1+H9 coupling: this priority MUST be strictly less than 200 because
-	 * Mailchimp for WooCommerce registers `handleOrderCreate` on
-	 * `woocommerce_new_order @ priority 200`, which then synchronously fires
-	 * the `mailchimp_should_push_order` filter that H9 hooks. For our
-	 * suppression filter to see the `checkview_test_id` order meta, the
-	 * stamping function must run first.
+	 * Why strictly less than 200: Mailchimp for WooCommerce registers
+	 * `MailChimp_Service::handleOrderCreate` on
+	 * `woocommerce_new_order @ priority 200`. For other addons (Shippo's
+	 * WC webhooks, Mailchimp's order-meta readers, etc) to see the
+	 * `checkview_test_id` meta when they run on the same hook, our
+	 * stamping function MUST run first. This priority is also the
+	 * "early enough" requirement for `woocommerce_after_order_object_save`
+	 * so the meta lands before WC enqueues any `order.updated` webhook
+	 * for the same save.
 	 *
 	 * Test 21 in the helper test suite asserts this invariant — DO NOT change
 	 * to a value ≥ 200 without also moving the test priority floor up.
@@ -674,7 +678,10 @@ class Checkview_Woo_Automated_Testing {
 			// - `checkview_stamp_order_meta` runs early on `woocommerce_new_order @ priority STAMP_PRIORITY`
 			//   so the order meta is in place BEFORE any addon's hook on the same event fires
 			//   (e.g. Mailchimp for WooCommerce hooks `handleOrderCreate` at priority 200, so we
-			//   stamp at priority 1 — STAMP_PRIORITY < 200 is the load-bearing invariant for H9).
+			//   stamp at priority 1).
+			// - `checkview_stamp_order_meta_from_save` runs on every order save
+			//   (`woocommerce_after_order_object_save @ STAMP_PRIORITY`) so WC Block Checkout
+			//   drafts get their meta BEFORE any `order.updated@checkout-draft` webhook fires.
 			// - `checkview_schedule_order_cleanup` keeps the existing `woocommerce_order_status_changed`
 			//   registration so order deletion is scheduled after the order has its final status.
 			// - `checkview_complete_test_deferred` runs at `shutdown` so per-test options stay alive
@@ -1087,12 +1094,25 @@ class Checkview_Woo_Automated_Testing {
 	 * `checkview_add_custom_fields_after_purchase`. This function ONLY stamps
 	 * meta; it does NOT call `complete_checkview_test()` or schedule cleanup.
 	 *
-	 * Hooked on `woocommerce_new_order @ priority STAMP_PRIORITY` so it runs
-	 * BEFORE addons hooking the same event at higher priorities (e.g. Mailchimp
-	 * at @ priority 200). H9's Mailchimp filter
-	 * (`checkview_filter_mailchimp_should_push_order`) reads this meta to
-	 * decide whether to suppress; if stamping ran later, the filter would see
-	 * an unstamped order and silently fail to suppress.
+	 * Hooked on TWO actions, both at STAMP_PRIORITY:
+	 *   - `woocommerce_new_order` — the original H1 hook, fires when a Woo
+	 *     order transitions out of draft (classic checkout, REST orders).
+	 *   - `woocommerce_after_order_object_save` (via the adapter
+	 *     `checkview_stamp_order_meta_from_save`) — fires on EVERY order
+	 *     save including Block Checkout draft creation. Catches the
+	 *     `order.updated@checkout-draft` webhook events that the
+	 *     `woocommerce_new_order`-only registration missed.
+	 *
+	 * Priority MUST stay strictly less than 200 because Mailchimp for
+	 * WooCommerce hooks `MailChimp_Service::handleOrderCreate @ 200` on
+	 * `woocommerce_new_order` and reads the order's `checkview_test_id`
+	 * meta during `onOrderSave`. If we stamped later, Mailchimp's check
+	 * would see an unstamped order and silently push to its audience.
+	 * (The kill-switch via `mailchimp_is_configured` filter on `init @ 99`
+	 * also disables that handler when the suppress option is set, but the
+	 * STAMP_PRIORITY invariant matters whenever the toggle is OFF and
+	 * Mailchimp legitimately runs — it still needs to see the meta to
+	 * write the correct attribution.)
 	 *
 	 * Round-7 hardening: the original function trusted `$_COOKIE['checkview_test_id']`
 	 * alone — a real customer with a stale 110-min cookie would have had their
