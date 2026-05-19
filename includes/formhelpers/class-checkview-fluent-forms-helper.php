@@ -323,7 +323,7 @@ if ( ! class_exists( 'Checkview_Fluent_Forms_Helper' ) ) {
 				Checkview_Admin_Logs::add( 'ip-logs', 'Cloned submission entry meta data (inserted ' . $count . ' rows into ' . $entry_meta_table . ').' );
 			} else {
 				if ( count( $rows ) > 0 ) {
-					Checkview_Admin_Logs::add( 'ip-logs', 'Failed to clone submission entry meta data.' );
+					Checkview_Admin_Logs::add( 'ip-logs', 'Failed to clone submission entry meta data. wpdb->last_error=[' . $wpdb->last_error . ']' );
 				}
 			}
 
@@ -345,10 +345,16 @@ if ( ! class_exists( 'Checkview_Fluent_Forms_Helper' ) ) {
 				'payment_amount' => isset( $row['payment_total'] ) ? $row['payment_total'] : 0,
 			);
 
+			// Fluent's user_agent (passed-through $row['browser']) and
+			// payment_method / payment_status fields can exceed cv_entry's
+			// limits. checkview_truncate_for_cv_entry() applies the schema's
+			// varchar caps to every applicable column.
+			$data = checkview_truncate_for_cv_entry( $data );
+
 			$result = $wpdb->insert( $entry_table, $data );
 
 			if ( ! $result ) {
-				Checkview_Admin_Logs::add( 'ip-logs', 'Failed to clone submission entry data.' );
+				Checkview_Admin_Logs::add( 'ip-logs', 'Failed to clone submission entry data. wpdb->last_error=[' . $wpdb->last_error . ']' );
 			} else {
 				Checkview_Admin_Logs::add( 'ip-logs', 'Cloned submission entry data (inserted ' . (int) $result . ' rows into ' . $entry_table . ').' );
 			}
