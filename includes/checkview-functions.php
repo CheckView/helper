@@ -206,6 +206,9 @@ if ( ! function_exists( 'complete_checkview_test' ) ) {
 			)
 		);
 
+		// $wpdb->delete returns false on real DB error, 0 if no matching rows
+		// (already-cleaned-up case, e.g. shutdown handler firing after a sync
+		// caller already cleaned up). Only log false (the actual failure mode).
 		if ( false === $result ) {
 			Checkview_Admin_Logs::add( 'ip-logs', 'Failed to delete rows from session table [' . $session_table . '].' );
 		}
@@ -213,12 +216,30 @@ if ( ! function_exists( 'complete_checkview_test' ) ) {
 		$entry_id = get_option( $checkview_test_id . '_wsf_entry_id', '' );
 		$form_id  = get_option( $checkview_test_id . '_wsf_frm_id', '' );
 
-		if ( ! empty( $form_id ) && ! empty( $entry_id ) ) {
+		// Skip WS Form db_delete when running in shutdown context — WS Form's
+		// plugin state (DB layer, caches) may already be torn down at shutdown
+		// and db_delete can fail unsafely. Sync form-helper callers (which run
+		// during their submission hooks, not shutdown) still execute this
+		// branch. WS Form cleanup is irrelevant for Woo-flow shutdown calls
+		// anyway since Woo orders aren't WS Form entries.
+		//
+		// Wrapped in try/catch so a throw inside WS Form's internals (rare,
+		// but possible during plugin update windows or HPOS migration) does
+		// NOT short-circuit the per-test-option deletes below at lines 250-252.
+		// Without this catch, the disable_*_<uuid> options would leak.
+		if ( ! empty( $form_id ) && ! empty( $entry_id ) && ! doing_action( 'shutdown' ) ) {
 			if ( class_exists( 'WS_Form_Submit' ) ) {
-				$ws_form_submit = new WS_Form_Submit();
-				$ws_form_submit->id = $entry_id;
-				$ws_form_submit->form_id = $form_id;
-				$ws_form_submit->db_delete( true, true, true );
+				try {
+					$ws_form_submit = new WS_Form_Submit();
+					$ws_form_submit->id = $entry_id;
+					$ws_form_submit->form_id = $form_id;
+					$ws_form_submit->db_delete( true, true, true );
+				} catch ( \Throwable $e ) {
+					Checkview_Admin_Logs::add(
+						'ip-logs',
+						'WS_Form_Submit db_delete threw — continuing cleanup. Message: ' . $e->getMessage()
+					);
+				}
 			} else {
 				Checkview_Admin_Logs::add( 'ip-logs', 'WS_Form_Submit class does not exist.' );
 			}
@@ -228,8 +249,15 @@ if ( ! function_exists( 'complete_checkview_test' ) ) {
 		cv_delete_option( $checkview_test_id . '_wsf_frm_id' );
 		cv_delete_option( $visitor_ip );
 
-		setcookie( 'checkview_test_id', '', time() - 6600, COOKIEPATH, COOKIE_DOMAIN );
-		setcookie( 'checkview_test_id' . $checkview_test_id, '', time() - 6600, COOKIEPATH, COOKIE_DOMAIN );
+		// setcookie() silently fails when headers have been sent (which is the
+		// norm at shutdown time, the new deferred caller). Form-helper sync
+		// callers run during their submission hooks where headers aren't yet
+		// flushed, so the guard lets cookie cleanup work for them while
+		// avoiding silent failures at shutdown.
+		if ( ! headers_sent() ) {
+			setcookie( 'checkview_test_id', '', time() - 6600, COOKIEPATH, COOKIE_DOMAIN );
+			setcookie( 'checkview_test_id' . $checkview_test_id, '', time() - 6600, COOKIEPATH, COOKIE_DOMAIN );
+		}
 
 		cv_delete_option( 'disable_actions_' . $checkview_test_id );
 		cv_delete_option( 'disable_email_receipt_' . $checkview_test_id );
@@ -245,6 +273,109 @@ if ( ! function_exists( 'complete_checkview_test' ) ) {
 		cv_delete_option( 'checkview_wpforms_turnstile-secret-key' );
 
 		Checkview_Admin_Logs::add( 'ip-logs', 'Test complete.' );
+	}
+}
+
+if ( ! function_exists( 'cv_is_suppressible_test_order' ) ) {
+	/**
+	 * Determines whether webhooks/actions on a WooCommerce order should be
+	 * suppressed because the order belongs to an active CheckView test.
+	 *
+	 * Implements the safety invariant: suppression engages only when BOTH
+	 *   (1) the order has a valid `checkview_test_id` UUID meta (set by
+	 *       `checkview_stamp_order_meta` at order creation time when
+	 *       `CV_TEST_ID` was defined), AND
+	 *   (2) a per-test option (`disable_webhooks_<uuid>` or
+	 *       `disable_actions_<uuid>`) is still set to `'true'` (test is still
+	 *       active in our system; cleanup happens at request end via
+	 *       `complete_checkview_test`).
+	 *
+	 * Either condition missing → fall through, deliver the webhook / fire the
+	 * action. Default-on safety, not default-off.
+	 *
+	 * Reusable by:
+	 *   - the WooCommerce webhook filter (`checkview_filter_webhooks`)
+	 *   - any future addon gate that needs the same invariant
+	 *
+	 * NOT used by the Mailchimp kill-switch — Mailchimp doesn't expose a
+	 * per-order suppression filter, so `checkview_mailchimp_killswitch`
+	 * reads the same `disable_*_<id>` options directly and short-circuits
+	 * `mailchimp_is_configured()` instead. Either gate fires under the
+	 * same condition this function checks below.
+	 *
+	 * Includes a kill-switch short-circuit at the top: if the
+	 * `cv_suppression_kill_switch` option is set to `'true'` (via WP-CLI for
+	 * incident response), this function returns false immediately and no
+	 * suppression engages anywhere.
+	 *
+	 * @param mixed $order WC_Order, order ID (int), or numeric string.
+	 *                     Webhook delivery callers pass `$arg` which can be
+	 *                     either int or string depending on serialisation.
+	 *
+	 * @return bool True if suppression should engage, false otherwise.
+	 */
+	function cv_is_suppressible_test_order( $order ) {
+		// H8 kill switch — incident response escape hatch.
+		if ( get_option( 'cv_suppression_kill_switch' ) === 'true' ) {
+			return false;
+		}
+
+		// Coerce $order if int OR numeric string (WC webhook delivery passes
+		// $arg as either, depending on caller — JSON-decoded order IDs can
+		// arrive as strings under certain serialisation paths).
+		if ( ! is_object( $order ) ) {
+			if ( is_numeric( $order ) ) {
+				$order = wc_get_order( $order );
+			} else {
+				return false; // not an order ID we can resolve
+			}
+		}
+		if ( ! is_object( $order ) || ! method_exists( $order, 'get_meta' ) ) {
+			return false;
+		}
+
+		// Invariant 1: order has a valid checkview_test_id UUID meta.
+		$test_id = $order->get_meta( 'checkview_test_id' );
+		if ( ! $test_id || ! checkview_is_valid_uuid( $test_id ) ) {
+			return false;
+		}
+
+		// Invariant 2: per-test option still active (either flag triggers
+		// suppression — matches the SaaS-side single-toggle design where one
+		// flag sends both query params and both options get set).
+		$suppress = ( get_option( 'disable_webhooks_' . $test_id ) === 'true' )
+				|| ( get_option( 'disable_actions_' . $test_id ) === 'true' );
+
+		$order_id = (int) $order->get_id();
+
+		if ( ! $suppress ) {
+			// Gate-failed log (deduped per order per request) — helps debug
+			// "I configured Disable Actions but it's not suppressing"
+			// support tickets without spamming on real-customer orders that
+			// won't have the meta in the first place.
+			static $logged_failures = array();
+			if ( ! isset( $logged_failures[ $order_id ] ) ) {
+				Checkview_Admin_Logs::add(
+					'ip-logs',
+					"Suppress gate failed for order #{$order_id} (test {$test_id}): no active suppression option found"
+				);
+				$logged_failures[ $order_id ] = true;
+			}
+			return false;
+		}
+
+		// Suppression approved. Log as intentional (compliance audit angle:
+		// distinguishable from a delivery failure). Deduped per order
+		// per request.
+		static $logged_suppress = array();
+		if ( ! isset( $logged_suppress[ $order_id ] ) ) {
+			Checkview_Admin_Logs::add(
+				'ip-logs',
+				"SUPPRESS for test order #{$order_id} (test {$test_id}) — intentional, per Disable Actions setting"
+			);
+			$logged_suppress[ $order_id ] = true;
+		}
+		return true;
 	}
 }
 
@@ -1494,5 +1625,64 @@ if ( ! function_exists( 'cv_delete_option' ) ) {
 		}
 
 		return true;
+	}
+}
+
+if ( ! function_exists( 'checkview_get_cv_entry_string_limits' ) ) {
+	/**
+	 * Returns the cv_entry string-column max-length map.
+	 *
+	 * Single source of truth mirroring the schema declared in
+	 * Checkview_Activator::checkview_run_sql(). When the schema widens or
+	 * narrows a varchar, update both places.
+	 *
+	 * Columns intentionally omitted:
+	 *   - uid varchar(255): generated internally (UUID, ~36 chars).
+	 *   - response longtext: no varchar limit.
+	 *   - meta_key/meta_value: belong to cv_entry_meta, not cv_entry.
+	 *
+	 * @return array<string,int> Column name => max char length.
+	 */
+	function checkview_get_cv_entry_string_limits() {
+		return array(
+			'ip'             => 45,
+			'source_url'     => 200,
+			'user_agent'     => 250,
+			'currency'       => 5,
+			'payment_status' => 15,
+			'payment_method' => 30,
+			'transaction_id' => 50,
+			'status'         => 20,
+			'form_type'      => 20,
+		);
+	}
+}
+
+if ( ! function_exists( 'checkview_truncate_for_cv_entry' ) ) {
+	/**
+	 * Truncates string fields of a cv_entry-bound row to the schema's
+	 * varchar limits.
+	 *
+	 * WordPress's wpdb::process_field_lengths() rejects inserts whose
+	 * string values exceed the destination column's declared length,
+	 * returning false from wpdb::insert() with last_error set to
+	 * "Processing the value for the following field failed: <col>. The
+	 * supplied value may be too long or contains invalid data." This
+	 * helper pre-truncates so the insert succeeds and the prefix is
+	 * preserved.
+	 *
+	 * Only mutates keys present in checkview_get_cv_entry_string_limits()
+	 * and only when the value is a string. Other keys pass through.
+	 *
+	 * @param array $row Associative row about to be passed to wpdb::insert.
+	 * @return array Row with overflowing string fields truncated.
+	 */
+	function checkview_truncate_for_cv_entry( array $row ) {
+		foreach ( checkview_get_cv_entry_string_limits() as $col => $max ) {
+			if ( isset( $row[ $col ] ) && is_string( $row[ $col ] ) ) {
+				$row[ $col ] = substr( $row[ $col ], 0, $max );
+			}
+		}
+		return $row;
 	}
 }

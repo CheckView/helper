@@ -365,7 +365,7 @@ if ( ! class_exists( 'Checkview_Cf7_Helper' ) ) {
 				$result = $wpdb->insert( $entry_table, $entry_data );
 
 				if ( ! $result ) {
-					Checkview_Admin_Logs::add( 'ip-logs', 'Failed to clone submission entry data.' );
+					Checkview_Admin_Logs::add( 'ip-logs', 'Failed to clone submission entry data. wpdb->last_error=[' . $wpdb->last_error . ']' );
 				} else {
 					Checkview_Admin_Logs::add( 'ip-logs', 'Cloned submission entry data (inserted ' . (int) $result . ' rows into ' . $entry_table . ').' );
 				}
@@ -375,11 +375,16 @@ if ( ! class_exists( 'Checkview_Cf7_Helper' ) ) {
 				$count = 0;
 
 				foreach ( $form_data as $key => $val ) {
+					// CF7 field `name` attributes are raw POST keys, not
+					// constrained to any length by CF7 itself. cv_entry_meta.meta_key
+					// is varchar(255), so an unusually long form-field name would
+					// otherwise overflow and fail wpdb::process_field_lengths().
+					$meta_key = is_string( $key ) ? substr( $key, 0, 255 ) : $key;
 					$entry_metadata = array(
 						'uid' => $checkview_test_id,
 						'form_id' => $form_id,
 						'entry_id' => $inserted_entry_id,
-						'meta_key' => $key,
+						'meta_key' => $meta_key,
 						'meta_value' => $val,
 					);
 
@@ -394,7 +399,7 @@ if ( ! class_exists( 'Checkview_Cf7_Helper' ) ) {
 					Checkview_Admin_Logs::add( 'ip-logs', 'Cloned submission entry meta data (inserted ' . $count . ' rows into ' . $entry_meta_table . ').' );
 				} else {
 					if ( count( $form_data ) > 0 ) {
-						Checkview_Admin_Logs::add( 'ip-logs', 'Failed to clone submission entry meta data.' );
+						Checkview_Admin_Logs::add( 'ip-logs', 'Failed to clone submission entry meta data. wpdb->last_error=[' . $wpdb->last_error . ']' );
 					}
 				}
 

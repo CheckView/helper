@@ -204,7 +204,7 @@ if ( ! class_exists( 'Checkview_Formidable_Helper' ) ) {
 			$result  = $wpdb->insert( $entry_table, $entry_data );
 
 			if ( ! $result ) {
-				Checkview_Admin_Logs::add( 'ip-logs', 'Failed to clone submission entry data.' );
+				Checkview_Admin_Logs::add( 'ip-logs', 'Failed to clone submission entry data. wpdb->last_error=[' . $wpdb->last_error . ']' );
 			} else {
 				Checkview_Admin_Logs::add( 'ip-logs', 'Cloned submission entry data (inserted ' . (int) $result . ' rows into ' . $entry_table . ').' );
 			}
@@ -407,7 +407,7 @@ if ( ! class_exists( 'Checkview_Formidable_Helper' ) ) {
 				Checkview_Admin_Logs::add( 'ip-logs', 'Cloned submission entry meta data (inserted ' . $count . ' rows into ' . $entry_meta_table . ').' );
 			} else {
 				if ( count( $form_fields ) > 0 ) {
-					Checkview_Admin_Logs::add( 'ip-logs', 'Failed to clone submission entry meta data.' );
+					Checkview_Admin_Logs::add( 'ip-logs', 'Failed to clone submission entry meta data. wpdb->last_error=[' . $wpdb->last_error . ']' );
 				}
 			}
 
@@ -484,8 +484,14 @@ if ( ! class_exists( 'Checkview_Formidable_Helper' ) ) {
 							break;
 						case 'radio':
 							$field_options = maybe_unserialize( $field->options );
-							foreach ( $field_options as $key => $val ) {
-								$field_options[ $key ]['field_id'] = $field_id . '-' . $key;
+							if ( is_array( $field_options ) ) {
+								foreach ( $field_options as $key => $val ) {
+									if ( is_array( $val ) ) {
+										$field_options[ $key ]['field_id'] = $field_id . '-' . $key;
+									} else {
+										error_log( "Non-array value detected in field_options for field '{$field_id}', key '{$key}': " . print_r( $val, true ) );
+									}
+								}
 							}
 							$fields[ $field->id ] = array(
 								'type'     => $field->type,
@@ -500,12 +506,13 @@ if ( ! class_exists( 'Checkview_Formidable_Helper' ) ) {
 							break;
 						case 'checkbox':
 							$field_options = maybe_unserialize( $field->options );
-							foreach ( $field_options as $key => $val ) {
-								// Ensure the current value is an array.
-								if ( is_array( $val ) ) {
-									$field_options[ $key ]['field_id'] = $field_id . '-' . $key;
-								} else {
-									error_log( "Non-array value detected in field_options for key '{$field_id }': " . print_r( $val, true ) );
+							if ( is_array( $field_options ) ) {
+								foreach ( $field_options as $key => $val ) {
+									if ( is_array( $val ) ) {
+										$field_options[ $key ]['field_id'] = $field_id . '-' . $key;
+									} else {
+										error_log( "Non-array value detected in field_options for field '{$field_id}', key '{$key}': " . print_r( $val, true ) );
+									}
 								}
 							}
 							$fields[ $field->id ] = array(

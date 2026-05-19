@@ -195,7 +195,7 @@ if ( ! class_exists( 'Checkview_Ninja_Forms_Helper' ) ) {
 			$result = $wpdb->insert( $entry_table, $entry_data );
 
 			if ( ! $result ) {
-				Checkview_Admin_Logs::add( 'ip-logs', 'Failed to clone submission entry data.' );
+				Checkview_Admin_Logs::add( 'ip-logs', 'Failed to clone submission entry data. wpdb->last_error=[' . $wpdb->last_error . ']' );
 			} else {
 				Checkview_Admin_Logs::add( 'ip-logs', 'Cloned submission entry data (inserted ' . (int) $result . ' rows into ' . $entry_table . ').' );
 			}
@@ -272,7 +272,7 @@ if ( ! class_exists( 'Checkview_Ninja_Forms_Helper' ) ) {
 			if ( $count > 0 ) {
 				Checkview_Admin_Logs::add( 'ip-logs', 'Cloned submission entry meta data (inserted ' . $count . ' rows into ' . $entry_meta_table . ').' );
 			} else {
-				Checkview_Admin_Logs::add( 'ip-logs', 'Failed to clone submission entry meta data.' );
+				Checkview_Admin_Logs::add( 'ip-logs', 'Failed to clone submission entry meta data. wpdb->last_error=[' . $wpdb->last_error . ']' );
 			}
 
 			if ( $entry_id > 0 ) {
