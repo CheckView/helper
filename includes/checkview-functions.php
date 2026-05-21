@@ -18,6 +18,77 @@ if ( ! defined( 'WPINC' ) ) {
 	die( 'Direct access not Allowed.' );
 }
 
+if ( ! function_exists( 'checkview_dbdelta_or_query' ) ) {
+	/**
+	 * Runs a CREATE TABLE statement via dbDelta() when safe, otherwise falls
+	 * back to a direct $wpdb->query().
+	 *
+	 * WordPress core ships two files that both unconditionally declare
+	 * maybe_create_table() and maybe_add_column(): wp-admin/install-helper.php
+	 * and wp-admin/includes/upgrade.php. If another plugin (or a core upgrade
+	 * flow) has already loaded install-helper.php, our own require_once of
+	 * upgrade.php triggers a fatal "Cannot redeclare maybe_create_table()".
+	 *
+	 * Detect the conflict by checking for maybe_create_table() — not dbDelta()
+	 * — and fall back to a direct query so the SQL still runs.
+	 *
+	 * Pass literal SQL only. The fallback path skips $wpdb->prepare(); user
+	 * input must not reach $sql.
+	 *
+	 * The fallback skips dbDelta's schema-diff, so ALTER-style migrations
+	 * (adding columns / keys to an existing table) must be written as
+	 * explicit ALTER TABLE statements instead of relying on this helper.
+	 *
+	 * Callers may pass `CREATE TABLE IF NOT EXISTS` for race-safety in the
+	 * raw fallback path; the helper strips `IF NOT EXISTS` before handing the
+	 * SQL to dbDelta(), because dbDelta's table-name regex captures the first
+	 * whitespace-delimited token after `CREATE TABLE` and would otherwise
+	 * extract the literal string "IF", silently bypassing its schema-diff.
+	 *
+	 * @since 2.0.36
+	 *
+	 * @param string $sql CREATE TABLE statement.
+	 * @return mixed dbDelta() result array, or $wpdb->query() return value.
+	 */
+	function checkview_dbdelta_or_query( $sql ) {
+		global $wpdb;
+		// Strip IF NOT EXISTS for the dbDelta path only. See docblock above
+		// — dbDelta's regex would otherwise treat "IF" as the table name.
+		$dbdelta_sql = preg_replace(
+			'/^(\s*CREATE\s+TABLE\s+)IF\s+NOT\s+EXISTS\s+/i',
+			'$1',
+			$sql
+		);
+		if ( function_exists( 'dbDelta' ) ) {
+			return dbDelta( $dbdelta_sql );
+		}
+		if ( ! function_exists( 'maybe_create_table' ) ) {
+			require_once ABSPATH . 'wp-admin/includes/upgrade.php';
+			return dbDelta( $dbdelta_sql );
+		}
+		// install-helper.php was loaded first by another plugin or core
+		// upgrade routine; requiring upgrade.php now would fatal. Keep
+		// IF NOT EXISTS in the raw $sql so the fallback stays race-safe.
+		// phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.DirectDatabaseQuery.SchemaChange
+		$result = $wpdb->query( $sql );
+		if ( false === $result && ! empty( $wpdb->last_error ) ) {
+			// MySQL errors can contain newlines (multi-line diagnostics);
+			// flatten so a single log entry stays on one line.
+			$flat = preg_replace( '/[\r\n\0]+/', ' ', (string) $wpdb->last_error );
+			$msg  = 'checkview_dbdelta_or_query fallback failed: ' . $flat;
+			if ( class_exists( 'Checkview_Admin_Logs', false ) ) {
+				Checkview_Admin_Logs::add( 'api-logs', $msg );
+			} else {
+				// Checkview_Admin_Logs isn't loaded yet (e.g. during
+				// activation). Surface to PHP's error log so the failure
+				// isn't silently swallowed.
+				error_log( '[CheckView] ' . $msg );
+			}
+		}
+		return $result;
+	}
+}
+
 if ( ! function_exists( 'checkview_ensure_trailing_slash' ) ) {
 	/**
 	 * Ensures a string ends with a trailing slash.

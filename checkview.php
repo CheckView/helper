@@ -75,6 +75,10 @@ if ( ! defined( 'CHECKVIEW_URI' ) ) {
  * Handles CheckView activation.
  */
 function activate_checkview() {
+	// checkview-functions.php is normally loaded on plugins_loaded, which
+	// hasn't fired yet during activation. Pull it in so the activator can
+	// call checkview_dbdelta_or_query().
+	require_once plugin_dir_path( __FILE__ ) . 'includes/checkview-functions.php';
 	require_once plugin_dir_path( __FILE__ ) . 'includes/class-checkview-activator.php';
 	Checkview_Activator::activate();
 }
