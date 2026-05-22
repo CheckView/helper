@@ -159,7 +159,7 @@ if ( ! class_exists( 'Checkview_Mail_Redirect' ) ) {
 		 */
 		private function strip_cc_bcc_headers( $headers ) {
 			$was_string = ! is_array( $headers );
-			$list       = $was_string ? explode( "\r\n", (string) $headers ) : $headers;
+			$list       = $was_string ? preg_split( '/\r?\n/', (string) $headers ) : $headers;
 
 			$filtered = array_values(
 				array_filter(
