@@ -73,6 +73,21 @@ if ( ! class_exists( 'Checkview_Gforms_Helper' ) ) {
 					1
 				);
 
+				// Force notifications to dispatch synchronously during a test.
+				// GF 2.10+ ships "Background Notifications" (queued via the
+				// GF_Notifications_Processor admin-ajax task). That separate
+				// request doesn't carry the CheckView test context, so
+				// TEST_EMAIL is never defined for it and gform_pre_send_email
+				// above never fires — the notification goes to the original
+				// recipient. Forcing sync during the test keeps the dispatch
+				// inside the form-submission request where our filters are
+				// already registered. Customers' non-test traffic is
+				// unaffected.
+				add_filter(
+					'gform_is_asynchronous_notifications_enabled',
+					'__return_false',
+					999
+				);
 			}
 			// Disable addons found in forms.
 			add_filter(
