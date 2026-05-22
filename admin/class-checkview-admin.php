@@ -554,6 +554,12 @@ class Checkview_Admin {
 		delete_transient( 'checkview_forms_test_transient' );
 		delete_transient( 'checkview_store_orders_transient' );
 
+		// Form-plugin-agnostic wp_mail backstop. Loaded before any form helper so
+		// the wp_mail filter is registered regardless of which form plugin is
+		// active (and even if no form helper claims the request).
+		Checkview_Admin_Logs::add( 'ip-logs', 'Loading wp_mail redirect backstop.' );
+		require_once CHECKVIEW_INC_DIR . 'class-checkview-mail-redirect.php';
+
 		if ( is_plugin_active( 'gravityforms/gravityforms.php' ) ) {
 			Checkview_Admin_Logs::add( 'ip-logs', 'Loading Gravity Forms helper.' );
 
