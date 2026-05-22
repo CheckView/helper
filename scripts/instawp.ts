@@ -21,14 +21,49 @@ const COMMAND_ID = 1958; // InstaWP "Update CheckView plugin" — reinstalls fro
 const REQUEST_TIMEOUT_MS = 120_000;
 const MAX_ATTEMPTS = 3;
 const BACKOFF_BASE_MS = 2_000;
+const BACKOFF_JITTER_MS = 1_000;
+const MAX_LOGGED_BODY_BYTES = 4_000;
 // wp-cli phrasing that proves command 1958's `wp plugin install ... --activate`
-// step ran to completion. Matching any one of these is sufficient. Sample
-// positive stdout: "Plugin installed successfully.\nActivating 'checkview'...\nPlugin 'checkview' activated.\nSuccess: Installed 1 of 1 plugins."
-const INSTALL_EVIDENCE_PATTERNS = [
-  'Plugin installed successfully',
-  "Plugin 'checkview' activated",
-  'Success: Installed 1 of 1 plugins',
-];
+// step ran to completion. Sample positive stdout:
+//   "Plugin installed successfully.\nActivating 'checkview'...\nPlugin 'checkview' activated.\nSuccess: Installed 1 of 1 plugins."
+// Match a regex so newline-wrapped output and the canonical wp-cli "Success:
+// Installed N of M plugins" line both count.
+const INSTALL_EVIDENCE_REGEX = /(Plugin installed successfully|Plugin 'checkview' activated|Success:\s+Installed\s+\d+\s+of\s+\d+\s+plugins)/i;
+
+function truncate(s: string, n: number): string {
+  return s.length > n ? `${s.slice(0, n)}…(truncated ${s.length - n} chars)` : s
+}
+
+/**
+ * Parse a JSON response body, with a single body-read so we can include the
+ * raw body in the error message when JSON parsing fails. Native fetch locks
+ * the stream after `.json()` consumes it, so calling `.text()` afterward
+ * always errors — we read the text first and parse it ourselves.
+ */
+async function parseJsonResponse<T>(response: Response, context: string): Promise<T> {
+  const text = await response.text()
+  try {
+    return JSON.parse(text) as T
+  } catch (err) {
+    const reason = err instanceof Error ? err.message : String(err)
+    const contentType = response.headers.get('content-type') ?? '<no content-type>'
+    throw new Error(`Response for ${context} was not JSON (Content-Type=[${contentType}], ${reason}). body=[${truncate(text, MAX_LOGGED_BODY_BYTES)}]`)
+  }
+}
+
+/**
+ * Parse an HTTP Retry-After header value. Accepts both delta-seconds (`"60"`)
+ * and HTTP-date (`"Thu, 22 May 2026 02:00:00 GMT"`). Returns milliseconds, or
+ * undefined if header is absent / unparseable.
+ */
+function parseRetryAfter(headerValue: string | null): number | undefined {
+  if (!headerValue) return undefined
+  const seconds = Number(headerValue)
+  if (Number.isFinite(seconds) && seconds >= 0) return Math.floor(seconds * 1000)
+  const date = Date.parse(headerValue)
+  if (Number.isFinite(date)) return Math.max(0, date - Date.now())
+  return undefined
+}
 
 /**
  * Update the CheckView plugin on InstaWP sites using the `development` branch.
@@ -72,23 +107,31 @@ const INSTALL_EVIDENCE_PATTERNS = [
 
     console.log('Fetching sites...')
 
-    const sitesResp = await fetch(sitesEndpoint, { headers, signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS) })
-
-    if (!sitesResp.ok) {
-      throw new Error(`Failed to fetch sites: HTTP ${sitesResp.status} ${sitesResp.statusText}`)
+    // Sites-list fetch with a single re-poll on empty response. InstaWP's tag
+    // index can transiently return an empty array during reindex; failing the
+    // whole workflow on the first read would be flaky. One retry after 5s
+    // covers that without masking a real "tag deleted" config error.
+    let sites: InstaWpSite[] = []
+    let sitesMessage = ''
+    for (let attempt = 1; attempt <= 2; attempt++) {
+      const sitesResp = await fetch(sitesEndpoint, { headers, signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS) })
+      if (!sitesResp.ok) {
+        throw new Error(`Failed to fetch sites: HTTP ${sitesResp.status} ${sitesResp.statusText}`)
+      }
+      const sitesPayload = await parseJsonResponse<InstaWpApiResponse<InstaWpSite[]>>(sitesResp, 'sites list')
+      if (sitesPayload.status !== true) {
+        throw new Error(`Sites API returned status=false: ${sitesPayload.message}`)
+      }
+      sites = Array.isArray(sitesPayload.data) ? sitesPayload.data : []
+      sitesMessage = sitesPayload.message
+      if (sites.length > 0) break
+      if (attempt < 2) {
+        console.log('Sites list returned empty — retrying once after 5s (may be tag reindex).')
+        await new Promise((r) => setTimeout(r, 5_000))
+      }
     }
-
-    let sitesPayload: InstaWpApiResponse<InstaWpSite[]>
-    try {
-      sitesPayload = await sitesResp.json() as InstaWpApiResponse<InstaWpSite[]>
-    } catch (err) {
-      const body = await sitesResp.text().catch(() => '<unreadable>')
-      throw new Error(`Sites response was not JSON: ${(err as Error).message}. body=[${body.slice(0, 200)}]`)
-    }
-
-    const sites = sitesPayload.status === true ? sitesPayload.data : []
-    if (!Array.isArray(sites) || sites.length === 0) {
-      throw new Error(`No sites returned for depdev tag (got ${sites?.length ?? 'non-array'}). Has the tag id changed?`)
+    if (sites.length === 0) {
+      throw new Error(`No sites returned for depdev tag after retry. Has the tag id changed? API message=[${sitesMessage}]`)
     }
 
     console.log(`Found ${sites.length} sites. Updating with concurrency=${CONCURRENCY}, timeout=${REQUEST_TIMEOUT_MS}ms, max attempts=${MAX_ATTEMPTS}...`)
@@ -97,7 +140,9 @@ const INSTALL_EVIDENCE_PATTERNS = [
     const failedSites: Failure[] = []
     const okSites: string[] = []
 
-    async function attemptUpdate(site: InstaWpSite): Promise<string> {
+    type AttemptOutcome = { retryable: boolean; retryAfterMs?: number }
+
+    async function attemptUpdate(site: InstaWpSite): Promise<void> {
       const commandEndpoint = new URL(`sites/${site.id}/execute-command`, base)
       const updateResult = await fetch(commandEndpoint, {
         method: 'POST',
@@ -107,38 +152,45 @@ const INSTALL_EVIDENCE_PATTERNS = [
       })
 
       if (!updateResult.ok) {
-        throw new Error(`HTTP ${updateResult.status} ${updateResult.statusText}`)
+        // 4xx (except 408/429) is a request problem — never going to fix itself; don't retry.
+        const retryable = updateResult.status >= 500 || updateResult.status === 408 || updateResult.status === 429
+        const retryAfterMs = parseRetryAfter(updateResult.headers.get('retry-after'))
+        const err: Error & AttemptOutcome = Object.assign(
+          new Error(`HTTP ${updateResult.status} ${updateResult.statusText}`),
+          { retryable, retryAfterMs },
+        )
+        throw err
       }
 
-      let responseData: InstaWpApiResponse<string>
-      try {
-        responseData = await updateResult.json() as InstaWpApiResponse<string>
-      } catch (err) {
-        const body = await updateResult.text().catch(() => '<unreadable>')
-        throw new Error(`Response was not JSON: ${(err as Error).message}. body=[${body.slice(0, 200)}]`)
+      const responseData = await parseJsonResponse<InstaWpApiResponse<string>>(updateResult, `site ${site.name} (${site.id})`)
+
+      // Discriminate on the literal-union `status` field (the actual TS
+      // discriminant). `success` is documented as optional, so a response with
+      // `status: true, data: <stdout>` and no `success` field is still valid.
+      if (responseData.status !== true) {
+        const err: Error & AttemptOutcome = Object.assign(
+          new Error(`Command rejected: ${responseData.message}`),
+          { retryable: false }, // command-level reject is rarely transient
+        )
+        throw err
       }
 
-      if (responseData.success !== true || responseData.status !== true) {
-        throw new Error(`Command rejected: ${responseData.message}`)
-      }
-
-      // The API returns `success: true` even when the command was accepted
-      // but the wp-cli step did not actually execute (this is the silent
-      // no-op the previous parallel version was missing). Require the
-      // response data to contain wp-cli stdout that proves the plugin
-      // install completed.
+      // The API returns `status: true` even when the command was accepted but
+      // the wp-cli step did not actually execute (this was the silent no-op
+      // the previous parallel version was missing). Require the response data
+      // to contain wp-cli stdout that proves the plugin install completed.
       const stdout = typeof responseData.data === 'string' ? responseData.data : ''
-      const installed = INSTALL_EVIDENCE_PATTERNS.some((p) => stdout.includes(p))
-
-      if (!installed) {
-        throw new Error(`Command accepted but no install evidence in response. data=[${stdout.slice(0, 1000)}]`)
+      if (!INSTALL_EVIDENCE_REGEX.test(stdout)) {
+        const err: Error & AttemptOutcome = Object.assign(
+          new Error(`Command accepted but no install evidence in response. data=[${truncate(stdout, MAX_LOGGED_BODY_BYTES)}]`),
+          { retryable: true }, // silent-noop class — empirically resolves on retry
+        )
+        throw err
       }
-
-      return stdout
     }
 
     async function updateSite(site: InstaWpSite): Promise<void> {
-      let lastError = ''
+      let lastError: string = `no attempts made for ${site.name}`
       for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
         try {
           await attemptUpdate(site)
@@ -146,8 +198,15 @@ const INSTALL_EVIDENCE_PATTERNS = [
           return
         } catch (error) {
           lastError = error instanceof Error ? error.message : 'Unknown error'
+          const outcome = error as Partial<AttemptOutcome>
+          // Stop early on non-retryable errors (4xx other than 408/429,
+          // explicit command rejection). Silent-noop responses are retryable.
+          if (outcome.retryable === false) break
           if (attempt < MAX_ATTEMPTS) {
-            await new Promise((r) => setTimeout(r, BACKOFF_BASE_MS * attempt))
+            const base = BACKOFF_BASE_MS * attempt
+            const jitter = Math.floor(Math.random() * BACKOFF_JITTER_MS)
+            const sleepMs = Math.max(outcome.retryAfterMs ?? 0, base) + jitter
+            await new Promise((r) => setTimeout(r, sleepMs))
           }
         }
       }
