@@ -1,3 +1,7 @@
+import { readFileSync } from 'node:fs'
+import crypto from 'node:crypto'
+import jwt from 'jsonwebtoken'
+
 type InstaWpApiResponse<T> = {
   message: string
   success?: boolean
@@ -14,6 +18,7 @@ type InstaWpApiResponse<T> = {
 type InstaWpSite = {
   id: number
   name: string
+  url?: string | null
 }
 
 const CONCURRENCY = 4;
@@ -36,6 +41,21 @@ const SECRET_REDACT_REGEX = /Bearer\s+[A-Za-z0-9._\-+/=]+/gi;
 // Match a regex so newline-wrapped output and the canonical wp-cli "Success:
 // Installed N of M plugins" line both count.
 const INSTALL_EVIDENCE_REGEX = /(Plugin installed successfully|Plugin 'checkview' activated|Success:\s+Installed\s+\d+\s+of\s+\d+\s+plugins)/i;
+// Post-install version check (defense against the install-evidence-passes-but-
+// version-doesnt-change class). When the helper plugin's JWT private key is
+// available, we hit /checkview/v1/plugin-version on each site after the install
+// command returns and compare the reported version to the Version header in
+// the repo's local checkout of checkview.php. If verification call itself
+// fails (e.g., site behind WAF, free-plan REST block, broken site), we
+// fall back to the install-evidence gate — verification is supplementary,
+// not the only signal.
+const PLUGIN_VERSION_FILE = './checkview.php';
+const PLUGIN_VERSION_HEADER_REGEX = /^\s*\*\s*Version:\s*(\S+)/m;
+const JWT_ISSUER = 'api.checkview.io';
+const JWT_AUDIENCE = 'helper.checkview.io';
+const JWT_SUBJECT = 'api@checkview.io';
+const JWT_EXPIRES_IN_S = 120;
+const VERIFICATION_TIMEOUT_MS = 20_000;
 
 function truncate(s: string, n: number): string {
   return s.length > n ? `${s.slice(0, n)}…(truncated ${s.length - n} chars)` : s
@@ -91,6 +111,86 @@ function parseRetryAfter(headerValue: string | null): number | undefined {
 }
 
 /**
+ * Read the plugin Version header from the local checkout of checkview.php.
+ * Returns null if the file or header is missing — verification then skips
+ * gracefully rather than failing the workflow.
+ */
+function readExpectedVersion(): string | null {
+  try {
+    const content = readFileSync(PLUGIN_VERSION_FILE, 'utf8')
+    const match = content.match(PLUGIN_VERSION_HEADER_REGEX)
+    return match ? match[1] : null
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Resolve the public origin (https://host) used to call the helper plugin's
+ * REST API on a given InstaWP site. Returns null if the site object lacks a
+ * usable URL — we deliberately do NOT guess `https://<name>.instawp.xyz`,
+ * because a subset of fixtures live on `.instawp.co` instead, and a wrong
+ * domain would silently send verification calls to the wrong site.
+ * Caller treats null as "unverifiable" and falls back to the install-evidence
+ * gate.
+ */
+function siteOrigin(site: InstaWpSite): string | null {
+  if (!site.url) return null
+  try { return new URL(site.url).origin } catch { return null }
+}
+
+/**
+ * Sign an RS256 JWT for the helper plugin's `/checkview/v1/*` endpoints.
+ * Matches the signature scheme the SaaS uses in `packages/wordpress` so the
+ * helper accepts it (same iss/aud/sub claims + websiteUrl claim).
+ */
+function signHelperJwt(origin: string, privateKey: string): string {
+  return jwt.sign(
+    { websiteUrl: origin + '/', _checkview_nonce: crypto.randomUUID() },
+    privateKey,
+    { algorithm: 'RS256', expiresIn: JWT_EXPIRES_IN_S, issuer: JWT_ISSUER, audience: JWT_AUDIENCE, subject: JWT_SUBJECT },
+  )
+}
+
+/**
+ * Fetch the installed CheckView plugin version from a site's helper REST
+ * endpoint. Returns the version string on success, or null if the call
+ * itself failed (network, 4xx/5xx from the site, malformed response).
+ *
+ * Returning null is the "verification unavailable" signal — caller falls
+ * back to the install-evidence gate. Sites known to be unverifiable
+ * (free-plan InstaWP blocks custom REST routes, WAFs, broken sites)
+ * shouldn't fail the workflow when install evidence already passed.
+ */
+async function fetchInstalledVersion(site: InstaWpSite, privateKey: string): Promise<string | null> {
+  const origin = siteOrigin(site)
+  if (!origin) return null
+  let token: string
+  try {
+    token = signHelperJwt(origin, privateKey)
+  } catch {
+    return null
+  }
+  const url = new URL(origin + '/')
+  url.searchParams.set('_checkview_token', token)
+  url.searchParams.set('rest_route', '/checkview/v1/plugin-version')
+  url.searchParams.set('_checkview_timestamp', new Date().toISOString())
+  url.searchParams.set('_plugin_slug', 'checkview')
+  try {
+    const resp = await fetch(url, {
+      headers: { Authorization: `Bearer ${token}` },
+      signal: AbortSignal.timeout(VERIFICATION_TIMEOUT_MS),
+    })
+    if (!resp.ok) return null
+    const text = (await resp.text()).replace(/[\x00-\x1f]/g, ' ')
+    const j = JSON.parse(text) as { version?: string; body_response?: { version?: string } }
+    return j.version ?? j.body_response?.version ?? null
+  } catch {
+    return null
+  }
+}
+
+/**
  * Update the CheckView plugin on InstaWP sites using the `development` branch.
  *
  * Previously this script blasted all ~118 depdev-tagged sites in parallel via
@@ -117,6 +217,44 @@ function parseRetryAfter(headerValue: string | null): number | undefined {
     process.exitCode = 1
     return
   }
+
+  // Optional post-install version-check. Enabled only if (a) we can read the
+  // expected version from the repo's checkview.php and (b) the helper JWT
+  // private key is in env. Both missing → fall back to install-evidence
+  // gate only (still catches the original 75%-noop bug; misses the ~8%
+  // installs-but-doesn't-take-effect class).
+  const EXPECTED_VERSION = readExpectedVersion()
+  const JWT_PRIVATE_KEY = process.env.HELPER_PLUGIN_JWT_PRIVATE_KEY ?? null
+  const VERIFY_ENABLED = !!EXPECTED_VERSION && !!JWT_PRIVATE_KEY
+  if (!VERIFY_ENABLED) {
+    console.log(
+      `Post-install version-check DISABLED ` +
+      `(expected_version=${EXPECTED_VERSION ?? 'missing'}, ` +
+      `jwt_key=${JWT_PRIVATE_KEY ? 'present' : 'missing'}). ` +
+      `Falling back to install-evidence gate only.`,
+    )
+  } else {
+    // Validate the JWT key format up-front. Without this, a malformed key
+    // (wrong format, `\n`-encoded newlines that didn't unescape, public key
+    // by mistake) would let `jwt.sign` throw inside every per-site
+    // `fetchInstalledVersion` call. Each call would return null → verification
+    // would silently degrade to "unavailable" on every site → green workflow
+    // that didn't actually verify anything. Failing loud here catches
+    // misconfig at startup.
+    try {
+      signHelperJwt('https://test.invalid', JWT_PRIVATE_KEY!)
+    } catch (err) {
+      console.error(
+        `HELPER_PLUGIN_JWT_PRIVATE_KEY is malformed: ${err instanceof Error ? err.message : String(err)}. ` +
+        `Set the secret to the RSA private key in PEM format (with BEGIN/END markers and real newlines, not "\\n").`,
+      )
+      process.exitCode = 1
+      return
+    }
+    console.log(`Post-install version-check ENABLED (expecting version ${EXPECTED_VERSION}).`)
+  }
+
+  const verification = { verified: 0, unverifiable: 0 }
 
   try {
     const base = 'https://app.instawp.io/api/v2/'
@@ -212,6 +350,29 @@ function parseRetryAfter(headerValue: string | null): number | undefined {
         )
         throw err
       }
+
+      // Post-install version verification (when enabled). wp-cli stdout has
+      // been observed to report "Plugin installed successfully" while the
+      // binary on disk doesn't actually change to the new version (likely an
+      // InstaWP-side response cache or queue race). Verify by reading the
+      // installed version from the helper plugin's own REST endpoint. A
+      // verification call that ITSELF fails (4xx/5xx, timeout, no helper
+      // route) returns null and we fall back to the install-evidence gate
+      // — verification is supplementary, not load-bearing.
+      if (VERIFY_ENABLED && EXPECTED_VERSION && JWT_PRIVATE_KEY) {
+        const installed = await fetchInstalledVersion(site, JWT_PRIVATE_KEY)
+        if (installed !== null && installed !== EXPECTED_VERSION) {
+          const err: Error & AttemptOutcome = Object.assign(
+            new Error(`Version mismatch after install: expected ${EXPECTED_VERSION}, site reports ${installed}.`),
+            { retryable: true }, // empirically resolves on retry (same class as silent-noop)
+          )
+          throw err
+        }
+        // Counters increment only on the success-return path of attemptUpdate
+        // (after any mismatch-throw), so retries don't double-count.
+        if (installed === null) verification.unverifiable++
+        else verification.verified++
+      }
     }
 
     async function updateSite(site: InstaWpSite): Promise<void> {
@@ -245,6 +406,10 @@ function parseRetryAfter(headerValue: string | null): number | undefined {
       const batch = sites.slice(i, i + CONCURRENCY)
       await Promise.all(batch.map(updateSite))
       console.log(`Progress ${Math.min(i + CONCURRENCY, sites.length)}/${sites.length} (ok=${okSites.length}, failed=${failedSites.length})`)
+    }
+
+    if (VERIFY_ENABLED) {
+      console.log(`\nVerification summary: ${verification.verified} verified, ${verification.unverifiable} unverifiable (URL missing, REST blocked, broken site, etc.).`)
     }
 
     if (failedSites.length) {

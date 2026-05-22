@@ -27,4 +27,11 @@ jobs:
       - name: Run script
         run: node scripts/dist/instawp.js
         env:
-          INSTAWP_API_KEY: ${{secrets.INSTAWP_API_KEY}}
+          INSTAWP_API_KEY: ${{ secrets.INSTAWP_API_KEY }}
+          # Optional: enables the post-install version verification. If this
+          # secret isn't set, the script falls back to install-evidence-only
+          # gating (still catches the silent-noop class, misses the
+          # ~8% "installs but version doesn't change" class). Set the value
+          # to the same RSA private key used by the SaaS api Cloud Run env
+          # var HELPER_PLUGIN_JWT_PRIVATE_KEY.
+          HELPER_PLUGIN_JWT_PRIVATE_KEY: ${{ secrets.HELPER_PLUGIN_JWT_PRIVATE_KEY }}
