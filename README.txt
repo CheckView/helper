@@ -7,7 +7,7 @@ Tested up to: 6.9
 Requires PHP: 7.0.0
 License: GPLv3
 License URI: http://www.gnu.org/licenses/gpl-3.0.html
-Stable tag: 2.0.34
+Stable tag: 2.0.35-beta
 
 [CheckView](https://checkview.io/) automates WordPress form and WooCommerce testing, monitoring key flows to catch failures early before they cost you leads or sales everyday.
 
