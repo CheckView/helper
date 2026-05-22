@@ -23,15 +23,12 @@ const MAX_ATTEMPTS = 3;
 const BACKOFF_BASE_MS = 2_000;
 const BACKOFF_JITTER_MS = 1_000;
 const MAX_LOGGED_BODY_BYTES = 4_000;
-// Cap how much of any response body we'll buffer before truncating-for-log.
-// InstaWP responses are normally <10KB; a misbehaving upstream or captive
-// portal could stream much more. 1 MiB is plenty of room for legitimate
-// debug payloads without letting a gigabyte response wedge memory.
-const MAX_READ_BODY_BYTES = 1_048_576;
 // Pattern stripped from any logged body excerpt before it reaches stderr.
 // Defense-in-depth: if InstaWP's debug envelope ever echoes our inbound
 // `Authorization` header (some Laravel apps do in development mode), this
-// prevents the bearer token from landing in GitHub Actions logs.
+// prevents the bearer token from landing in GitHub Actions logs. We also
+// strip the literal API key value in `redactForLog` in case the token ever
+// appears bare (no `Bearer ` prefix) in a response body.
 const SECRET_REDACT_REGEX = /Bearer\s+[A-Za-z0-9._\-+/=]+/gi;
 // wp-cli phrasing that proves command 1958's `wp plugin install ... --activate`
 // step ran to completion. Sample positive stdout:
@@ -45,40 +42,27 @@ function truncate(s: string, n: number): string {
 }
 
 function redactForLog(s: string): string {
-  return s.replace(SECRET_REDACT_REGEX, 'Bearer <redacted>')
-}
-
-/**
- * Stream a response body into a string, capped at MAX_READ_BODY_BYTES.
- * Native fetch's `.text()` buffers the entire body unconditionally; a
- * misbehaving upstream (or hijacked-200 captive portal) could stream
- * arbitrary bytes. Reading via the stream lets us bail early.
- */
-async function readBodyCapped(response: Response): Promise<string> {
-  if (!response.body) return ''
-  const reader = response.body.getReader()
-  const decoder = new TextDecoder()
-  let out = ''
-  while (out.length < MAX_READ_BODY_BYTES) {
-    const { done, value } = await reader.read()
-    if (done) break
-    out += decoder.decode(value, { stream: true })
-  }
-  // Best-effort cancel the rest so the underlying connection releases.
-  reader.cancel().catch(() => {})
+  let out = s.replace(SECRET_REDACT_REGEX, 'Bearer <redacted>')
+  const key = process.env.INSTAWP_API_KEY
+  if (key && key.length >= 16) out = out.split(key).join('<redacted-api-key>')
   return out
 }
 
 /**
- * Parse a JSON response body, with a single body-read so we can include the
- * raw body in the error message when JSON parsing fails. Native fetch locks
- * the stream after `.json()` consumes it, so calling `.text()` afterward
- * always errors — we read the text ourselves first (capped), then parse.
+ * Parse a JSON response body. We read the body as text first (instead of
+ * `response.json()`) so the raw body is available for error messages when
+ * JSON parsing fails — native fetch locks the stream after `.json()` starts
+ * consuming, so reading text afterward isn't possible.
+ *
+ * No body-size cap: this script targets a single known endpoint
+ * (app.instawp.io) that returns small JSON; bounding the read against
+ * gigabyte-streaming hostile upstreams would be premature for a CI script
+ * with one trusted upstream.
  */
 async function parseJsonResponse<T>(response: Response, context: string): Promise<T> {
   let text: string
   try {
-    text = await readBodyCapped(response)
+    text = await response.text()
   } catch (err) {
     const reason = err instanceof Error ? err.message : String(err)
     throw new Error(`Response for ${context} body read failed: ${reason}`)
