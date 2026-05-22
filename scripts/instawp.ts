@@ -18,6 +18,17 @@ type InstaWpSite = {
 
 const CONCURRENCY = 4;
 const COMMAND_ID = 1958; // InstaWP "Update CheckView plugin" — reinstalls from inspry/checkview development branch ZIP
+const REQUEST_TIMEOUT_MS = 120_000;
+const MAX_ATTEMPTS = 3;
+const BACKOFF_BASE_MS = 2_000;
+// wp-cli phrasing that proves command 1958's `wp plugin install ... --activate`
+// step ran to completion. Matching any one of these is sufficient. Sample
+// positive stdout: "Plugin installed successfully.\nActivating 'checkview'...\nPlugin 'checkview' activated.\nSuccess: Installed 1 of 1 plugins."
+const INSTALL_EVIDENCE_PATTERNS = [
+  'Plugin installed successfully',
+  "Plugin 'checkview' activated",
+  'Success: Installed 1 of 1 plugins',
+];
 
 /**
  * Update the CheckView plugin on InstaWP sites using the `development` branch.
@@ -31,10 +42,10 @@ const COMMAND_ID = 1958; // InstaWP "Update CheckView plugin" — reinstalls fro
  * plugin version. Re-running the same command sequentially against the
  * stuck sites worked every time.
  *
- * Fix: run with bounded concurrency, and require the response payload to
- * actually contain wp-cli stdout proving the install ran ("Plugin installed
- * successfully" / "activated"). Anything else is reported as a per-site
- * failure with the truncated response so we can see what InstaWP returned.
+ * Fix: bounded concurrency + per-site timeout + retry + require wp-cli
+ * stdout that proves the install actually completed. On any genuine
+ * post-retry failure, fail the workflow loudly rather than silently
+ * masking it.
  *
  * @link https://documenter.getpostman.com/view/21495096/2s8YzUyhUf
  */
@@ -42,7 +53,9 @@ const COMMAND_ID = 1958; // InstaWP "Update CheckView plugin" — reinstalls fro
   const INSTAWP_API_KEY = process.env.INSTAWP_API_KEY
 
   if (!INSTAWP_API_KEY) {
-    throw new Error('InstaWP API key not found.')
+    console.error('InstaWP API key not found.')
+    process.exitCode = 1
+    return
   }
 
   try {
@@ -59,56 +72,86 @@ const COMMAND_ID = 1958; // InstaWP "Update CheckView plugin" — reinstalls fro
 
     console.log('Fetching sites...')
 
-    const result = await fetch(sitesEndpoint, { headers })
+    const sitesResp = await fetch(sitesEndpoint, { headers, signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS) })
 
-    if (!result.ok) {
-      throw new Error('Failed to fetch sites.')
+    if (!sitesResp.ok) {
+      throw new Error(`Failed to fetch sites: HTTP ${sitesResp.status} ${sitesResp.statusText}`)
     }
 
-    const { data: sites } = await result.json() as InstaWpApiResponse<InstaWpSite[]>
+    let sitesPayload: InstaWpApiResponse<InstaWpSite[]>
+    try {
+      sitesPayload = await sitesResp.json() as InstaWpApiResponse<InstaWpSite[]>
+    } catch (err) {
+      const body = await sitesResp.text().catch(() => '<unreadable>')
+      throw new Error(`Sites response was not JSON: ${(err as Error).message}. body=[${body.slice(0, 200)}]`)
+    }
 
-    console.log(`Found ${sites.length} sites. Updating with concurrency=${CONCURRENCY}...`)
+    const sites = sitesPayload.status === true ? sitesPayload.data : []
+    if (!Array.isArray(sites) || sites.length === 0) {
+      throw new Error(`No sites returned for depdev tag (got ${sites?.length ?? 'non-array'}). Has the tag id changed?`)
+    }
 
-    type Failure = { site: InstaWpSite; message: string }
+    console.log(`Found ${sites.length} sites. Updating with concurrency=${CONCURRENCY}, timeout=${REQUEST_TIMEOUT_MS}ms, max attempts=${MAX_ATTEMPTS}...`)
+
+    type Failure = { site: InstaWpSite; attempts: number; message: string }
     const failedSites: Failure[] = []
     const okSites: string[] = []
 
-    async function updateSite(site: InstaWpSite): Promise<void> {
-      try {
-        const commandEndpoint = new URL(`sites/${site.id}/execute-command`, base)
-        const updateResult = await fetch(commandEndpoint, {
-          method: 'POST',
-          headers,
-          body: JSON.stringify({ command_id: COMMAND_ID })
-        })
+    async function attemptUpdate(site: InstaWpSite): Promise<string> {
+      const commandEndpoint = new URL(`sites/${site.id}/execute-command`, base)
+      const updateResult = await fetch(commandEndpoint, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ command_id: COMMAND_ID }),
+        signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+      })
 
-        if (!updateResult.ok) {
-          throw new Error(`HTTP ${updateResult.status} ${updateResult.statusText}`)
-        }
-
-        const responseData = await updateResult.json() as InstaWpApiResponse<string>
-
-        if (!responseData.success) {
-          throw new Error(`Command rejected: ${responseData.message}`)
-        }
-
-        // The API returns `success: true` even when the command was accepted
-        // but the wp-cli step did not actually execute (this is the silent
-        // no-op the previous parallel version was missing). Require the
-        // response data to be a string containing wp-cli stdout that proves
-        // the plugin install completed.
-        const stdout = typeof responseData.data === 'string' ? responseData.data : ''
-        const installed = stdout.includes('Plugin installed successfully') || stdout.includes("Plugin 'checkview' activated")
-
-        if (!installed) {
-          throw new Error(`Command accepted but no install evidence in response. data=[${stdout.slice(0, 200)}]`)
-        }
-
-        okSites.push(site.name)
-      } catch (error) {
-        const message = error instanceof Error ? error.message : 'Unknown error'
-        failedSites.push({ site, message })
+      if (!updateResult.ok) {
+        throw new Error(`HTTP ${updateResult.status} ${updateResult.statusText}`)
       }
+
+      let responseData: InstaWpApiResponse<string>
+      try {
+        responseData = await updateResult.json() as InstaWpApiResponse<string>
+      } catch (err) {
+        const body = await updateResult.text().catch(() => '<unreadable>')
+        throw new Error(`Response was not JSON: ${(err as Error).message}. body=[${body.slice(0, 200)}]`)
+      }
+
+      if (responseData.success !== true || responseData.status !== true) {
+        throw new Error(`Command rejected: ${responseData.message}`)
+      }
+
+      // The API returns `success: true` even when the command was accepted
+      // but the wp-cli step did not actually execute (this is the silent
+      // no-op the previous parallel version was missing). Require the
+      // response data to contain wp-cli stdout that proves the plugin
+      // install completed.
+      const stdout = typeof responseData.data === 'string' ? responseData.data : ''
+      const installed = INSTALL_EVIDENCE_PATTERNS.some((p) => stdout.includes(p))
+
+      if (!installed) {
+        throw new Error(`Command accepted but no install evidence in response. data=[${stdout.slice(0, 1000)}]`)
+      }
+
+      return stdout
+    }
+
+    async function updateSite(site: InstaWpSite): Promise<void> {
+      let lastError = ''
+      for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+        try {
+          await attemptUpdate(site)
+          okSites.push(site.name)
+          return
+        } catch (error) {
+          lastError = error instanceof Error ? error.message : 'Unknown error'
+          if (attempt < MAX_ATTEMPTS) {
+            await new Promise((r) => setTimeout(r, BACKOFF_BASE_MS * attempt))
+          }
+        }
+      }
+      failedSites.push({ site, attempts: MAX_ATTEMPTS, message: lastError })
     }
 
     for (let i = 0; i < sites.length; i += CONCURRENCY) {
@@ -118,13 +161,14 @@ const COMMAND_ID = 1958; // InstaWP "Update CheckView plugin" — reinstalls fro
     }
 
     if (failedSites.length) {
-      console.log(`\nFailed executions (${failedSites.length}/${sites.length}):`)
+      console.log(`\nFailed executions (${failedSites.length}/${sites.length}) after ${MAX_ATTEMPTS} attempts:`)
       for (const f of failedSites) {
         console.log(`  - ${f.site.name} (${f.site.id}): ${f.message}`)
       }
       // Fail the workflow when any sites didn't actually update — the previous
-      // version masked these failures by only logging them.
-      process.exit(1)
+      // version masked these failures by only logging them. Use exitCode so
+      // pending stdout flushes before the process exits.
+      process.exitCode = 1
     } else {
       console.log(`\nAll ${sites.length} sites updated successfully. Get to testin!`)
     }
@@ -134,6 +178,6 @@ const COMMAND_ID = 1958; // InstaWP "Update CheckView plugin" — reinstalls fro
     } else {
       console.error(error)
     }
-    process.exit(1)
+    process.exitCode = 1
   }
 })()
