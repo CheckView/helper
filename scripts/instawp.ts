@@ -23,6 +23,16 @@ const MAX_ATTEMPTS = 3;
 const BACKOFF_BASE_MS = 2_000;
 const BACKOFF_JITTER_MS = 1_000;
 const MAX_LOGGED_BODY_BYTES = 4_000;
+// Cap how much of any response body we'll buffer before truncating-for-log.
+// InstaWP responses are normally <10KB; a misbehaving upstream or captive
+// portal could stream much more. 1 MiB is plenty of room for legitimate
+// debug payloads without letting a gigabyte response wedge memory.
+const MAX_READ_BODY_BYTES = 1_048_576;
+// Pattern stripped from any logged body excerpt before it reaches stderr.
+// Defense-in-depth: if InstaWP's debug envelope ever echoes our inbound
+// `Authorization` header (some Laravel apps do in development mode), this
+// prevents the bearer token from landing in GitHub Actions logs.
+const SECRET_REDACT_REGEX = /Bearer\s+[A-Za-z0-9._\-+/=]+/gi;
 // wp-cli phrasing that proves command 1958's `wp plugin install ... --activate`
 // step ran to completion. Sample positive stdout:
 //   "Plugin installed successfully.\nActivating 'checkview'...\nPlugin 'checkview' activated.\nSuccess: Installed 1 of 1 plugins."
@@ -34,20 +44,51 @@ function truncate(s: string, n: number): string {
   return s.length > n ? `${s.slice(0, n)}…(truncated ${s.length - n} chars)` : s
 }
 
+function redactForLog(s: string): string {
+  return s.replace(SECRET_REDACT_REGEX, 'Bearer <redacted>')
+}
+
+/**
+ * Stream a response body into a string, capped at MAX_READ_BODY_BYTES.
+ * Native fetch's `.text()` buffers the entire body unconditionally; a
+ * misbehaving upstream (or hijacked-200 captive portal) could stream
+ * arbitrary bytes. Reading via the stream lets us bail early.
+ */
+async function readBodyCapped(response: Response): Promise<string> {
+  if (!response.body) return ''
+  const reader = response.body.getReader()
+  const decoder = new TextDecoder()
+  let out = ''
+  while (out.length < MAX_READ_BODY_BYTES) {
+    const { done, value } = await reader.read()
+    if (done) break
+    out += decoder.decode(value, { stream: true })
+  }
+  // Best-effort cancel the rest so the underlying connection releases.
+  reader.cancel().catch(() => {})
+  return out
+}
+
 /**
  * Parse a JSON response body, with a single body-read so we can include the
  * raw body in the error message when JSON parsing fails. Native fetch locks
  * the stream after `.json()` consumes it, so calling `.text()` afterward
- * always errors — we read the text first and parse it ourselves.
+ * always errors — we read the text ourselves first (capped), then parse.
  */
 async function parseJsonResponse<T>(response: Response, context: string): Promise<T> {
-  const text = await response.text()
+  let text: string
+  try {
+    text = await readBodyCapped(response)
+  } catch (err) {
+    const reason = err instanceof Error ? err.message : String(err)
+    throw new Error(`Response for ${context} body read failed: ${reason}`)
+  }
   try {
     return JSON.parse(text) as T
   } catch (err) {
     const reason = err instanceof Error ? err.message : String(err)
     const contentType = response.headers.get('content-type') ?? '<no content-type>'
-    throw new Error(`Response for ${context} was not JSON (Content-Type=[${contentType}], ${reason}). body=[${truncate(text, MAX_LOGGED_BODY_BYTES)}]`)
+    throw new Error(`Response for ${context} was not JSON (Content-Type=[${contentType}], ${reason}). body=[${truncate(redactForLog(text), MAX_LOGGED_BODY_BYTES)}]`)
   }
 }
 
@@ -182,7 +223,7 @@ function parseRetryAfter(headerValue: string | null): number | undefined {
       const stdout = typeof responseData.data === 'string' ? responseData.data : ''
       if (!INSTALL_EVIDENCE_REGEX.test(stdout)) {
         const err: Error & AttemptOutcome = Object.assign(
-          new Error(`Command accepted but no install evidence in response. data=[${truncate(stdout, MAX_LOGGED_BODY_BYTES)}]`),
+          new Error(`Command accepted but no install evidence in response. data=[${truncate(redactForLog(stdout), MAX_LOGGED_BODY_BYTES)}]`),
           { retryable: true }, // silent-noop class — empirically resolves on retry
         )
         throw err
@@ -201,11 +242,14 @@ function parseRetryAfter(headerValue: string | null): number | undefined {
           const outcome = error as Partial<AttemptOutcome>
           // Stop early on non-retryable errors (4xx other than 408/429,
           // explicit command rejection). Silent-noop responses are retryable.
+          // Errors without an explicit `retryable` field (AbortError from
+          // timeout, network resets, parse failures) fall through as retryable
+          // since they're typically transient — `undefined === false` is false.
           if (outcome.retryable === false) break
           if (attempt < MAX_ATTEMPTS) {
-            const base = BACKOFF_BASE_MS * attempt
-            const jitter = Math.floor(Math.random() * BACKOFF_JITTER_MS)
-            const sleepMs = Math.max(outcome.retryAfterMs ?? 0, base) + jitter
+            const backoffMs = BACKOFF_BASE_MS * attempt
+            const jitterMs = Math.floor(Math.random() * BACKOFF_JITTER_MS)
+            const sleepMs = Math.max(outcome.retryAfterMs ?? 0, backoffMs) + jitterMs
             await new Promise((r) => setTimeout(r, sleepMs))
           }
         }
