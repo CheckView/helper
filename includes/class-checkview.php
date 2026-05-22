@@ -456,22 +456,18 @@ class CheckView {
 			foreach ( $options['plugins'] as $plugin ) {
 				if ( CHECKVIEW_BASE_DIR === $plugin ) {
 					checkview_reset_cache( true );
-					// Include upgrade.php for dbDelta.
-					if ( ! function_exists( 'dbDelta' ) ) {
-						require_once ABSPATH . 'wp-admin/includes/upgrade.php';
-					}
 					$cv_used_nonces = $wpdb->prefix . 'cv_used_nonces';
 
 					$charset_collate = $wpdb->get_charset_collate();
 					if ( $wpdb->get_var( "SHOW TABLES LIKE '{$cv_used_nonces}'" ) !== $cv_used_nonces ) {
-						$sql = "CREATE TABLE $cv_used_nonces (
+						$sql = "CREATE TABLE IF NOT EXISTS $cv_used_nonces (
 								id BIGINT(20) NOT NULL AUTO_INCREMENT,
 								nonce VARCHAR(255) NOT NULL,
 								used_at DATETIME DEFAULT CURRENT_TIMESTAMP NOT NULL,
 								PRIMARY KEY (id),
 								UNIQUE KEY nonce (nonce)
 							) $charset_collate;";
-						dbDelta( $sql );
+						checkview_dbdelta_or_query( $sql );
 					}
 				}
 			}
