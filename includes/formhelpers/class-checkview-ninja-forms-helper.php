@@ -211,8 +211,8 @@ if ( ! class_exists( 'Checkview_Ninja_Forms_Helper' ) ) {
 			// The raw $_POST['formData'] JSON contains the original
 			// values submitted by the browser.
 			$raw_fields = array();
-			if ( isset( $_POST['formData'] ) ) {
-				$raw_form = json_decode( stripslashes( $_POST['formData'] ), true );
+			if ( isset( $_POST['formData'] ) && is_string( $_POST['formData'] ) ) {
+				$raw_form = json_decode( wp_unslash( $_POST['formData'] ), true );
 				if ( is_array( $raw_form ) && ! empty( $raw_form['fields'] ) && is_array( $raw_form['fields'] ) ) {
 					$raw_fields = $raw_form['fields'];
 				}
