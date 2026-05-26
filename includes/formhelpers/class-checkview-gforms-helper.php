@@ -122,15 +122,21 @@ if ( ! class_exists( 'Checkview_Gforms_Helper' ) ) {
 				// true, which causes `testSpam()` to return the unmodified
 				// `$is_spam` without calling the API or `delete_lead()`.
 				//
-				// Sources (cleantalk-spam-protect plugin, wp.org trunk):
-				//   - inc/cleantalk-public-integrations.php ~L3148-3180
+				// Sources (cleantalk-spam-protect plugin, wp.org trunk;
+				// line numbers verified at the time of writing — re-verify
+				// on plugin updates):
+				//   - inc/cleantalk-public-integrations.php L2270-2303
 				//     (`apbct_form__gravityForms__isSkippedRequest()`
 				//     reads `$cleantalk_executed`)
-				//   - inc/cleantalk-public-integrations.php ~L3058-3068
+				//   - inc/cleantalk-public-integrations.php L2128-2134
 				//     (`apbct_form__gravityForms__testSpam()` calls
-				//     `isSkippedRequest()` first)
-				//   - inc/cleantalk-public-validate.php L311-313
-				//     (CleanTalk sets the global itself after API calls)
+				//     `isSkippedRequest()` first, returns `$is_spam`
+				//     unmodified before the remote API call or
+				//     `GFFormsModel::delete_lead()`)
+				//   - inc/cleantalk-public-validate.php L472
+				//     (CleanTalk sets the global itself after successful
+				//     base API calls — pattern is canonical, not
+				//     internal-only)
 				//
 				// CAVEAT: this is an INTERNAL global, not a documented
 				// public API. CleanTalk could rename/remove it in any
