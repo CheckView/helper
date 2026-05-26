@@ -410,6 +410,11 @@ if ( ! class_exists( 'Checkview_Gforms_Helper' ) ) {
 					// Maspik's default error string (the plugin slug itself
 					// never appears in the user-facing message).
 					'looks like spam',
+					// Gravity Wiz GP Blocklist default message
+					// ("This field contains a disallowed term.") and any
+					// custom blocklist-style messages.
+					'blocklist',
+					'disallowed',
 				)
 			);
 			foreach ( (array) $bypass_markers as $marker ) {
@@ -453,6 +458,18 @@ if ( ! class_exists( 'Checkview_Gforms_Helper' ) ) {
 		 * @return array
 		 */
 		public function unhook_gf_recaptcha_addon( $form ) {
+			// Idempotent — `gform_pre_validation` fires once per form, so on
+			// a page with multiple GF forms this callback would otherwise run
+			// repeatedly. After the first run the add-on's callbacks are
+			// already removed and subsequent runs would log a misleading
+			// "detected but no callbacks unhooked" warning. Static flag
+			// scopes the attempt to the first form-validation per request.
+			static $attempted = false;
+			if ( $attempted ) {
+				return $form;
+			}
+			$attempted = true;
+
 			if ( ! class_exists( 'GF_RECAPTCHA' ) || ! is_callable( array( 'GF_RECAPTCHA', 'get_instance' ) ) ) {
 				return $form;
 			}
