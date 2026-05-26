@@ -405,8 +405,6 @@ if ( ! class_exists( 'Checkview_Gforms_Helper' ) ) {
 					'are you human',
 					'verify you are not a robot',
 					'bot detection',
-					'anti-spam',
-					'akismet',
 					// Maspik's default error string (the plugin slug itself
 					// never appears in the user-facing message).
 					'looks like spam',
