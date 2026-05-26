@@ -247,6 +247,13 @@ if ( ! class_exists( 'Checkview_Gforms_Helper' ) ) {
 		 * it cannot catch this. This filter runs at PHP_INT_MAX priority
 		 * (guaranteed last, after all other validation hooks) and clears failures.
 		 *
+		 * Scoped to anti-bot fields only: clearing every failure regardless of
+		 * cause was masking real test-flow gaps (e.g. a customer adds a required
+		 * dropdown but the saved test flow has no step to fill it — the test
+		 * would silently "pass" instead of failing honestly). Non-anti-bot
+		 * failures (required fields, format errors, etc.) are kept so they
+		 * surface as real test failures.
+		 *
 		 * Only loaded when is_bot() is true (constructor gated by
 		 * checkview_init_current_test which requires is_bot()).
 		 *
@@ -254,24 +261,87 @@ if ( ! class_exists( 'Checkview_Gforms_Helper' ) ) {
 		 * @return array
 		 */
 		public function checkview_bypass_captcha_validation( $validation_result ) {
-			if ( ! $validation_result['is_valid'] ) {
-				Checkview_Admin_Logs::add( 'ip-logs',
-					'Form validation failed during CheckView test. Clearing validation failures.' );
+			if ( $validation_result['is_valid'] ) {
+				return $validation_result;
+			}
 
-				$fields = $validation_result['form']['fields'] ?? array();
-				foreach ( $fields as &$field ) {
-					if ( $field->failed_validation ) {
-						Checkview_Admin_Logs::add( 'ip-logs',
-							'Cleared validation failure for field [' . $field->id . '] type [' . $field->type . '].' );
-						$field->failed_validation  = false;
-						$field->validation_message = '';
-					}
+			Checkview_Admin_Logs::add( 'ip-logs',
+				'Form validation failed during CheckView test. Evaluating which failures to clear.' );
+
+			$fields = $validation_result['form']['fields'] ?? array();
+			$remaining_failures = 0;
+
+			foreach ( $fields as &$field ) {
+				if ( empty( $field->failed_validation ) ) {
+					continue;
 				}
 
+				if ( self::is_anti_bot_failure( $field ) ) {
+					Checkview_Admin_Logs::add( 'ip-logs',
+						'Cleared anti-bot validation failure for field [' . $field->id . '] type [' . $field->type . '].' );
+					$field->failed_validation  = false;
+					$field->validation_message = '';
+					continue;
+				}
+
+				$remaining_failures++;
+				Checkview_Admin_Logs::add( 'ip-logs',
+					'Kept validation failure for non-anti-bot field [' . $field->id . '] type [' . $field->type . '] message [' . substr( (string) ( $field->validation_message ?? '' ), 0, 200 ) . '].' );
+			}
+			unset( $field );
+
+			// Only mark the form valid if every remaining failure was anti-bot related.
+			// Otherwise let GF surface the genuine failure so the test fails honestly.
+			if ( 0 === $remaining_failures ) {
 				$validation_result['is_valid'] = true;
+			} else {
+				Checkview_Admin_Logs::add( 'ip-logs',
+					'Form still has [' . $remaining_failures . '] non-anti-bot validation failure(s); not marking as valid.' );
 			}
 
 			return $validation_result;
+		}
+
+		/**
+		 * Determines whether a field's validation failure is anti-bot/captcha related.
+		 *
+		 * Matches by field type (`captcha`, `hcaptcha`, `turnstile`) or by validation
+		 * message pattern — the GF reCAPTCHA Add-On v2.x and similar anti-bot validators
+		 * attach their failure to ordinary fields (often a hidden text or form-level
+		 * marker) rather than a captcha-type field.
+		 *
+		 * @param object $field GF field with `failed_validation` set.
+		 * @return bool
+		 */
+		private static function is_anti_bot_failure( $field ): bool {
+			$bypass_types = array( 'captcha', 'hcaptcha', 'turnstile' );
+			if ( in_array( $field->type ?? '', $bypass_types, true ) ) {
+				return true;
+			}
+
+			$message = strtolower( (string) ( $field->validation_message ?? '' ) );
+			if ( '' === $message ) {
+				return false;
+			}
+
+			$bypass_markers = array(
+				'captcha',
+				'recaptcha',
+				'turnstile',
+				'are you human',
+				'verify you are human',
+				'verify you are not a robot',
+				'bot detection',
+				'anti-spam',
+				'akismet',
+			);
+			foreach ( $bypass_markers as $marker ) {
+				if ( false !== strpos( $message, $marker ) ) {
+					return true;
+				}
+			}
+
+			return false;
 		}
 
 		/**
