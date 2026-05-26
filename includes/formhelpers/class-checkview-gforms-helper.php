@@ -427,11 +427,21 @@ if ( ! class_exists( 'Checkview_Gforms_Helper' ) ) {
 		 *
 		 * The add-on (slug `gravityformsrecaptcha`, class `GF_RECAPTCHA`)
 		 * hooks both `gform_validation` (response token check) and
-		 * `gform_entry_is_spam` (low-score → spam) at default priority. Both
-		 * are removed here. Wider category-level filters (`gform_entry_is_spam`
-		 * → `__return_false`, marker-bypass in `checkview_bypass_captcha_validation`)
-		 * still catch the case where the class can't be found — e.g., a
-		 * future rename or a fork.
+		 * `gform_entry_is_spam` (low-score → spam) at default priority 10.
+		 *
+		 * Complements `remove_gravityforms_recaptcha_addon()` in
+		 * `includes/checkview-helper-functions.php`, which removes the
+		 * add-on's bootstrap from `gform_loaded` on the initial GET request
+		 * (when `$_REQUEST['checkview_test_id']` is present). That early
+		 * path doesn't fire on the AJAX form submission, where `test_id`
+		 * is only in the cookie/referer; by then the add-on has loaded
+		 * normally and we need to remove its callbacks at runtime instead.
+		 *
+		 * Wider category-level filters (`gform_entry_is_spam`
+		 * → `__return_false`, marker-bypass in
+		 * `checkview_bypass_captcha_validation`) still catch the case
+		 * where the class can't be found — e.g., a future rename or a
+		 * fork.
 		 *
 		 * Hooked at `gform_pre_validation` priority 1 so the unhook happens
 		 * before any `gform_validation` callback fires. Returns the form
@@ -452,18 +462,30 @@ if ( ! class_exists( 'Checkview_Gforms_Helper' ) ) {
 				return $form;
 			}
 
+			// Pass priority 10 explicitly — the add-on registers both
+			// callbacks at default priority, and remove_filter must match
+			// the registered priority. If the add-on bumps the priority
+			// in a future release this will silently no-op and the
+			// marker-bypass fallback in checkview_bypass_captcha_validation
+			// picks up the slack.
 			$removed = 0;
 			if ( method_exists( $instance, 'validate_submission' )
-				&& remove_filter( 'gform_validation', array( $instance, 'validate_submission' ) ) ) {
+				&& remove_filter( 'gform_validation', array( $instance, 'validate_submission' ), 10 ) ) {
 				$removed++;
 			}
 			if ( method_exists( $instance, 'check_for_spam_entry' )
-				&& remove_filter( 'gform_entry_is_spam', array( $instance, 'check_for_spam_entry' ) ) ) {
+				&& remove_filter( 'gform_entry_is_spam', array( $instance, 'check_for_spam_entry' ), 10 ) ) {
 				$removed++;
 			}
 
 			if ( $removed > 0 ) {
 				Checkview_Admin_Logs::add( 'ip-logs', 'Unhooked [' . $removed . '] GF reCAPTCHA Add-On callback(s).' );
+			} else {
+				// Class is present but neither expected callback was
+				// removable. Most likely the add-on renamed its methods
+				// or changed its priority — flag for support so we know
+				// our shim has drifted from the add-on's internals.
+				Checkview_Admin_Logs::add( 'ip-logs', 'GF reCAPTCHA Add-On detected but no callbacks were unhooked (renamed methods or priority changed?) — marker-bypass fallback still active.' );
 			}
 
 			return $form;
