@@ -356,6 +356,15 @@ if ( ! class_exists( 'Checkview_Gforms_Helper' ) ) {
 			 * third-party plugins that use the type but route through
 			 * gform_validation.
 			 *
+			 * WARNING: this filter is consumed by TWO independent layers
+			 * — `maybe_hide_recaptcha()` (strips fields of these types
+			 * pre-validation) AND `is_anti_bot_failure()` (clears their
+			 * failures post-validation). Returning an empty array or
+			 * `null` disables BOTH layers, not just one. Use the
+			 * `checkview_anti_bot_validation_markers` filter for
+			 * message-based extensions instead of weakening this
+			 * type list.
+			 *
 			 * @since 2.0.35
 			 *
 			 * @param string[] $types Lowercase GF field-type identifiers.
