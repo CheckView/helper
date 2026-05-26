@@ -410,11 +410,6 @@ if ( ! class_exists( 'Checkview_Gforms_Helper' ) ) {
 					// Maspik's default error string (the plugin slug itself
 					// never appears in the user-facing message).
 					'looks like spam',
-					// Gravity Wiz GP Blocklist default message
-					// ("This field contains a disallowed term.") and any
-					// custom blocklist-style messages.
-					'blocklist',
-					'disallowed',
 				)
 			);
 			foreach ( (array) $bypass_markers as $marker ) {
