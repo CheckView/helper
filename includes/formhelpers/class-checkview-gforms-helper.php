@@ -305,17 +305,35 @@ if ( ! class_exists( 'Checkview_Gforms_Helper' ) ) {
 		/**
 		 * Determines whether a field's validation failure is anti-bot/captcha related.
 		 *
-		 * Matches by field type (`captcha`, `hcaptcha`, `turnstile`) or by validation
-		 * message pattern — the GF reCAPTCHA Add-On v2.x and similar anti-bot validators
-		 * attach their failure to ordinary fields (often a hidden text or form-level
-		 * marker) rather than a captcha-type field.
+		 * Matches by field type (`captcha`, `hcaptcha`, `turnstile`, `honeypot`) or
+		 * by validation message pattern — the GF reCAPTCHA Add-On v2.x and similar
+		 * anti-bot validators attach their failure to ordinary fields (often a
+		 * hidden text or form-level marker) rather than a captcha-type field.
+		 *
+		 * The type allowlist is filterable via `checkview_anti_bot_field_types`
+		 * and the marker list via `checkview_anti_bot_validation_markers`, so
+		 * customers/integrators can add patterns specific to their stack (e.g.,
+		 * non-English error messages or niche anti-spam plugins) without
+		 * modifying the plugin.
 		 *
 		 * @param object $field GF field with `failed_validation` set.
 		 * @return bool
 		 */
 		private static function is_anti_bot_failure( $field ): bool {
-			$bypass_types = array( 'captcha', 'hcaptcha', 'turnstile' );
-			if ( in_array( $field->type ?? '', $bypass_types, true ) ) {
+			/**
+			 * Filters the GF field types treated as anti-bot/captcha during
+			 * CheckView tests. Failures on these field types are always
+			 * cleared. Default: captcha, hcaptcha, turnstile, honeypot.
+			 *
+			 * @since 2.0.36
+			 *
+			 * @param string[] $types Lowercase GF field-type identifiers.
+			 */
+			$bypass_types = apply_filters(
+				'checkview_anti_bot_field_types',
+				array( 'captcha', 'hcaptcha', 'turnstile', 'honeypot' )
+			);
+			if ( in_array( $field->type ?? '', (array) $bypass_types, true ) ) {
 				return true;
 			}
 
@@ -324,19 +342,39 @@ if ( ! class_exists( 'Checkview_Gforms_Helper' ) ) {
 				return false;
 			}
 
-			$bypass_markers = array(
-				'captcha',
-				'recaptcha',
-				'turnstile',
-				'are you human',
-				'verify you are human',
-				'verify you are not a robot',
-				'bot detection',
-				'anti-spam',
-				'akismet',
+			/**
+			 * Filters substring patterns (lowercase) matched against a field's
+			 * `validation_message` to detect anti-bot/anti-spam failures during
+			 * CheckView tests. Failures whose message contains any of these
+			 * substrings are cleared. Add your plugin/locale-specific markers
+			 * here (e.g., translated reCAPTCHA messages, niche anti-spam
+			 * plugins).
+			 *
+			 * @since 2.0.36
+			 *
+			 * @param string[] $markers Lowercase substring patterns.
+			 */
+			$bypass_markers = apply_filters(
+				'checkview_anti_bot_validation_markers',
+				array(
+					'captcha',
+					'recaptcha',
+					'turnstile',
+					'verify that you are human', // Simple Cloudflare Turnstile (>100k installs)
+					'verify you are human',
+					'verify you are not a robot',
+					'are you human',
+					'bot detection',
+					'anti-spam',
+					'akismet',
+					'cleantalk',
+					'spam detected',
+					'oopspam',
+					'maspik',
+				)
 			);
-			foreach ( $bypass_markers as $marker ) {
-				if ( false !== strpos( $message, $marker ) ) {
+			foreach ( (array) $bypass_markers as $marker ) {
+				if ( is_string( $marker ) && '' !== $marker && false !== strpos( $message, $marker ) ) {
 					return true;
 				}
 			}
