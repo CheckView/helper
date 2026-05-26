@@ -224,7 +224,14 @@ if ( ! class_exists( 'Checkview_Gforms_Helper' ) ) {
 		public function maybe_hide_recaptcha( $form ) {
 			$fields = $form['fields'];
 
-			$spam_field_types = array( 'captcha', 'hcaptcha', 'turnstile', 'honeypot' );
+			// Same allowlist as is_anti_bot_failure() so customers extending
+			// `checkview_anti_bot_field_types` get consistent treatment: a
+			// custom type is removed pre-validation AND its failures are
+			// cleared post-validation.
+			$spam_field_types = (array) apply_filters(
+				'checkview_anti_bot_field_types',
+				array( 'captcha', 'hcaptcha', 'turnstile', 'honeypot' )
+			);
 
 			foreach ( $form['fields'] as $key => $field ) {
 				if ( in_array( $field->type, $spam_field_types, true ) ) {
@@ -325,7 +332,14 @@ if ( ! class_exists( 'Checkview_Gforms_Helper' ) ) {
 			 * CheckView tests. Failures on these field types are always
 			 * cleared. Default: captcha, hcaptcha, turnstile, honeypot.
 			 *
-			 * @since 2.0.36
+			 * Note: GF's native honeypot field doesn't normally trip
+			 * `gform_validation` (it uses gform_entry_is_spam + the
+			 * abort path, both covered elsewhere in this class). The
+			 * `honeypot` entry here is harmless defense-in-depth for
+			 * third-party plugins that use the type but route through
+			 * gform_validation.
+			 *
+			 * @since 2.0.35
 			 *
 			 * @param string[] $types Lowercase GF field-type identifiers.
 			 */
@@ -350,7 +364,14 @@ if ( ! class_exists( 'Checkview_Gforms_Helper' ) ) {
 			 * here (e.g., translated reCAPTCHA messages, niche anti-spam
 			 * plugins).
 			 *
-			 * @since 2.0.36
+			 * The default list covers plugins that surface their failure via
+			 * a field's `validation_message`. Plugins that flag submissions
+			 * via `gform_entry_is_spam` instead (CleanTalk, OOPSpam, Akismet,
+			 * native GF Honeypot, etc.) are handled by the existing
+			 * `gform_entry_is_spam` → `__return_false` filter in the
+			 * constructor — not by this list.
+			 *
+			 * @since 2.0.35
 			 *
 			 * @param string[] $markers Lowercase substring patterns.
 			 */
@@ -360,17 +381,18 @@ if ( ! class_exists( 'Checkview_Gforms_Helper' ) ) {
 					'captcha',
 					'recaptcha',
 					'turnstile',
-					'verify that you are human', // Simple Cloudflare Turnstile (>100k installs)
-					'verify you are human',
-					'verify you are not a robot',
+					// Note: `are you human` is a substring of common Cloudflare
+					// Turnstile and reCAPTCHA messages ("Please verify that you
+					// are human"), so the loop's first-match exit makes the
+					// longer phrasings redundant.
 					'are you human',
+					'verify you are not a robot',
 					'bot detection',
 					'anti-spam',
 					'akismet',
-					'cleantalk',
-					'spam detected',
-					'oopspam',
-					'maspik',
+					// Maspik's default error string (the plugin slug itself
+					// never appears in the user-facing message).
+					'looks like spam',
 				)
 			);
 			foreach ( (array) $bypass_markers as $marker ) {
