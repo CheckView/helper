@@ -395,18 +395,29 @@ if ( ! class_exists( 'Checkview_Gforms_Helper' ) ) {
 			$bypass_markers = apply_filters(
 				'checkview_anti_bot_validation_markers',
 				array(
+					// GF core `GF_Field_CAPTCHA` (Really Simple CAPTCHA / math
+					// captcha) default message contains "CAPTCHA". Separate
+					// from the GF reCAPTCHA Add-On (covered by the explicit
+					// `unhook_gf_recaptcha_addon()` runtime unhook).
 					'captcha',
+					// GF reCAPTCHA Add-On default messages (e.g. "The
+					// reCAPTCHA was invalid…") — defense-in-depth alongside
+					// the runtime unhook.
 					'recaptcha',
+					// Cloudflare Turnstile field-type error messages.
 					'turnstile',
-					// Note: `are you human` is a substring of common Cloudflare
-					// Turnstile and reCAPTCHA messages ("Please verify that you
-					// are human"), so the loop's first-match exit makes the
-					// longer phrasings redundant.
+					// Simple Cloudflare Turnstile default: "Please verify
+					// that you are human." `are you human` is a substring,
+					// so longer phrasings would be redundant via the
+					// first-match exit.
 					'are you human',
+					// ALTCHA Spam Protection (10k+ installs) GF field
+					// integration emits `"Could not verify you are not a
+					// robot."` from `validate()`.
 					'verify you are not a robot',
-					'bot detection',
-					// Maspik's default error string (the plugin slug itself
-					// never appears in the user-facing message).
+					// Maspik default ("This looks like spam. Try to
+					// rephrase…"). The plugin slug never appears in the
+					// user-facing message — match on the phrase instead.
 					'looks like spam',
 				)
 			);
