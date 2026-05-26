@@ -224,14 +224,15 @@ class Checkview_Admin {
 
 		// 1. Check pretty permalinks (e.g. /wp-json/checkview/v1/...
 		if ( isset( $_SERVER['REQUEST_URI'] ) ) {
-			if ( preg_match( '#/wp-json/(checkview/.*)#', $_SERVER['REQUEST_URI'], $matches ) ) {
+			$request_uri = esc_url_raw( wp_unslash( $_SERVER['REQUEST_URI'] ) );
+			if ( preg_match( '#/wp-json/(checkview/.*)#', $request_uri, $matches ) ) {
 				$rest_route = $matches[1];
 			}
 		}
 
 		// 2. Check plain permalinks (e.g. ?rest_route=/checkview/vw/...)
 		if ( empty( $rest_route ) && isset( $_GET['rest_route'] ) ) {
-			$route = ltrim( $_GET['rest_route' ], '/' );
+			$route = ltrim( esc_url_raw( wp_unslash( $_GET['rest_route'] ) ), '/' );
 			if ( strpos( $route, 'checkview/' ) === 0 ) {
 				$rest_route = $route;
 			}
@@ -318,7 +319,7 @@ class Checkview_Admin {
 			include_once ABSPATH . 'wp-admin/includes/plugin.php';
 		}
 
-		$is_helper_api_request = isset( $_SERVER['REQUEST_URI'] ) && strpos( $_SERVER['REQUEST_URI'], '_checkview_timestamp' );
+		$is_helper_api_request = isset( $_SERVER['REQUEST_URI'] ) && strpos( esc_url_raw( wp_unslash( $_SERVER['REQUEST_URI'] ) ), '_checkview_timestamp' );
 		if ( $is_helper_api_request ) {
 			return;
 		}

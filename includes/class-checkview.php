@@ -153,8 +153,11 @@ class CheckView {
 		$cv_test_id = get_checkview_test_id();
 		if ( ! empty( $cv_test_id ) ) {
 			$valid_values = array( 'woo_checkout', 'full_checkout', 'add_to_cart', 'form', 'custom' );
-			if ( isset( $_COOKIE[self::$bot_cookie] ) && in_array( $_COOKIE[self::$bot_cookie], $valid_values, true ) ) {
-				return $_COOKIE[self::$bot_cookie];
+			if ( isset( $_COOKIE[ self::$bot_cookie ] ) ) {
+				$cookie_value = sanitize_text_field( wp_unslash( $_COOKIE[ self::$bot_cookie ] ) );
+				if ( in_array( $cookie_value, $valid_values, true ) ) {
+					return $cookie_value;
+				}
 			}
 			return 'form';
 		}
