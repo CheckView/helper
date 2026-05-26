@@ -105,6 +105,46 @@ if ( ! class_exists( 'Checkview_Gforms_Helper' ) ) {
 					array( $this, 'unhook_gf_recaptcha_addon' ),
 					1
 				);
+
+				// CleanTalk Spam Protect bypass.
+				//
+				// CleanTalk's GF integration registers a callback on
+				// `gform_entry_is_spam`. When the verdict is spam it
+				// ALSO calls `GFFormsModel::delete_lead( $entry['id'] )`
+				// inline — bypassing every WP filter we hook, so the
+				// existing `gform_entry_is_spam` → `__return_false` at
+				// PHP_INT_MAX cannot save the entry from being deleted.
+				//
+				// CleanTalk itself uses the `$cleantalk_executed` global
+				// as an "already handled, don't re-check" sentinel after
+				// successful base API calls. Setting it truthy here causes
+				// `apbct_form__gravityForms__isSkippedRequest()` to return
+				// true, which causes `testSpam()` to return the unmodified
+				// `$is_spam` without calling the API or `delete_lead()`.
+				//
+				// Sources (cleantalk-spam-protect plugin, wp.org trunk):
+				//   - inc/cleantalk-public-integrations.php ~L3148-3180
+				//     (`apbct_form__gravityForms__isSkippedRequest()`
+				//     reads `$cleantalk_executed`)
+				//   - inc/cleantalk-public-integrations.php ~L3058-3068
+				//     (`apbct_form__gravityForms__testSpam()` calls
+				//     `isSkippedRequest()` first)
+				//   - inc/cleantalk-public-validate.php L311-313
+				//     (CleanTalk sets the global itself after API calls)
+				//
+				// CAVEAT: this is an INTERNAL global, not a documented
+				// public API. CleanTalk could rename/remove it in any
+				// release. Harmless if CleanTalk isn't installed (just
+				// creates an unused global). Re-verify on plugin updates
+				// — if the sentinel goes away, fall back to
+				// `remove_filter('gform_entry_is_spam', ...)` on the
+				// add-on's callback.
+				global $cleantalk_executed;
+				$cleantalk_executed = true;
+				Checkview_Admin_Logs::add(
+					'ip-logs',
+					'Set $cleantalk_executed = true to bypass CleanTalk Spam Protect during test (if installed).'
+				);
 			}
 			// Disable addons found in forms.
 			add_filter(
