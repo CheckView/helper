@@ -394,30 +394,29 @@ if ( ! class_exists( 'Checkview_Gforms_Helper' ) ) {
 			 */
 			$bypass_markers = apply_filters(
 				'checkview_anti_bot_validation_markers',
+				// Each marker must be verified against a specific source
+				// file + line in the plugin emitting the validation_message
+				// default. Markers added without that verification have
+				// been wrong four times in this PR's history. If you can't
+				// cite source:line, don't add the marker — customers can
+				// extend via the `checkview_anti_bot_validation_markers`
+				// filter for their specific stack.
 				array(
-					// GF core `GF_Field_CAPTCHA` (Really Simple CAPTCHA / math
-					// captcha) default message contains "CAPTCHA". Separate
-					// from the GF reCAPTCHA Add-On (covered by the explicit
-					// `unhook_gf_recaptcha_addon()` runtime unhook).
+					// GF core `GF_Field_CAPTCHA` (Really Simple CAPTCHA /
+					// math captcha): "The CAPTCHA wasn't entered correctly…"
+					// Source: gravityforms/includes/fields/class-gf-field-captcha.php:216,252
 					'captcha',
-					// GF reCAPTCHA Add-On default messages (e.g. "The
-					// reCAPTCHA was invalid…") — defense-in-depth alongside
-					// the runtime unhook.
+					// GF reCAPTCHA Add-On default: "The reCAPTCHA was invalid…"
+					// Source: gravityforms/includes/fields/class-gf-field-captcha.php:293
+					// (defense-in-depth alongside `unhook_gf_recaptcha_addon()`)
 					'recaptcha',
-					// Cloudflare Turnstile field-type error messages.
-					'turnstile',
 					// Simple Cloudflare Turnstile default: "Please verify
-					// that you are human." `are you human` is a substring,
-					// so longer phrasings would be redundant via the
-					// first-match exit.
+					// that you are human." `are you human` is a substring.
+					// Source: simple-cloudflare-turnstile/inc/errors.php:95
 					'are you human',
-					// ALTCHA Spam Protection (10k+ installs) GF field
-					// integration emits `"Could not verify you are not a
-					// robot."` from `validate()`.
-					'verify you are not a robot',
-					// Maspik default ("This looks like spam. Try to
-					// rephrase…"). The plugin slug never appears in the
-					// user-facing message — match on the phrase instead.
+					// Maspik default: "This looks like spam. Try to rephrase…"
+					// The plugin slug never appears in the user-facing message.
+					// Source: contact-forms-anti-spam/includes/functions.php:1281
 					'looks like spam',
 				)
 			);
