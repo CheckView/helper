@@ -88,6 +88,23 @@ if ( ! class_exists( 'Checkview_Gforms_Helper' ) ) {
 					'__return_false',
 					999
 				);
+
+				// Explicitly unhook the GF reCAPTCHA Add-On's callbacks during
+				// a test. Without this, the add-on's validate_submission()
+				// runs and attaches a failure to a non-captcha field
+				// (maybe_hide_recaptcha cannot catch it because the add-on
+				// doesn't use a captcha-type field). The
+				// checkview_bypass_captcha_validation marker fallback would
+				// still catch it, but explicit unhook is more precise and
+				// avoids depending on the English-only "recaptcha" substring.
+				// Hooked on gform_pre_validation at priority 1 so the
+				// unhook runs before gform_validation fires regardless of
+				// init ordering between this plugin and the add-on.
+				add_filter(
+					'gform_pre_validation',
+					array( $this, 'unhook_gf_recaptcha_addon' ),
+					1
+				);
 			}
 			// Disable addons found in forms.
 			add_filter(
@@ -402,6 +419,54 @@ if ( ! class_exists( 'Checkview_Gforms_Helper' ) ) {
 			}
 
 			return false;
+		}
+
+		/**
+		 * Removes the GF reCAPTCHA Add-On's callbacks at runtime so its
+		 * validation doesn't run during a CheckView test.
+		 *
+		 * The add-on (slug `gravityformsrecaptcha`, class `GF_RECAPTCHA`)
+		 * hooks both `gform_validation` (response token check) and
+		 * `gform_entry_is_spam` (low-score → spam) at default priority. Both
+		 * are removed here. Wider category-level filters (`gform_entry_is_spam`
+		 * → `__return_false`, marker-bypass in `checkview_bypass_captcha_validation`)
+		 * still catch the case where the class can't be found — e.g., a
+		 * future rename or a fork.
+		 *
+		 * Hooked at `gform_pre_validation` priority 1 so the unhook happens
+		 * before any `gform_validation` callback fires. Returns the form
+		 * unchanged.
+		 *
+		 * @since 2.0.35
+		 *
+		 * @param array $form The form being validated.
+		 * @return array
+		 */
+		public function unhook_gf_recaptcha_addon( $form ) {
+			if ( ! class_exists( 'GF_RECAPTCHA' ) || ! is_callable( array( 'GF_RECAPTCHA', 'get_instance' ) ) ) {
+				return $form;
+			}
+
+			$instance = GF_RECAPTCHA::get_instance();
+			if ( ! is_object( $instance ) ) {
+				return $form;
+			}
+
+			$removed = 0;
+			if ( method_exists( $instance, 'validate_submission' )
+				&& remove_filter( 'gform_validation', array( $instance, 'validate_submission' ) ) ) {
+				$removed++;
+			}
+			if ( method_exists( $instance, 'check_for_spam_entry' )
+				&& remove_filter( 'gform_entry_is_spam', array( $instance, 'check_for_spam_entry' ) ) ) {
+				$removed++;
+			}
+
+			if ( $removed > 0 ) {
+				Checkview_Admin_Logs::add( 'ip-logs', 'Unhooked [' . $removed . '] GF reCAPTCHA Add-On callback(s).' );
+			}
+
+			return $form;
 		}
 
 		/**
