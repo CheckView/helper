@@ -135,6 +135,45 @@ if ( ! function_exists( 'remove_gravityforms_recaptcha_addon' ) ) {
 // Use a hook with a priority higher than 5 to ensure the action is removed after it is added.
 add_action( 'gform_loaded', 'remove_gravityforms_recaptcha_addon', 1 );
 
+if ( ! function_exists( 'remove_gravityforms_turnstile_addon' ) ) {
+	/**
+	 * Removes the GF Cloudflare Turnstile Add-On from loading during CheckView
+	 * tests. Mirrors `remove_gravityforms_recaptcha_addon()`.
+	 *
+	 * The add-on's slug is `gravityformscloudflareturnstile`; its bootstrap
+	 * class is `GF_Turnstile_Bootstrap` (registered on `gform_loaded`
+	 * priority 5). Removing it before it runs prevents the add-on from
+	 * registering the `turnstile` field type, so `GF_Field_Turnstile::validate`
+	 * never executes for the test submission.
+	 *
+	 * Belt-and-braces note: even without this early removal,
+	 * `Checkview_Gforms_Helper::maybe_hide_recaptcha()` strips
+	 * `turnstile`-typed fields on `gform_pre_validation`, and
+	 * `is_anti_bot_failure()` covers the type in its allowlist. This
+	 * function is the equivalent of the reCAPTCHA version — same intent,
+	 * same restrictive `$_REQUEST` gate (only fires on the initial GET
+	 * where `checkview_test_id` is in the URL, not on AJAX submissions).
+	 *
+	 * @return void
+	 */
+	function remove_gravityforms_turnstile_addon() {
+		if ( class_exists( 'GF_Turnstile_Bootstrap' )
+			&& isset( $_REQUEST['checkview_test_id'] )
+			&& is_string( $_REQUEST['checkview_test_id'] )
+			// SYNC: Must match checkview_is_valid_uuid() in checkview-functions.php
+			&& preg_match(
+				'/^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/i',
+				sanitize_text_field( wp_unslash( $_REQUEST['checkview_test_id'] ) )
+			)
+			&& ! empty( $_REQUEST['checkview_test_type'] )
+		) {
+			remove_action( 'gform_loaded', array( 'GF_Turnstile_Bootstrap', 'load' ), 5 );
+		}
+	}
+}
+// Use a hook with a priority higher than 5 to ensure the action is removed after it is added.
+add_action( 'gform_loaded', 'remove_gravityforms_turnstile_addon', 1 );
+
 add_filter(
 	'wpforms_load_providers',
 	'checkview_disable_addons_providers',
