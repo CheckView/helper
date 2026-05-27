@@ -1559,10 +1559,11 @@ if ( ! function_exists( 'checkview_get_option_data_handler' ) ) {
 			wp_send_json_error( esc_html__( 'There was a technical error while processing your request.', 'checkview' ) );
 			wp_die();
 		} else {
-			// Store the nonce in the database.
+			// Store the nonce in the database. wpdb::insert() returns false on
+			// failure (not WP_Error), so is_wp_error() would never catch it.
 			$response = $wpdb->insert( $cv_used_nonces, array( 'nonce' => $nonce_token ) );
-			if ( is_wp_error( $response ) ) {
-				Checkview_Admin_Logs::add( 'api-logs', 'Not able to add nonce.' );
+			if ( false === $response ) {
+				Checkview_Admin_Logs::add( 'api-logs', 'Not able to add nonce. wpdb->last_error=[' . $wpdb->last_error . ']' );
 				wp_send_json_error( esc_html__( 'There was a technical error while processing your request.', 'checkview' ) );
 			}
 		}
