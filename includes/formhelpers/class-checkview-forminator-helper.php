@@ -212,7 +212,7 @@ if ( ! class_exists( 'Checkview_Forminator_Helper' ) ) {
 						'uid'        => $checkview_test_id,
 						'form_id'    => $form_id,
 						'entry_id'   => $entry_id,
-						'meta_key'   => $meta_key,
+						'meta_key'   => checkview_truncate_meta_key( $meta_key ),
 						'meta_value' => $field_value,
 					);
 

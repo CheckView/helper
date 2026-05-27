@@ -235,7 +235,7 @@ if ( ! class_exists( 'Checkview_WSF_Helper' ) ) {
 							'uid' => $checkview_test_id,
 							'form_id' => $form_id,
 							'entry_id' => $entry_id,
-							'meta_key' => $field_id_prefix . str_replace( '_', '-', $field->meta_key ),
+							'meta_key' => checkview_truncate_meta_key( $field_id_prefix . str_replace( '_', '-', $field->meta_key ) ),
 							'meta_value' => $field->meta_value,
 						);
 

@@ -388,7 +388,7 @@ if ( ! class_exists( 'Checkview_Cf7_Helper' ) ) {
 							'uid' => $checkview_test_id,
 							'form_id' => $form_id,
 							'entry_id' => $inserted_entry_id,
-							'meta_key' => $meta_key,
+							'meta_key' => checkview_truncate_meta_key( $key ),
 							'meta_value' => $val,
 						);
 
