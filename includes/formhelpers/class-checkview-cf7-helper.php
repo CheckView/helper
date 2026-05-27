@@ -379,11 +379,6 @@ if ( ! class_exists( 'Checkview_Cf7_Helper' ) ) {
 					$count             = 0;
 
 					foreach ( $form_data as $key => $val ) {
-						// CF7 field `name` attributes are raw POST keys, not
-						// constrained to any length by CF7 itself. cv_entry_meta.meta_key
-						// is varchar(255), so an unusually long form-field name would
-						// otherwise overflow and fail wpdb::process_field_lengths().
-						$meta_key = is_string( $key ) ? substr( $key, 0, 255 ) : $key;
 						$entry_metadata = array(
 							'uid' => $checkview_test_id,
 							'form_id' => $form_id,
