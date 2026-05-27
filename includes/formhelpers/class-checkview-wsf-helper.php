@@ -219,35 +219,40 @@ if ( ! class_exists( 'Checkview_WSF_Helper' ) ) {
 				Checkview_Admin_Logs::add( 'ip-logs', 'Cloned submission entry data (inserted ' . (int) $result . ' rows into ' . $entry_table . ').' );
 			}
 
-			$entry_meta_table = $wpdb->prefix . 'cv_entry_meta';
-			$field_id_prefix  = 'wsf';
-			$tablename = $wpdb->prefix . 'wsf_submit_meta';
-			$form_fields = $wpdb->get_results( $wpdb->prepare( 'Select * from ' . $tablename . ' where parent_id=%d', $entry_id ) );
-			$count = 0;
+			// Skip meta loop when parent insert failed: $wpdb->insert_id
+			// is 0, meta rows would be orphaned with entry_id=0.
+			// WSF cv_update_option + complete_checkview_test() below still runs.
+			if ( $result ) {
+				$entry_meta_table = $wpdb->prefix . 'cv_entry_meta';
+				$field_id_prefix  = 'wsf';
+				$tablename = $wpdb->prefix . 'wsf_submit_meta';
+				$form_fields = $wpdb->get_results( $wpdb->prepare( 'Select * from ' . $tablename . ' where parent_id=%d', $entry_id ) );
+				$count = 0;
 
-			foreach ( $form_fields as $field ) {
-				if ( ! in_array( $field->meta_key, array( '_form_id', 'post_id', 'wsf_meta_key_hidden' ) ) ) {
-					$entry_metadata = array(
-						'uid' => $checkview_test_id,
-						'form_id' => $form_id,
-						'entry_id' => $entry_id,
-						'meta_key' => checkview_truncate_meta_key( $field_id_prefix . str_replace( '_', '-', $field->meta_key ) ),
-						'meta_value' => $field->meta_value,
-					);
+				foreach ( $form_fields as $field ) {
+					if ( ! in_array( $field->meta_key, array( '_form_id', 'post_id', 'wsf_meta_key_hidden' ) ) ) {
+						$entry_metadata = array(
+							'uid' => $checkview_test_id,
+							'form_id' => $form_id,
+							'entry_id' => $entry_id,
+							'meta_key' => checkview_truncate_meta_key( $field_id_prefix . str_replace( '_', '-', $field->meta_key ) ),
+							'meta_value' => $field->meta_value,
+						);
 
-					$result = $wpdb->insert( $entry_meta_table, $entry_metadata );
+						$result = $wpdb->insert( $entry_meta_table, $entry_metadata );
 
-					if ( $result ) {
-						$count++;
+						if ( $result ) {
+							$count++;
+						}
 					}
 				}
-			}
 
-			if ( $count > 0 ) {
-				Checkview_Admin_Logs::add( 'ip-logs', 'Cloned submission entry meta data (inserted ' . $count . ' rows into ' . $entry_meta_table . ').' );
-			} else {
-				if ( count( $form_fields ) > 0 ) {
-					Checkview_Admin_Logs::add( 'ip-logs', 'Failed to clone submission entry meta data. wpdb->last_error=[' . $wpdb->last_error . ']' );
+				if ( $count > 0 ) {
+					Checkview_Admin_Logs::add( 'ip-logs', 'Cloned submission entry meta data (inserted ' . $count . ' rows into ' . $entry_meta_table . ').' );
+				} else {
+					if ( count( $form_fields ) > 0 ) {
+						Checkview_Admin_Logs::add( 'ip-logs', 'Failed to clone submission entry meta data. wpdb->last_error=[' . $wpdb->last_error . ']' );
+					}
 				}
 			}
 
