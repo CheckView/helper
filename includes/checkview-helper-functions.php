@@ -113,14 +113,21 @@ if ( ! function_exists( 'checkview_hcap_whitelist_ip' ) ) {
 if ( ! function_exists( 'checkview_request_has_test_credentials' ) ) {
 	/**
 	 * Returns true if the current request carries a valid CheckView test
-	 * `test_id` + `test_type` pair in `$_REQUEST`.
+	 * `test_id` + `test_type` pair in the URL query string.
 	 *
 	 * Used by `gform_loaded` bootstrap-time add-on removers that need to
 	 * fire very early in the request lifecycle — before the helper plugin's
 	 * normal init/cookie-based test detection has run. Only the initial GET
-	 * to a tested page carries these in `$_REQUEST`; AJAX submissions
+	 * to a tested page carries these in the query string; AJAX submissions
 	 * resolve test context via cookie/referer instead (handled by
 	 * `checkview_init_current_test` → `defined('TEST_EMAIL')` downstream).
+	 *
+	 * Gates on `$_GET` (not `$_REQUEST`) so a stale `checkview_test_id`
+	 * cookie from a prior test run cannot trigger bootstrap-time add-on
+	 * removal for unrelated subsequent requests from the same browser. The
+	 * test runner always navigates with `?checkview_test_id=...&
+	 * checkview_test_type=...` (browser context re-injects on every same-
+	 * domain navigation), so `$_GET` is sufficient for legitimate traffic.
 	 *
 	 * Why a separate helper instead of reusing `checkview_is_valid_uuid()`:
 	 * that function logs every invalid input to `ip-logs`, which would spam
@@ -134,12 +141,12 @@ if ( ! function_exists( 'checkview_request_has_test_credentials' ) ) {
 	 * @return bool
 	 */
 	function checkview_request_has_test_credentials() {
-		if ( ! isset( $_REQUEST['checkview_test_id'] )
-			|| ! is_string( $_REQUEST['checkview_test_id'] )
-			|| empty( $_REQUEST['checkview_test_type'] ) ) {
+		if ( ! isset( $_GET['checkview_test_id'] )
+			|| ! is_string( $_GET['checkview_test_id'] )
+			|| empty( $_GET['checkview_test_type'] ) ) {
 			return false;
 		}
-		$test_id = sanitize_text_field( wp_unslash( $_REQUEST['checkview_test_id'] ) );
+		$test_id = sanitize_text_field( wp_unslash( $_GET['checkview_test_id'] ) );
 		return (bool) preg_match(
 			'/^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/i',
 			$test_id
@@ -153,7 +160,7 @@ if ( ! function_exists( 'remove_gravityforms_recaptcha_addon' ) ) {
 	 *
 	 * Fires on `gform_loaded` priority 1 (before the Add-On's priority-5
 	 * bootstrap). Only acts on initial GETs that carry the test credentials
-	 * in `$_REQUEST`; for AJAX form submissions the runtime
+	 * in the URL query string; for AJAX form submissions the runtime
 	 * `Checkview_Gforms_Helper::unhook_gf_recaptcha_addon()` handles
 	 * removal via `remove_filter` on the live add-on instance.
 	 *
