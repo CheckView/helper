@@ -247,6 +247,25 @@ class Checkview_Admin_Logs {
 	 * @param string $message Log to write.
 	 */
 	public static function add( $handle, $message ) {
+		// Collapse C0 controls (CR/LF/NUL/etc.) and Unicode line/paragraph
+		// terminators so callers can't forge log lines. strtr is byte-safe
+		// — preg_replace with /u returns NULL on invalid UTF-8, which would
+		// silently drop log entries containing raw bytes (e.g. wpdb errors
+		// echoing offending Latin-1 sequences).
+		if ( is_string( $message ) ) {
+			static $sanitize_table = null;
+			if ( null === $sanitize_table ) {
+				$sanitize_table = array();
+				for ( $i = 0; $i < 32; $i++ ) {
+					$sanitize_table[ chr( $i ) ] = ' ';
+				}
+				// HTML/browser log viewers render these as line breaks.
+				$sanitize_table["\xC2\x85"]     = ' '; // U+0085 NEL
+				$sanitize_table["\xE2\x80\xA8"] = ' '; // U+2028 LINE SEPARATOR
+				$sanitize_table["\xE2\x80\xA9"] = ' '; // U+2029 PARAGRAPH SEPARATOR
+			}
+			$message = strtr( $message, $sanitize_table );
+		}
 		$handle = $handle . '-log-' . gmdate( 'Y-m-d' );
 		if ( self::open( $handle ) && is_resource( self::$_handles[ $handle ] ) ) {
 			$time   = self::get_now()->format( 'm-d-Y @ H:i:s -' ); // Grab Time.
