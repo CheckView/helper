@@ -308,7 +308,7 @@ if ( ! class_exists( 'Checkview_Fluent_Forms_Helper' ) ) {
 					'uid'        => $checkview_test_id,
 					'form_id'    => $form_id,
 					'entry_id'   => $row->submission_id,
-					'meta_key'   => $meta_key,
+					'meta_key'   => checkview_truncate_meta_key( $meta_key ),
 					'meta_value' => $row->field_value,
 				);
 

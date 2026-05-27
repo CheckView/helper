@@ -430,7 +430,7 @@ if ( ! class_exists( 'Checkview_Gforms_Helper' ) ) {
 					'uid' => $uid,
 					'form_id' => $row->form_id,
 					'entry_id' => $row->entry_id,
-					'meta_key' => $row->meta_key,
+					'meta_key' => checkview_truncate_meta_key( $row->meta_key ),
 					'meta_value' => $row->meta_value,
 				);
 
