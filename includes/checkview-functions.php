@@ -1749,11 +1749,44 @@ if ( ! function_exists( 'checkview_truncate_for_cv_entry' ) ) {
 	 * @return array Row with overflowing string fields truncated.
 	 */
 	function checkview_truncate_for_cv_entry( array $row ) {
+		$has_mb = function_exists( 'mb_substr' );
 		foreach ( checkview_get_cv_entry_string_limits() as $col => $max ) {
 			if ( isset( $row[ $col ] ) && is_string( $row[ $col ] ) ) {
-				$row[ $col ] = substr( $row[ $col ], 0, $max );
+				$row[ $col ] = $has_mb
+					? mb_substr( $row[ $col ], 0, $max, 'UTF-8' )
+					: substr( $row[ $col ], 0, $max );
 			}
 		}
 		return $row;
+	}
+}
+
+if ( ! function_exists( 'checkview_truncate_meta_key' ) ) {
+	/**
+	 * Truncates a cv_entry_meta meta_key to the schema's varchar(255) limit.
+	 *
+	 * Mirrors checkview_truncate_for_cv_entry() but targets the separate
+	 * cv_entry_meta.meta_key column declared in
+	 * Checkview_Activator::checkview_run_sql() (varchar(255)). Sources are
+	 * unbounded plugin-side strings — CF7 raw POST keys, Fluent Forms
+	 * field_name + sub_field_name, Forminator $field['name'], WS Form
+	 * prefix + wsf_submit_meta.meta_key, Everest sanitize_key result —
+	 * which can exceed 255 chars and silently fail the insert.
+	 *
+	 * Uses mb_substr (character-based) to match MySQL's utf8mb4 char-counting
+	 * and avoid cutting mid-codepoint. Byte-based substr() would produce
+	 * invalid UTF-8 that wpdb::process_field_lengths() then rejects with the
+	 * same silent-failure mode this helper is meant to prevent.
+	 *
+	 * @param mixed $key The composed meta_key. Non-string values pass through unchanged.
+	 * @return mixed Truncated string, or original value if not a string.
+	 */
+	function checkview_truncate_meta_key( $key ) {
+		if ( ! is_string( $key ) ) {
+			return $key;
+		}
+		return function_exists( 'mb_substr' )
+			? mb_substr( $key, 0, 255, 'UTF-8' )
+			: substr( $key, 0, 255 );
 	}
 }
