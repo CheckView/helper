@@ -209,205 +209,210 @@ if ( ! class_exists( 'Checkview_Formidable_Helper' ) ) {
 				Checkview_Admin_Logs::add( 'ip-logs', 'Cloned submission entry data (inserted ' . (int) $result . ' rows into ' . $entry_table . ').' );
 			}
 
-			// Insert entry meta.
-			$entry_meta_table = $wpdb->prefix . 'cv_entry_meta';
-			$fields = $this->get_form_fields( $form_id );
+			// Skip meta loop when parent insert failed: $wpdb->insert_id
+			// is 0, meta rows would be orphaned with entry_id=0.
+			// Formidable entry delete and complete_checkview_test() below still run.
+			if ( $result ) {
+				// Insert entry meta.
+				$entry_meta_table = $wpdb->prefix . 'cv_entry_meta';
+				$fields = $this->get_form_fields( $form_id );
 
-			if ( empty( $fields ) ) {
-				return;
-			}
-
-			$tablename = $wpdb->prefix . 'frm_item_metas';
-			$form_fields = $wpdb->get_results( $wpdb->prepare( 'Select * from ' . $tablename . ' where item_id=%d', $entry_id ) );
-			$count = 0;
-
-			foreach ( $form_fields as $field ) {
-				if ( empty( $field->field_id ) ) {
-					continue;
+				if ( empty( $fields ) ) {
+					return;
 				}
 
-				// Skip fields not in the form definition (e.g., deleted
-				// fields or repeater child fields from a different form).
-				if ( ! isset( $fields[ $field->field_id ] ) ) {
-					continue;
-				}
+				$tablename = $wpdb->prefix . 'frm_item_metas';
+				$form_fields = $wpdb->get_results( $wpdb->prepare( 'Select * from ' . $tablename . ' where item_id=%d', $entry_id ) );
+				$count = 0;
 
-				if ( 'name' === $fields[ $field->field_id ]['type'] ) {
-					$field_values = maybe_unserialize( $field->meta_value );
+				foreach ( $form_fields as $field ) {
+					if ( empty( $field->field_id ) ) {
+						continue;
+					}
 
-					// Handle non-array values (corrupted data, plain
-					// string, or failed unserialize).
-					if ( ! is_array( $field_values ) ) {
-						$field_values = array(
-							'first'  => is_string( $field_values ) ? $field_values : '',
-							'middle' => '',
-							'last'   => '',
+					// Skip fields not in the form definition (e.g., deleted
+					// fields or repeater child fields from a different form).
+					if ( ! isset( $fields[ $field->field_id ] ) ) {
+						continue;
+					}
+
+					if ( 'name' === $fields[ $field->field_id ]['type'] ) {
+						$field_values = maybe_unserialize( $field->meta_value );
+
+						// Handle non-array values (corrupted data, plain
+						// string, or failed unserialize).
+						if ( ! is_array( $field_values ) ) {
+							$field_values = array(
+								'first'  => is_string( $field_values ) ? $field_values : '',
+								'middle' => '',
+								'last'   => '',
+							);
+						}
+
+						// Safe key extraction — Formidable's array_filter
+						// strips empty sub-keys before serializing.
+						$first  = isset( $field_values['first'] ) ? $field_values['first'] : '';
+						$middle = isset( $field_values['middle'] ) ? $field_values['middle'] : '';
+						$last   = isset( $field_values['last'] ) ? $field_values['last'] : '';
+
+						$name_format = $fields[ $field->field_id ]['name_layout'];
+						$sub_fields  = isset( $fields[ $field->field_id ]['sub_fields'] ) ? $fields[ $field->field_id ]['sub_fields'] : array();
+
+						switch ( $name_format ) {
+							case 'first_middle_last':
+								if ( count( $sub_fields ) < 3 ) {
+									Checkview_Admin_Logs::add( 'ip-logs', 'Expected 3 sub_fields for first_middle_last, got ' . count( $sub_fields ) . ' for field ' . $field->field_id );
+									break;
+								}
+
+								// First.
+								$entry_metadata = array(
+									'uid' => $checkview_test_id,
+									'form_id' => $form_id,
+									'entry_id' => $entry_id,
+									'meta_key' => $sub_fields[0]['field_id'],
+									'meta_value' => $first,
+								);
+
+								$result = $wpdb->insert( $entry_meta_table, $entry_metadata );
+
+								if ( $result ) {
+									$count++;
+								}
+
+								// Middle.
+								$entry_metadata = array(
+									'uid' => $checkview_test_id,
+									'form_id' => $form_id,
+									'entry_id' => $entry_id,
+									'meta_key' => $sub_fields[1]['field_id'],
+									'meta_value' => $middle,
+								);
+
+								$result = $wpdb->insert( $entry_meta_table, $entry_metadata );
+
+								if ( $result ) {
+									$count++;
+								}
+
+								// Last.
+								$entry_metadata = array(
+									'uid' => $checkview_test_id,
+									'form_id' => $form_id,
+									'entry_id' => $entry_id,
+									'meta_key' => $sub_fields[2]['field_id'],
+									'meta_value' => $last,
+								);
+
+								$result = $wpdb->insert( $entry_meta_table, $entry_metadata );
+
+								if ( $result ) {
+									$count++;
+								}
+
+								break;
+							case 'first_last':
+								if ( count( $sub_fields ) < 2 ) {
+									Checkview_Admin_Logs::add( 'ip-logs', 'Expected 2 sub_fields for first_last, got ' . count( $sub_fields ) . ' for field ' . $field->field_id );
+									break;
+								}
+
+								// First.
+								$entry_metadata = array(
+									'uid' => $checkview_test_id,
+									'form_id' => $form_id,
+									'entry_id' => $entry_id,
+									'meta_key' => $sub_fields[0]['field_id'],
+									'meta_value' => $first,
+								);
+
+								$result = $wpdb->insert( $entry_meta_table, $entry_metadata );
+
+								if ( $result ) {
+									$count++;
+								}
+
+								// Last.
+								$entry_metadata = array(
+									'uid' => $checkview_test_id,
+									'form_id' => $form_id,
+									'entry_id' => $entry_id,
+									'meta_key' => $sub_fields[1]['field_id'],
+									'meta_value' => $last,
+								);
+
+								$result = $wpdb->insert( $entry_meta_table, $entry_metadata );
+
+								if ( $result ) {
+									$count++;
+								}
+
+								break;
+							case 'last_first':
+								if ( count( $sub_fields ) < 2 ) {
+									Checkview_Admin_Logs::add( 'ip-logs', 'Expected 2 sub_fields for last_first, got ' . count( $sub_fields ) . ' for field ' . $field->field_id );
+									break;
+								}
+
+								// First.
+								$entry_metadata = array(
+									'uid' => $checkview_test_id,
+									'form_id' => $form_id,
+									'entry_id' => $entry_id,
+									'meta_key' => $sub_fields[1]['field_id'],
+									'meta_value' => $first,
+								);
+
+								$result = $wpdb->insert( $entry_meta_table, $entry_metadata );
+
+								if ( $result ) {
+									$count++;
+								}
+
+								// Last.
+								$entry_metadata = array(
+									'uid' => $checkview_test_id,
+									'form_id' => $form_id,
+									'entry_id' => $entry_id,
+									'meta_key' => $sub_fields[0]['field_id'],
+									'meta_value' => $last,
+								);
+
+								$result = $wpdb->insert( $entry_meta_table, $entry_metadata );
+
+								if ( $result ) {
+									$count++;
+								}
+
+								break;
+							default:
+								Checkview_Admin_Logs::add( 'ip-logs', 'Unknown name layout: ' . ( $name_format ?? 'null' ) );
+								break;
+						}
+					} else {
+						$field_value = $field->meta_value;
+						$entry_metadata = array(
+							'uid' => $checkview_test_id,
+							'form_id' => $form_id,
+							'entry_id' => $entry_id,
+							'meta_key' => $fields[ $field->field_id ]['field_id'],
+							'meta_value' => $field_value,
 						);
-					}
 
-					// Safe key extraction — Formidable's array_filter
-					// strips empty sub-keys before serializing.
-					$first  = isset( $field_values['first'] ) ? $field_values['first'] : '';
-					$middle = isset( $field_values['middle'] ) ? $field_values['middle'] : '';
-					$last   = isset( $field_values['last'] ) ? $field_values['last'] : '';
+						$result = $wpdb->insert( $entry_meta_table, $entry_metadata );
 
-					$name_format = $fields[ $field->field_id ]['name_layout'];
-					$sub_fields  = isset( $fields[ $field->field_id ]['sub_fields'] ) ? $fields[ $field->field_id ]['sub_fields'] : array();
-
-					switch ( $name_format ) {
-						case 'first_middle_last':
-							if ( count( $sub_fields ) < 3 ) {
-								Checkview_Admin_Logs::add( 'ip-logs', 'Expected 3 sub_fields for first_middle_last, got ' . count( $sub_fields ) . ' for field ' . $field->field_id );
-								break;
-							}
-
-							// First.
-							$entry_metadata = array(
-								'uid' => $checkview_test_id,
-								'form_id' => $form_id,
-								'entry_id' => $entry_id,
-								'meta_key' => $sub_fields[0]['field_id'],
-								'meta_value' => $first,
-							);
-
-							$result = $wpdb->insert( $entry_meta_table, $entry_metadata );
-
-							if ( $result ) {
-								$count++;
-							}
-
-							// Middle.
-							$entry_metadata = array(
-								'uid' => $checkview_test_id,
-								'form_id' => $form_id,
-								'entry_id' => $entry_id,
-								'meta_key' => $sub_fields[1]['field_id'],
-								'meta_value' => $middle,
-							);
-
-							$result = $wpdb->insert( $entry_meta_table, $entry_metadata );
-
-							if ( $result ) {
-								$count++;
-							}
-
-							// Last.
-							$entry_metadata = array(
-								'uid' => $checkview_test_id,
-								'form_id' => $form_id,
-								'entry_id' => $entry_id,
-								'meta_key' => $sub_fields[2]['field_id'],
-								'meta_value' => $last,
-							);
-
-							$result = $wpdb->insert( $entry_meta_table, $entry_metadata );
-
-							if ( $result ) {
-								$count++;
-							}
-
-							break;
-						case 'first_last':
-							if ( count( $sub_fields ) < 2 ) {
-								Checkview_Admin_Logs::add( 'ip-logs', 'Expected 2 sub_fields for first_last, got ' . count( $sub_fields ) . ' for field ' . $field->field_id );
-								break;
-							}
-
-							// First.
-							$entry_metadata = array(
-								'uid' => $checkview_test_id,
-								'form_id' => $form_id,
-								'entry_id' => $entry_id,
-								'meta_key' => $sub_fields[0]['field_id'],
-								'meta_value' => $first,
-							);
-
-							$result = $wpdb->insert( $entry_meta_table, $entry_metadata );
-
-							if ( $result ) {
-								$count++;
-							}
-
-							// Last.
-							$entry_metadata = array(
-								'uid' => $checkview_test_id,
-								'form_id' => $form_id,
-								'entry_id' => $entry_id,
-								'meta_key' => $sub_fields[1]['field_id'],
-								'meta_value' => $last,
-							);
-
-							$result = $wpdb->insert( $entry_meta_table, $entry_metadata );
-
-							if ( $result ) {
-								$count++;
-							}
-
-							break;
-						case 'last_first':
-							if ( count( $sub_fields ) < 2 ) {
-								Checkview_Admin_Logs::add( 'ip-logs', 'Expected 2 sub_fields for last_first, got ' . count( $sub_fields ) . ' for field ' . $field->field_id );
-								break;
-							}
-
-							// First.
-							$entry_metadata = array(
-								'uid' => $checkview_test_id,
-								'form_id' => $form_id,
-								'entry_id' => $entry_id,
-								'meta_key' => $sub_fields[1]['field_id'],
-								'meta_value' => $first,
-							);
-
-							$result = $wpdb->insert( $entry_meta_table, $entry_metadata );
-
-							if ( $result ) {
-								$count++;
-							}
-
-							// Last.
-							$entry_metadata = array(
-								'uid' => $checkview_test_id,
-								'form_id' => $form_id,
-								'entry_id' => $entry_id,
-								'meta_key' => $sub_fields[0]['field_id'],
-								'meta_value' => $last,
-							);
-
-							$result = $wpdb->insert( $entry_meta_table, $entry_metadata );
-
-							if ( $result ) {
-								$count++;
-							}
-
-							break;
-						default:
-							Checkview_Admin_Logs::add( 'ip-logs', 'Unknown name layout: ' . ( $name_format ?? 'null' ) );
-							break;
-					}
-				} else {
-					$field_value = $field->meta_value;
-					$entry_metadata = array(
-						'uid' => $checkview_test_id,
-						'form_id' => $form_id,
-						'entry_id' => $entry_id,
-						'meta_key' => $fields[ $field->field_id ]['field_id'],
-						'meta_value' => $field_value,
-					);
-
-					$result = $wpdb->insert( $entry_meta_table, $entry_metadata );
-
-					if ( $result ) {
-						$count++;
+						if ( $result ) {
+							$count++;
+						}
 					}
 				}
-			}
 
-			if ( $count > 0 ) {
-				Checkview_Admin_Logs::add( 'ip-logs', 'Cloned submission entry meta data (inserted ' . $count . ' rows into ' . $entry_meta_table . ').' );
-			} else {
-				if ( count( $form_fields ) > 0 ) {
-					Checkview_Admin_Logs::add( 'ip-logs', 'Failed to clone submission entry meta data. wpdb->last_error=[' . $wpdb->last_error . ']' );
+				if ( $count > 0 ) {
+					Checkview_Admin_Logs::add( 'ip-logs', 'Cloned submission entry meta data (inserted ' . $count . ' rows into ' . $entry_meta_table . ').' );
+				} else {
+					if ( count( $form_fields ) > 0 ) {
+						Checkview_Admin_Logs::add( 'ip-logs', 'Failed to clone submission entry meta data. wpdb->last_error=[' . $wpdb->last_error . ']' );
+					}
 				}
 			}
 
