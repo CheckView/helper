@@ -184,7 +184,7 @@ if ( ! class_exists( 'Checkview_Ninja_Forms_Helper' ) ) {
 			$entry_data  = array(
 				'form_id' => $form_id,
 				'status' => 'publish',
-				'source_url' => isset( $_SERVER['HTTP_REFERER'] ) ? sanitize_url( wp_unslash( $_SERVER['HTTP_REFERER'] ) ) : '',
+				'source_url' => isset( $_SERVER['HTTP_REFERER'] ) ? substr( sanitize_url( wp_unslash( $_SERVER['HTTP_REFERER'] ) ), 0, 200 ) : '',
 				'date_created' => current_time( 'mysql' ),
 				'date_updated' => current_time( 'mysql' ),
 				'uid' => $checkview_test_id,
@@ -195,84 +195,89 @@ if ( ! class_exists( 'Checkview_Ninja_Forms_Helper' ) ) {
 			$result = $wpdb->insert( $entry_table, $entry_data );
 
 			if ( ! $result ) {
-				Checkview_Admin_Logs::add( 'ip-logs', 'Failed to clone submission entry data.' );
+				Checkview_Admin_Logs::add( 'ip-logs', 'Failed to clone submission entry data. wpdb->last_error=[' . $wpdb->last_error . ']' );
 			} else {
 				Checkview_Admin_Logs::add( 'ip-logs', 'Cloned submission entry data (inserted ' . (int) $result . ' rows into ' . $entry_table . ').' );
 			}
 
-			$entry_meta_table = $wpdb->prefix . 'cv_entry_meta';
-			$count = 0;
+			// Skip meta loop when parent insert failed: $wpdb->insert_id
+			// is 0, meta rows would be orphaned with entry_id=0.
+			// NF entry deferred-delete and complete_checkview_test() below still run.
+			if ( $result ) {
+				$entry_meta_table = $wpdb->prefix . 'cv_entry_meta';
+				$count = 0;
 
-			// Read field values from the raw AJAX POST data instead of
-			// wp_postmeta or $form_data['fields']. NF actions in the
-			// Submission.php action loop (lines 500-508) can replace
-			// $this->_data, clearing values for conditionally hidden
-			// fields before ninja_forms_after_submission fires.
-			// The raw $_POST['formData'] JSON contains the original
-			// values submitted by the browser.
-			$raw_fields = array();
-			if ( isset( $_POST['formData'] ) ) {
-				$raw_form = json_decode( stripslashes( $_POST['formData'] ), true );
-				if ( is_array( $raw_form ) && ! empty( $raw_form['fields'] ) && is_array( $raw_form['fields'] ) ) {
-					$raw_fields = $raw_form['fields'];
-				}
-			}
-
-			// Use $form_data['fields'] for field metadata (type, key)
-			// but override the value from raw POST when available.
-			$fields_source = ( ! empty( $form_data['fields'] ) && is_array( $form_data['fields'] ) )
-				? $form_data['fields']
-				: array();
-
-			if ( empty( $fields_source ) ) {
-				Checkview_Admin_Logs::add( 'ip-logs', 'WARNING: form_data[fields] is missing or not an array.' );
-			} else {
-				$skip_types = array( 'submit', 'html', 'hr', 'divider', 'note', 'confirm', 'save', 'recaptcha', 'spam', 'hcaptcha-for-ninja-forms' );
-
-				foreach ( $fields_source as $field_id => $field ) {
-					if ( ! is_array( $field ) ) {
-						continue;
-					}
-
-					$type = $field['type'] ?? '';
-					if ( in_array( $type, $skip_types, true ) ) {
-						continue;
-					}
-
-					// Prefer the raw POST value over the (possibly modified) hook value.
-					$value = '';
-					if ( isset( $raw_fields[ $field_id ]['value'] ) ) {
-						$value = $raw_fields[ $field_id ]['value'];
-					} else {
-						$value = $field['value'] ?? '';
-					}
-
-					if ( is_array( $value ) ) {
-						$value = serialize( $value );
-					} else {
-						$value = (string) $value;
-					}
-
-					$entry_metadata = array(
-						'uid'        => $checkview_test_id,
-						'form_id'    => $form_id,
-						'entry_id'   => $entry_id,
-						'meta_key'   => 'nf-field-' . $field_id,
-						'meta_value' => $value,
-					);
-
-					$result = $wpdb->insert( $entry_meta_table, $entry_metadata );
-
-					if ( $result ) {
-						$count++;
+				// Read field values from the raw AJAX POST data instead of
+				// wp_postmeta or $form_data['fields']. NF actions in the
+				// Submission.php action loop (lines 500-508) can replace
+				// $this->_data, clearing values for conditionally hidden
+				// fields before ninja_forms_after_submission fires.
+				// The raw $_POST['formData'] JSON contains the original
+				// values submitted by the browser.
+				$raw_fields = array();
+				if ( isset( $_POST['formData'] ) && is_string( $_POST['formData'] ) ) {
+					$raw_form = json_decode( wp_unslash( $_POST['formData'] ), true );
+					if ( is_array( $raw_form ) && ! empty( $raw_form['fields'] ) && is_array( $raw_form['fields'] ) ) {
+						$raw_fields = $raw_form['fields'];
 					}
 				}
-			}
 
-			if ( $count > 0 ) {
-				Checkview_Admin_Logs::add( 'ip-logs', 'Cloned submission entry meta data (inserted ' . $count . ' rows into ' . $entry_meta_table . ').' );
-			} else {
-				Checkview_Admin_Logs::add( 'ip-logs', 'Failed to clone submission entry meta data.' );
+				// Use $form_data['fields'] for field metadata (type, key)
+				// but override the value from raw POST when available.
+				$fields_source = ( ! empty( $form_data['fields'] ) && is_array( $form_data['fields'] ) )
+					? $form_data['fields']
+					: array();
+
+				if ( empty( $fields_source ) ) {
+					Checkview_Admin_Logs::add( 'ip-logs', 'WARNING: form_data[fields] is missing or not an array.' );
+				} else {
+					$skip_types = array( 'submit', 'html', 'hr', 'divider', 'note', 'confirm', 'save', 'recaptcha', 'spam', 'hcaptcha-for-ninja-forms' );
+
+					foreach ( $fields_source as $field_id => $field ) {
+						if ( ! is_array( $field ) ) {
+							continue;
+						}
+
+						$type = $field['type'] ?? '';
+						if ( in_array( $type, $skip_types, true ) ) {
+							continue;
+						}
+
+						// Prefer the raw POST value over the (possibly modified) hook value.
+						$value = '';
+						if ( isset( $raw_fields[ $field_id ]['value'] ) ) {
+							$value = $raw_fields[ $field_id ]['value'];
+						} else {
+							$value = $field['value'] ?? '';
+						}
+
+						if ( is_array( $value ) ) {
+							$value = serialize( $value );
+						} else {
+							$value = (string) $value;
+						}
+
+						$entry_metadata = array(
+							'uid'        => $checkview_test_id,
+							'form_id'    => $form_id,
+							'entry_id'   => $entry_id,
+							'meta_key'   => 'nf-field-' . $field_id,
+							'meta_value' => $value,
+						);
+
+						$result = $wpdb->insert( $entry_meta_table, $entry_metadata );
+
+						if ( $result ) {
+							$count++;
+						}
+					}
+				}
+
+				if ( $count > 0 ) {
+					Checkview_Admin_Logs::add( 'ip-logs', 'Cloned submission entry meta data (inserted ' . $count . ' rows into ' . $entry_meta_table . ').' );
+				} else {
+					Checkview_Admin_Logs::add( 'ip-logs', 'Failed to clone submission entry meta data. wpdb->last_error=[' . $wpdb->last_error . ']' );
+				}
 			}
 
 			if ( $entry_id > 0 ) {

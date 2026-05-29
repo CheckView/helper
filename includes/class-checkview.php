@@ -80,7 +80,7 @@ class CheckView {
 		if ( defined( 'CHECKVIEW_VERSION' ) ) {
 			$this->version = CHECKVIEW_VERSION;
 		} else {
-			$this->version = '2.0.35';
+			$this->version = '2.0.35-beta';
 		}
 		$this->plugin_name = 'checkview';
 
@@ -153,8 +153,11 @@ class CheckView {
 		$cv_test_id = get_checkview_test_id();
 		if ( ! empty( $cv_test_id ) ) {
 			$valid_values = array( 'woo_checkout', 'full_checkout', 'add_to_cart', 'form', 'custom' );
-			if ( isset( $_COOKIE[self::$bot_cookie] ) && in_array( $_COOKIE[self::$bot_cookie], $valid_values, true ) ) {
-				return $_COOKIE[self::$bot_cookie];
+			if ( isset( $_COOKIE[ self::$bot_cookie ] ) ) {
+				$cookie_value = sanitize_text_field( wp_unslash( $_COOKIE[ self::$bot_cookie ] ) );
+				if ( in_array( $cookie_value, $valid_values, true ) ) {
+					return $cookie_value;
+				}
 			}
 			return 'form';
 		}
@@ -456,22 +459,18 @@ class CheckView {
 			foreach ( $options['plugins'] as $plugin ) {
 				if ( CHECKVIEW_BASE_DIR === $plugin ) {
 					checkview_reset_cache( true );
-					// Include upgrade.php for dbDelta.
-					if ( ! function_exists( 'dbDelta' ) ) {
-						require_once ABSPATH . 'wp-admin/includes/upgrade.php';
-					}
 					$cv_used_nonces = $wpdb->prefix . 'cv_used_nonces';
 
 					$charset_collate = $wpdb->get_charset_collate();
 					if ( $wpdb->get_var( "SHOW TABLES LIKE '{$cv_used_nonces}'" ) !== $cv_used_nonces ) {
-						$sql = "CREATE TABLE $cv_used_nonces (
+						$sql = "CREATE TABLE IF NOT EXISTS $cv_used_nonces (
 								id BIGINT(20) NOT NULL AUTO_INCREMENT,
 								nonce VARCHAR(255) NOT NULL,
 								used_at DATETIME DEFAULT CURRENT_TIMESTAMP NOT NULL,
 								PRIMARY KEY (id),
 								UNIQUE KEY nonce (nonce)
 							) $charset_collate;";
-						dbDelta( $sql );
+						checkview_dbdelta_or_query( $sql );
 					}
 				}
 			}

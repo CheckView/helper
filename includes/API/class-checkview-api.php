@@ -2571,23 +2571,15 @@ class CheckView_Api {
 			)
 		);
 		if ( $table_exists !== $cv_used_nonces ) {
-			// Include upgrade.php for dbDelta.
-			if ( ! function_exists( 'dbDelta' ) ) {
-				require_once ABSPATH . 'wp-admin/includes/upgrade.php';
-			}
-			$cv_used_nonces = $wpdb->prefix . 'cv_used_nonces';
-
 			$charset_collate = $wpdb->get_charset_collate();
-			if ( $wpdb->get_var( "SHOW TABLES LIKE '{$cv_used_nonces}'" ) !== $cv_used_nonces ) {
-				$sql = "CREATE TABLE $cv_used_nonces (
-						id BIGINT(20) NOT NULL AUTO_INCREMENT,
-						nonce VARCHAR(255) NOT NULL,
-						used_at DATETIME DEFAULT CURRENT_TIMESTAMP NOT NULL,
-						PRIMARY KEY (id),
-						UNIQUE KEY nonce (nonce)
-					) $charset_collate;";
-				dbDelta( $sql );
-			}
+			$sql = "CREATE TABLE IF NOT EXISTS $cv_used_nonces (
+					id BIGINT(20) NOT NULL AUTO_INCREMENT,
+					nonce VARCHAR(255) NOT NULL,
+					used_at DATETIME DEFAULT CURRENT_TIMESTAMP NOT NULL,
+					PRIMARY KEY (id),
+					UNIQUE KEY nonce (nonce)
+				) $charset_collate;";
+			checkview_dbdelta_or_query( $sql );
 			Checkview_Admin_Logs::add( 'api-logs', 'Nonce table absent, created.' );
 		}
 		// Check if the nonce exists.
@@ -2607,10 +2599,11 @@ class CheckView_Api {
 				''
 			);
 		} else {
-			// Store the nonce in the database.
+			// Store the nonce in the database. wpdb::insert() returns false on
+			// failure (not WP_Error), so is_wp_error() would never catch it.
 			$response = $wpdb->insert( $cv_used_nonces, array( 'nonce' => $nonce_token ) );
-			if ( is_wp_error( $response ) ) {
-				Checkview_Admin_Logs::add( 'api-logs', 'Not able to add nonce.' );
+			if ( false === $response ) {
+				Checkview_Admin_Logs::add( 'api-logs', 'Not able to add nonce. wpdb->last_error=[' . $wpdb->last_error . ']' );
 				return new WP_Error(
 					'error',
 					esc_html__(

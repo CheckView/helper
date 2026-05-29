@@ -308,7 +308,7 @@ if ( ! class_exists( 'Checkview_Fluent_Forms_Helper' ) ) {
 					'uid'        => $checkview_test_id,
 					'form_id'    => $form_id,
 					'entry_id'   => $row->submission_id,
-					'meta_key'   => $meta_key,
+					'meta_key'   => checkview_truncate_meta_key( $meta_key ),
 					'meta_value' => $row->field_value,
 				);
 
@@ -323,7 +323,7 @@ if ( ! class_exists( 'Checkview_Fluent_Forms_Helper' ) ) {
 				Checkview_Admin_Logs::add( 'ip-logs', 'Cloned submission entry meta data (inserted ' . $count . ' rows into ' . $entry_meta_table . ').' );
 			} else {
 				if ( count( $rows ) > 0 ) {
-					Checkview_Admin_Logs::add( 'ip-logs', 'Failed to clone submission entry meta data.' );
+					Checkview_Admin_Logs::add( 'ip-logs', 'Failed to clone submission entry meta data. wpdb->last_error=[' . $wpdb->last_error . ']' );
 				}
 			}
 
@@ -334,7 +334,7 @@ if ( ! class_exists( 'Checkview_Fluent_Forms_Helper' ) ) {
 				'uid' => $checkview_test_id,
 				'form_type' => 'FluentForms',
 				'form_id' => $form_id,
-				'source_url' => isset( $row['source_url'] ) ? $row['source_url'] : 'n/a',
+				'source_url' => isset( $row['source_url'] ) ? substr( $row['source_url'], 0, 200 ) : 'n/a',
 				'response' => isset( $row['response'] ) ? $row['response'] : 'n/a',
 				'user_agent' => isset( $row['browser'] ) ? $row['browser'] : 'n/a',
 				'ip' => isset( $row['ip'] ) ? $row['ip'] : 'n/a',
@@ -345,10 +345,16 @@ if ( ! class_exists( 'Checkview_Fluent_Forms_Helper' ) ) {
 				'payment_amount' => isset( $row['payment_total'] ) ? $row['payment_total'] : 0,
 			);
 
+			// Fluent's user_agent (passed-through $row['browser']) and
+			// payment_method / payment_status fields can exceed cv_entry's
+			// limits. checkview_truncate_for_cv_entry() applies the schema's
+			// varchar caps to every applicable column.
+			$data = checkview_truncate_for_cv_entry( $data );
+
 			$result = $wpdb->insert( $entry_table, $data );
 
 			if ( ! $result ) {
-				Checkview_Admin_Logs::add( 'ip-logs', 'Failed to clone submission entry data.' );
+				Checkview_Admin_Logs::add( 'ip-logs', 'Failed to clone submission entry data. wpdb->last_error=[' . $wpdb->last_error . ']' );
 			} else {
 				Checkview_Admin_Logs::add( 'ip-logs', 'Cloned submission entry data (inserted ' . (int) $result . ' rows into ' . $entry_table . ').' );
 			}

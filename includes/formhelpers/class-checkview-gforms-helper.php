@@ -73,6 +73,84 @@ if ( ! class_exists( 'Checkview_Gforms_Helper' ) ) {
 					1
 				);
 
+				// Force notifications to dispatch synchronously during a test.
+				// GF 2.10+ ships "Background Notifications" (queued via the
+				// GF_Notifications_Processor admin-ajax task). That separate
+				// request doesn't carry the CheckView test context, so
+				// TEST_EMAIL is never defined for it and gform_pre_send_email
+				// above never fires — the notification goes to the original
+				// recipient. Forcing sync during the test keeps the dispatch
+				// inside the form-submission request where our filters are
+				// already registered. Customers' non-test traffic is
+				// unaffected.
+				add_filter(
+					'gform_is_asynchronous_notifications_enabled',
+					'__return_false',
+					999
+				);
+
+				// Explicitly unhook the GF reCAPTCHA Add-On's callbacks during
+				// a test. Without this, the add-on's validate_submission()
+				// runs and attaches a failure to a non-captcha field
+				// (maybe_hide_recaptcha cannot catch it because the add-on
+				// doesn't use a captcha-type field). The
+				// checkview_bypass_captcha_validation marker fallback would
+				// still catch it, but explicit unhook is more precise and
+				// avoids depending on the English-only "recaptcha" substring.
+				// Hooked on gform_pre_validation at priority 1 so the
+				// unhook runs before gform_validation fires regardless of
+				// init ordering between this plugin and the add-on.
+				add_filter(
+					'gform_pre_validation',
+					array( $this, 'unhook_gf_recaptcha_addon' ),
+					1
+				);
+
+				// CleanTalk Spam Protect bypass.
+				//
+				// CleanTalk's GF integration registers a callback on
+				// `gform_entry_is_spam`. When the verdict is spam it
+				// ALSO calls `GFFormsModel::delete_lead( $entry['id'] )`
+				// inline — bypassing every WP filter we hook, so the
+				// existing `gform_entry_is_spam` → `__return_false` at
+				// PHP_INT_MAX cannot save the entry from being deleted.
+				//
+				// CleanTalk itself uses the `$cleantalk_executed` global
+				// as an "already handled, don't re-check" sentinel after
+				// successful base API calls. Setting it truthy here causes
+				// `apbct_form__gravityForms__isSkippedRequest()` to return
+				// true, which causes `testSpam()` to return the unmodified
+				// `$is_spam` without calling the API or `delete_lead()`.
+				//
+				// Sources (cleantalk-spam-protect plugin, wp.org trunk;
+				// line numbers verified at the time of writing — re-verify
+				// on plugin updates):
+				//   - inc/cleantalk-public-integrations.php L2270-2303
+				//     (`apbct_form__gravityForms__isSkippedRequest()`
+				//     reads `$cleantalk_executed`)
+				//   - inc/cleantalk-public-integrations.php L2128-2134
+				//     (`apbct_form__gravityForms__testSpam()` calls
+				//     `isSkippedRequest()` first, returns `$is_spam`
+				//     unmodified before the remote API call or
+				//     `GFFormsModel::delete_lead()`)
+				//   - inc/cleantalk-public-validate.php L472
+				//     (CleanTalk sets the global itself after successful
+				//     base API calls — pattern is canonical, not
+				//     internal-only)
+				//
+				// CAVEAT: this is an INTERNAL global, not a documented
+				// public API. CleanTalk could rename/remove it in any
+				// release. Harmless if CleanTalk isn't installed (just
+				// creates an unused global). Re-verify on plugin updates
+				// — if the sentinel goes away, fall back to
+				// `remove_filter('gform_entry_is_spam', ...)` on the
+				// add-on's callback.
+				global $cleantalk_executed;
+				$cleantalk_executed = true;
+				Checkview_Admin_Logs::add(
+					'ip-logs',
+					'Set $cleantalk_executed = true to bypass CleanTalk Spam Protect during test (if installed).'
+				);
 			}
 			// Disable addons found in forms.
 			add_filter(
@@ -209,7 +287,14 @@ if ( ! class_exists( 'Checkview_Gforms_Helper' ) ) {
 		public function maybe_hide_recaptcha( $form ) {
 			$fields = $form['fields'];
 
-			$spam_field_types = array( 'captcha', 'hcaptcha', 'turnstile', 'honeypot' );
+			// Same allowlist as is_anti_bot_failure() so customers extending
+			// `checkview_anti_bot_field_types` get consistent treatment: a
+			// custom type is removed pre-validation AND its failures are
+			// cleared post-validation.
+			$spam_field_types = (array) apply_filters(
+				'checkview_anti_bot_field_types',
+				array( 'captcha', 'hcaptcha', 'turnstile', 'honeypot' )
+			);
 
 			foreach ( $form['fields'] as $key => $field ) {
 				if ( in_array( $field->type, $spam_field_types, true ) ) {
@@ -232,6 +317,13 @@ if ( ! class_exists( 'Checkview_Gforms_Helper' ) ) {
 		 * it cannot catch this. This filter runs at PHP_INT_MAX priority
 		 * (guaranteed last, after all other validation hooks) and clears failures.
 		 *
+		 * Scoped to anti-bot fields only: clearing every failure regardless of
+		 * cause was masking real test-flow gaps (e.g. a customer adds a required
+		 * dropdown but the saved test flow has no step to fill it — the test
+		 * would silently "pass" instead of failing honestly). Non-anti-bot
+		 * failures (required fields, format errors, etc.) are kept so they
+		 * surface as real test failures.
+		 *
 		 * Only loaded when is_bot() is true (constructor gated by
 		 * checkview_init_current_test which requires is_bot()).
 		 *
@@ -239,24 +331,239 @@ if ( ! class_exists( 'Checkview_Gforms_Helper' ) ) {
 		 * @return array
 		 */
 		public function checkview_bypass_captcha_validation( $validation_result ) {
-			if ( ! $validation_result['is_valid'] ) {
-				Checkview_Admin_Logs::add( 'ip-logs',
-					'Form validation failed during CheckView test. Clearing validation failures.' );
+			if ( $validation_result['is_valid'] ) {
+				return $validation_result;
+			}
 
-				$fields = $validation_result['form']['fields'] ?? array();
-				foreach ( $fields as &$field ) {
-					if ( $field->failed_validation ) {
-						Checkview_Admin_Logs::add( 'ip-logs',
-							'Cleared validation failure for field [' . $field->id . '] type [' . $field->type . '].' );
-						$field->failed_validation  = false;
-						$field->validation_message = '';
-					}
+			Checkview_Admin_Logs::add( 'ip-logs',
+				'Form validation failed during CheckView test. Evaluating which failures to clear.' );
+
+			$fields = $validation_result['form']['fields'] ?? array();
+			$remaining_failures = 0;
+
+			foreach ( $fields as &$field ) {
+				if ( empty( $field->failed_validation ) ) {
+					continue;
 				}
 
+				if ( self::is_anti_bot_failure( $field ) ) {
+					Checkview_Admin_Logs::add( 'ip-logs',
+						'Cleared anti-bot validation failure for field [' . $field->id . '] type [' . $field->type . '].' );
+					$field->failed_validation  = false;
+					$field->validation_message = '';
+					continue;
+				}
+
+				$remaining_failures++;
+				Checkview_Admin_Logs::add( 'ip-logs',
+					'Kept validation failure for non-anti-bot field [' . $field->id . '] type [' . $field->type . '] message [' . substr( (string) ( $field->validation_message ?? '' ), 0, 200 ) . '].' );
+			}
+			unset( $field );
+
+			// Only mark the form valid if every remaining failure was anti-bot related.
+			// Otherwise let GF surface the genuine failure so the test fails honestly.
+			if ( 0 === $remaining_failures ) {
 				$validation_result['is_valid'] = true;
+			} else {
+				Checkview_Admin_Logs::add( 'ip-logs',
+					'Form still has [' . $remaining_failures . '] non-anti-bot validation failure(s); not marking as valid.' );
 			}
 
 			return $validation_result;
+		}
+
+		/**
+		 * Determines whether a field's validation failure is anti-bot/captcha related.
+		 *
+		 * Matches by field type (`captcha`, `hcaptcha`, `turnstile`, `honeypot`) or
+		 * by validation message pattern — the GF reCAPTCHA Add-On v2.x and similar
+		 * anti-bot validators attach their failure to ordinary fields (often a
+		 * hidden text or form-level marker) rather than a captcha-type field.
+		 *
+		 * The type allowlist is filterable via `checkview_anti_bot_field_types`
+		 * and the marker list via `checkview_anti_bot_validation_markers`, so
+		 * customers/integrators can add patterns specific to their stack (e.g.,
+		 * non-English error messages or niche anti-spam plugins) without
+		 * modifying the plugin.
+		 *
+		 * @param object $field GF field with `failed_validation` set.
+		 * @return bool
+		 */
+		private static function is_anti_bot_failure( $field ): bool {
+			/**
+			 * Filters the GF field types treated as anti-bot/captcha during
+			 * CheckView tests. Failures on these field types are always
+			 * cleared. Default: captcha, hcaptcha, turnstile, honeypot.
+			 *
+			 * Note: GF's native honeypot field doesn't normally trip
+			 * `gform_validation` (it uses gform_entry_is_spam + the
+			 * abort path, both covered elsewhere in this class). The
+			 * `honeypot` entry here is harmless defense-in-depth for
+			 * third-party plugins that use the type but route through
+			 * gform_validation.
+			 *
+			 * WARNING: this filter is consumed by TWO independent layers
+			 * — `maybe_hide_recaptcha()` (strips fields of these types
+			 * pre-validation) AND `is_anti_bot_failure()` (clears their
+			 * failures post-validation). Returning an empty array or
+			 * `null` disables BOTH layers, not just one. Use the
+			 * `checkview_anti_bot_validation_markers` filter for
+			 * message-based extensions instead of weakening this
+			 * type list.
+			 *
+			 * @since 2.0.35
+			 *
+			 * @param string[] $types Lowercase GF field-type identifiers.
+			 */
+			$bypass_types = apply_filters(
+				'checkview_anti_bot_field_types',
+				array( 'captcha', 'hcaptcha', 'turnstile', 'honeypot' )
+			);
+			if ( in_array( $field->type ?? '', (array) $bypass_types, true ) ) {
+				return true;
+			}
+
+			$message = strtolower( (string) ( $field->validation_message ?? '' ) );
+			if ( '' === $message ) {
+				return false;
+			}
+
+			/**
+			 * Filters substring patterns (lowercase) matched against a field's
+			 * `validation_message` to detect anti-bot/anti-spam failures during
+			 * CheckView tests. Failures whose message contains any of these
+			 * substrings are cleared. Add your plugin/locale-specific markers
+			 * here (e.g., translated reCAPTCHA messages, niche anti-spam
+			 * plugins).
+			 *
+			 * The default list covers plugins that surface their failure via
+			 * a field's `validation_message`. Plugins that flag submissions
+			 * via `gform_entry_is_spam` instead (CleanTalk, OOPSpam, Akismet,
+			 * native GF Honeypot, etc.) are handled by the existing
+			 * `gform_entry_is_spam` → `__return_false` filter in the
+			 * constructor — not by this list.
+			 *
+			 * @since 2.0.35
+			 *
+			 * @param string[] $markers Lowercase substring patterns.
+			 */
+			$bypass_markers = apply_filters(
+				'checkview_anti_bot_validation_markers',
+				// Each marker must be verified against a specific source
+				// file + line in the plugin emitting the validation_message
+				// default. Markers added without that verification have
+				// been wrong four times in this PR's history. If you can't
+				// cite source:line, don't add the marker — customers can
+				// extend via the `checkview_anti_bot_validation_markers`
+				// filter for their specific stack.
+				array(
+					// GF core `GF_Field_CAPTCHA` (Really Simple CAPTCHA /
+					// math captcha): "The CAPTCHA wasn't entered correctly…"
+					// Source: gravityforms/includes/fields/class-gf-field-captcha.php:216,252
+					'captcha',
+					// GF reCAPTCHA Add-On default: "The reCAPTCHA was invalid…"
+					// Source: gravityforms/includes/fields/class-gf-field-captcha.php:293
+					// (defense-in-depth alongside `unhook_gf_recaptcha_addon()`)
+					'recaptcha',
+					// Simple Cloudflare Turnstile default: "Please verify
+					// that you are human." `are you human` is a substring.
+					// Source: simple-cloudflare-turnstile/inc/errors.php:95
+					'are you human',
+					// Maspik default: "This looks like spam. Try to rephrase…"
+					// The plugin slug never appears in the user-facing message.
+					// Source: contact-forms-anti-spam/includes/functions.php:1281
+					'looks like spam',
+				)
+			);
+			foreach ( (array) $bypass_markers as $marker ) {
+				if ( is_string( $marker ) && '' !== $marker && false !== strpos( $message, $marker ) ) {
+					return true;
+				}
+			}
+
+			return false;
+		}
+
+		/**
+		 * Removes the GF reCAPTCHA Add-On's callbacks at runtime so its
+		 * validation doesn't run during a CheckView test.
+		 *
+		 * The add-on (slug `gravityformsrecaptcha`, class `GF_RECAPTCHA`)
+		 * hooks both `gform_validation` (response token check) and
+		 * `gform_entry_is_spam` (low-score → spam) at default priority 10.
+		 *
+		 * Complements `remove_gravityforms_recaptcha_addon()` in
+		 * `includes/checkview-helper-functions.php`, which removes the
+		 * add-on's bootstrap from `gform_loaded` on the initial GET request
+		 * (when `$_REQUEST['checkview_test_id']` is present). That early
+		 * path doesn't fire on the AJAX form submission, where `test_id`
+		 * is only in the cookie/referer; by then the add-on has loaded
+		 * normally and we need to remove its callbacks at runtime instead.
+		 *
+		 * Wider category-level filters (`gform_entry_is_spam`
+		 * → `__return_false`, marker-bypass in
+		 * `checkview_bypass_captcha_validation`) still catch the case
+		 * where the class can't be found — e.g., a future rename or a
+		 * fork.
+		 *
+		 * Hooked at `gform_pre_validation` priority 1 so the unhook happens
+		 * before any `gform_validation` callback fires. Returns the form
+		 * unchanged.
+		 *
+		 * @since 2.0.35
+		 *
+		 * @param array $form The form being validated.
+		 * @return array
+		 */
+		public function unhook_gf_recaptcha_addon( $form ) {
+			// Idempotent — `gform_pre_validation` fires once per form, so on
+			// a page with multiple GF forms this callback would otherwise run
+			// repeatedly. After the first run the add-on's callbacks are
+			// already removed and subsequent runs would log a misleading
+			// "detected but no callbacks unhooked" warning. Static flag
+			// scopes the attempt to the first form-validation per request.
+			static $attempted = false;
+			if ( $attempted ) {
+				return $form;
+			}
+			$attempted = true;
+
+			if ( ! class_exists( 'GF_RECAPTCHA' ) || ! is_callable( array( 'GF_RECAPTCHA', 'get_instance' ) ) ) {
+				return $form;
+			}
+
+			$instance = GF_RECAPTCHA::get_instance();
+			if ( ! is_object( $instance ) ) {
+				return $form;
+			}
+
+			// Pass priority 10 explicitly — the add-on registers both
+			// callbacks at default priority, and remove_filter must match
+			// the registered priority. If the add-on bumps the priority
+			// in a future release this will silently no-op and the
+			// marker-bypass fallback in checkview_bypass_captcha_validation
+			// picks up the slack.
+			$removed = 0;
+			if ( method_exists( $instance, 'validate_submission' )
+				&& remove_filter( 'gform_validation', array( $instance, 'validate_submission' ), 10 ) ) {
+				$removed++;
+			}
+			if ( method_exists( $instance, 'check_for_spam_entry' )
+				&& remove_filter( 'gform_entry_is_spam', array( $instance, 'check_for_spam_entry' ), 10 ) ) {
+				$removed++;
+			}
+
+			if ( $removed > 0 ) {
+				Checkview_Admin_Logs::add( 'ip-logs', 'Unhooked [' . $removed . '] GF reCAPTCHA Add-On callback(s).' );
+			} else {
+				// Class is present but neither expected callback was
+				// removable. Most likely the add-on renamed its methods
+				// or changed its priority — flag for support so we know
+				// our shim has drifted from the add-on's internals.
+				Checkview_Admin_Logs::add( 'ip-logs', 'GF reCAPTCHA Add-On detected but no callbacks were unhooked (renamed methods or priority changed?) — marker-bypass fallback still active.' );
+			}
+
+			return $form;
 		}
 
 		/**
@@ -415,7 +722,7 @@ if ( ! class_exists( 'Checkview_Gforms_Helper' ) ) {
 					'uid' => $uid,
 					'form_id' => $row->form_id,
 					'entry_id' => $row->entry_id,
-					'meta_key' => $row->meta_key,
+					'meta_key' => checkview_truncate_meta_key( $row->meta_key ),
 					'meta_value' => $row->meta_value,
 				);
 
@@ -430,7 +737,7 @@ if ( ! class_exists( 'Checkview_Gforms_Helper' ) ) {
 				Checkview_Admin_Logs::add( 'ip-logs', 'Cloned submission entry meta data (inserted ' . $count . ' rows into ' . $entry_meta_table . ').' );
 			} else {
 				if ( count( $rows ) > 0 ) {
-					Checkview_Admin_Logs::add( 'ip-logs', 'Failed to clone submission entry meta data.' );
+					Checkview_Admin_Logs::add( 'ip-logs', 'Failed to clone submission entry meta data. wpdb->last_error=[' . $wpdb->last_error . ']' );
 				}
 			}
 
@@ -443,10 +750,17 @@ if ( ! class_exists( 'Checkview_Gforms_Helper' ) ) {
 			$entry_table = $wpdb->prefix . 'cv_entry';
 			$row['uid'] = $uid;
 			$row['form_type'] = 'GravityForms';
+
+			// gf_entry's varchars are wider than cv_entry's (e.g.,
+			// transaction_id 255 vs 50, payment_method 255 vs 30) so a
+			// wholesale row copy can hit wpdb::process_field_lengths()
+			// rejection on payment forms.
+			$row = checkview_truncate_for_cv_entry( $row );
+
 			$result = $wpdb->insert( $entry_table, $row );
 
 			if ( ! $result ) {
-				Checkview_Admin_Logs::add( 'ip-logs', 'Failed to clone submission entry data.' );
+				Checkview_Admin_Logs::add( 'ip-logs', 'Failed to clone submission entry data. wpdb->last_error=[' . $wpdb->last_error . ']' );
 			} else {
 				Checkview_Admin_Logs::add( 'ip-logs', 'Cloned submission entry data (inserted ' . (int) $result . ' rows into ' . $entry_table . ').' );
 			}

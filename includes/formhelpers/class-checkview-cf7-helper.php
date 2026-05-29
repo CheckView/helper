@@ -354,7 +354,7 @@ if ( ! class_exists( 'Checkview_Cf7_Helper' ) ) {
 				$entry_data  = array(
 					'form_id' => $form_id,
 					'status' => 'publish',
-					'source_url' => isset( $_SERVER['HTTP_REFERER'] ) ? sanitize_url( wp_unslash( $_SERVER['HTTP_REFERER'] ) ) : '',
+					'source_url' => isset( $_SERVER['HTTP_REFERER'] ) ? substr( sanitize_url( wp_unslash( $_SERVER['HTTP_REFERER'] ) ), 0, 200 ) : '',
 					'date_created' => current_time( 'mysql' ),
 					'date_updated' => current_time( 'mysql' ),
 					'uid' => $checkview_test_id,
@@ -365,36 +365,41 @@ if ( ! class_exists( 'Checkview_Cf7_Helper' ) ) {
 				$result = $wpdb->insert( $entry_table, $entry_data );
 
 				if ( ! $result ) {
-					Checkview_Admin_Logs::add( 'ip-logs', 'Failed to clone submission entry data.' );
+					Checkview_Admin_Logs::add( 'ip-logs', 'Failed to clone submission entry data. wpdb->last_error=[' . $wpdb->last_error . ']' );
 				} else {
 					Checkview_Admin_Logs::add( 'ip-logs', 'Cloned submission entry data (inserted ' . (int) $result . ' rows into ' . $entry_table . ').' );
 				}
 
-				$inserted_entry_id = $wpdb->insert_id;
-				$entry_meta_table = $wpdb->prefix . 'cv_entry_meta';
-				$count = 0;
+				// Skip meta loop when parent insert failed: $wpdb->insert_id
+				// is 0, meta rows would be orphaned with entry_id=0.
+				// complete_checkview_test() below still runs.
+				if ( $result ) {
+					$inserted_entry_id = $wpdb->insert_id;
+					$entry_meta_table  = $wpdb->prefix . 'cv_entry_meta';
+					$count             = 0;
 
-				foreach ( $form_data as $key => $val ) {
-					$entry_metadata = array(
-						'uid' => $checkview_test_id,
-						'form_id' => $form_id,
-						'entry_id' => $inserted_entry_id,
-						'meta_key' => $key,
-						'meta_value' => $val,
-					);
+					foreach ( $form_data as $key => $val ) {
+						$entry_metadata = array(
+							'uid' => $checkview_test_id,
+							'form_id' => $form_id,
+							'entry_id' => $inserted_entry_id,
+							'meta_key' => checkview_truncate_meta_key( $key ),
+							'meta_value' => $val,
+						);
 
-					$result = $wpdb->insert( $entry_meta_table, $entry_metadata );
+						$result = $wpdb->insert( $entry_meta_table, $entry_metadata );
 
-					if ( $result ) {
-						$count++;
+						if ( $result ) {
+							$count++;
+						}
 					}
-				}
 
-				if ( $count > 0 ) {
-					Checkview_Admin_Logs::add( 'ip-logs', 'Cloned submission entry meta data (inserted ' . $count . ' rows into ' . $entry_meta_table . ').' );
-				} else {
-					if ( count( $form_data ) > 0 ) {
-						Checkview_Admin_Logs::add( 'ip-logs', 'Failed to clone submission entry meta data.' );
+					if ( $count > 0 ) {
+						Checkview_Admin_Logs::add( 'ip-logs', 'Cloned submission entry meta data (inserted ' . $count . ' rows into ' . $entry_meta_table . ').' );
+					} else {
+						if ( count( $form_data ) > 0 ) {
+							Checkview_Admin_Logs::add( 'ip-logs', 'Failed to clone submission entry meta data. wpdb->last_error=[' . $wpdb->last_error . ']' );
+						}
 					}
 				}
 
