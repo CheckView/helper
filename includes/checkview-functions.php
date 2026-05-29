@@ -45,7 +45,7 @@ if ( ! function_exists( 'checkview_dbdelta_or_query' ) ) {
 	 * whitespace-delimited token after `CREATE TABLE` and would otherwise
 	 * extract the literal string "IF", silently bypassing its schema-diff.
 	 *
-	 * @since 2.0.36
+	 * @since 2.1.0
 	 *
 	 * @param string $sql CREATE TABLE statement.
 	 * @return mixed dbDelta() result array, or $wpdb->query() return value.

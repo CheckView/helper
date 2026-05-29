@@ -7,7 +7,7 @@ Tested up to: 7.0
 Requires PHP: 7.4
 License: GPLv3
 License URI: http://www.gnu.org/licenses/gpl-3.0.html
-Stable tag: 2.0.35-beta
+Stable tag: 2.1.0
 
 [CheckView](https://checkview.io/) automates WordPress form and WooCommerce testing, monitoring key flows to catch failures early before they cost you leads or sales everyday.
 
@@ -204,6 +204,20 @@ Support and test configuration are handled through the CheckView platform. Pleas
 3. CheckView general settings.
 
 == Changelog ==
+
+= 2.1.0 =
+* WP 7.0 compatibility: superglobal hygiene (scope test-credentials to $_GET), header handling alignment.
+* Gravity Forms: scope validation bypass to anti-bot failures only; widen anti-bot marker detection; add extension filters via `checkview_anti_bot_field_types`.
+* Gravity Forms: explicitly unhook GF reCAPTCHA Add-On v2.x and GF Cloudflare Turnstile Add-On during test runs.
+* Gravity Forms: bypass CleanTalk Spam Protect during test submissions via sentinel flag.
+* Gravity Forms: redirect notification mail to test inbox under GF 2.10 Background Notifications; handle \n-only line endings in notification headers.
+* Harden cv_entry writes across all form helpers: single-source column-limit map, last_error logging, meta_key truncation.
+* Skip cv_entry_meta inserts when parent cv_entry insert fails.
+* Truncate source_url to 200 chars before cv_entry insert.
+* Log wpdb->last_error on cv_used_nonces insert failure.
+* Sanitize CRLF and control characters in admin log entries.
+* Guard dbDelta callsites against fatal from install-helper.php redeclaration.
+* CF7: remove dead meta_key assignment superseded by checkview_truncate_meta_key().
 
 = 2.0.35 =
 * Suppress webhooks and Mailchimp pushes on CheckView test orders.
@@ -580,6 +594,20 @@ Support and test configuration are handled through the CheckView platform. Pleas
 * Initial release.
 
 == Upgrade Notice ==
+
+= 2.1.0 =
+* WP 7.0 compatibility: superglobal hygiene (scope test-credentials to $_GET), header handling alignment.
+* Gravity Forms: scope validation bypass to anti-bot failures only; widen anti-bot marker detection; add extension filters via `checkview_anti_bot_field_types`.
+* Gravity Forms: explicitly unhook GF reCAPTCHA Add-On v2.x and GF Cloudflare Turnstile Add-On during test runs.
+* Gravity Forms: bypass CleanTalk Spam Protect during test submissions via sentinel flag.
+* Gravity Forms: redirect notification mail to test inbox under GF 2.10 Background Notifications; handle \n-only line endings in notification headers.
+* Harden cv_entry writes across all form helpers: single-source column-limit map, last_error logging, meta_key truncation.
+* Skip cv_entry_meta inserts when parent cv_entry insert fails.
+* Truncate source_url to 200 chars before cv_entry insert.
+* Log wpdb->last_error on cv_used_nonces insert failure.
+* Sanitize CRLF and control characters in admin log entries.
+* Guard dbDelta callsites against fatal from install-helper.php redeclaration.
+* CF7: remove dead meta_key assignment superseded by checkview_truncate_meta_key().
 
 = 2.0.35 =
 * Suppress webhooks and Mailchimp pushes on CheckView test orders.
