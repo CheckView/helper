@@ -175,8 +175,31 @@ class CheckView {
 		$cv_bot_ip   = checkview_get_api_ip();
 		$is_local    = defined( 'WP_ENVIRONMENT_TYPE' ) && WP_ENVIRONMENT_TYPE === 'local';
 		$ip_verified = $is_local || ( is_array( $cv_bot_ip ) && in_array( $visitor_ip, $cv_bot_ip ) );
+
+		// Unforgeable per-request signal: the CheckView test runner attaches a
+		// short-lived signed token (X-CheckView-Signature) that this verifies
+		// cryptographically. Unlike the IP allowlist, it cannot be spoofed via
+		// forwarding headers and survives proxies/CDNs intact.
+		$sig_verified = self::is_request_signed();
+
+		/**
+		 * Filter: when true, a valid CheckView request signature is REQUIRED and
+		 * the (spoofable) IP allowlist is no longer sufficient on its own.
+		 *
+		 * Default false (transitional): a request passes if it carries a valid
+		 * signature OR matches the IP allowlist. This keeps the signature path
+		 * inert until the SaaS is signing every request fleet-wide, so the code
+		 * is safe to ship ahead of the cutover; flip the filter on to enforce.
+		 *
+		 * @since 2.1.1
+		 *
+		 * @param bool $require_signed Whether a valid signature is mandatory.
+		 */
+		$require_signed = (bool) apply_filters( 'checkview_require_signed_request', false );
+		$verified       = $require_signed ? $sig_verified : ( $sig_verified || $ip_verified );
+
 		$test_type = self::test_type();
-		$result = $test_type && $ip_verified;
+		$result = $test_type && $verified;
 
 		// Only log during actual tests
 		if ( isset( $_REQUEST['checkview_test_id'] ) ) {
@@ -216,18 +239,61 @@ class CheckView {
 			$headers[] = 'RA=[' . ( $ra ?: 'not set' ) . ']';
 
 			Checkview_Admin_Logs::add( 'ip-logs', sprintf(
-				'Bot check %s [%s]: detected=[%s], %s, ip_ok=[%s], whitelist=[%d IPs]%s',
+				'Bot check %s [%s]: detected=[%s], %s, ip_ok=[%s], sig_ok=[%s], mode=[%s], whitelist=[%d IPs]%s',
 				$result ? 'PASSED' : 'FAILED',
 				$test_id,
 				$safe_visitor_ip ?: 'empty',
 				implode( ', ', $headers ),
 				$ip_verified ? 'yes' : 'no',
+				$sig_verified ? 'yes' : 'no',
+				$require_signed ? 'require-signed' : 'transitional',
 				is_array( $cv_bot_ip ) ? count( $cv_bot_ip ) : 0,
 				$is_local ? ', LOCAL_ENV' : ''
 			) );
 		}
 
-		return $test_type && $ip_verified;
+		return $result;
+	}
+
+	/**
+	 * Determines whether the current request carries a valid CheckView SaaS
+	 * signature.
+	 *
+	 * The CheckView test runner attaches a short-lived RS256 JWT as the
+	 * `X-CheckView-Signature` header on every same-domain request. The value
+	 * cannot be forged by a client and passes through proxies/CDNs intact, so it
+	 * authenticates the bot even where forwarding headers are spoofable. Reuses
+	 * the exact validation the REST API already trusts (RS256 signature, site
+	 * binding, and expiry) via checkview_validate_jwt_token().
+	 *
+	 * @since 2.1.1
+	 *
+	 * @return bool True when a valid signature is present, false otherwise.
+	 */
+	private static function is_request_signed(): bool {
+		if ( empty( $_SERVER['HTTP_X_CHECKVIEW_SIGNATURE'] ) ) {
+			return false;
+		}
+
+		if ( ! function_exists( 'checkview_validate_jwt_token' ) ) {
+			return false;
+		}
+
+		$header = trim( wp_unslash( $_SERVER['HTTP_X_CHECKVIEW_SIGNATURE'] ) );
+		if ( '' === $header ) {
+			return false;
+		}
+
+		// checkview_validate_jwt_token() expects a "Bearer <jwt>" string.
+		if ( 0 !== strpos( $header, 'Bearer ' ) ) {
+			$header = 'Bearer ' . $header;
+		}
+
+		$nonce = checkview_validate_jwt_token( $header );
+
+		// A non-empty string (the token's nonce) means the signature validated;
+		// a WP_Error, false, or empty string means it did not.
+		return is_string( $nonce ) && '' !== $nonce;
 	}
 
 	/**
