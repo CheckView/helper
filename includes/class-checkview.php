@@ -183,19 +183,18 @@ class CheckView {
 		$sig_verified = self::is_request_signed();
 
 		/**
-		 * Filter: when true, a valid CheckView request signature is REQUIRED and
-		 * the (spoofable) IP allowlist is no longer sufficient on its own.
+		 * Filter: when true (default), a valid CheckView request signature is
+		 * REQUIRED and the (spoofable) IP allowlist is no longer sufficient on
+		 * its own.
 		 *
-		 * Default false (transitional): a request passes if it carries a valid
-		 * signature OR matches the IP allowlist. This keeps the signature path
-		 * inert until the SaaS is signing every request fleet-wide, so the code
-		 * is safe to ship ahead of the cutover; flip the filter on to enforce.
+		 * When false: a request passes if it carries a valid signature OR
+		 * matches the IP allowlist.
 		 *
 		 * @since 2.1.1
 		 *
 		 * @param bool $require_signed Whether a valid signature is mandatory.
 		 */
-		$require_signed = (bool) apply_filters( 'checkview_require_signed_request', false );
+		$require_signed = (bool) apply_filters( 'checkview_require_signed_request', true );
 		$verified       = $require_signed ? $sig_verified : ( $sig_verified || $ip_verified );
 
 		$test_type = self::test_type();
