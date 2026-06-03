@@ -7,7 +7,7 @@ Tested up to: 7.0
 Requires PHP: 7.4
 License: GPLv3
 License URI: http://www.gnu.org/licenses/gpl-3.0.html
-Stable tag: 2.1.0
+Stable tag: 2.2.0
 
 [CheckView](https://checkview.io/) automates WordPress form and WooCommerce testing, monitoring key flows to catch failures early before they cost you leads or sales everyday.
 
@@ -204,6 +204,11 @@ Support and test configuration are handled through the CheckView platform. Pleas
 3. CheckView general settings.
 
 == Changelog ==
+
+= 2.2.0 =
+* Security: require RS256-signed header for bot detection by default.
+* Security: add `is_request_signed()` to `is_bot()`; verifies signature via existing JWT RS256 key with expiry checks.
+* Security: add `checkview_require_signed_request` filter to control enforcement (default `true`); log `sig_ok` and mode on each bot check.
 
 = 2.1.0 =
 * WP 7.0 compatibility: superglobal hygiene (scope test-credentials to $_GET), header handling alignment.
@@ -594,6 +599,11 @@ Support and test configuration are handled through the CheckView platform. Pleas
 * Initial release.
 
 == Upgrade Notice ==
+
+= 2.2.0 =
+* Security: require RS256-signed header for bot detection by default.
+* Security: add `is_request_signed()` to `is_bot()`; verifies signature via existing JWT RS256 key with expiry checks.
+* Security: add `checkview_require_signed_request` filter to control enforcement (default `true`); log `sig_ok` and mode on each bot check.
 
 = 2.1.0 =
 * WP 7.0 compatibility: superglobal hygiene (scope test-credentials to $_GET), header handling alignment.
