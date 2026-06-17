@@ -8,3 +8,5 @@ scripts/dist
 .idea
 CLAUDE.md
 *-har.json
+*.phar
+.phpunit.result.cache
