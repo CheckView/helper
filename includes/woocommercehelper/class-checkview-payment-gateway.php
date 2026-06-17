@@ -53,6 +53,24 @@ if ( class_exists( 'WC_Payment_Gateway' ) ) {
 		}
 
 		/**
+		 * Restricts gateway availability to active CheckView test sessions.
+		 *
+		 * Defense-in-depth: this gateway is only registered while
+		 * CheckView::is_bot() is true, but WooCommerce caches gateway objects and
+		 * re-evaluates availability throughout a request. Re-verify on every
+		 * availability check so the $0 gateway can never surface on a real
+		 * shopper's checkout.
+		 *
+		 * @return bool
+		 */
+		public function is_available() {
+			if ( ! class_exists( 'CheckView' ) || ! CheckView::is_bot() ) {
+				return false;
+			}
+			return parent::is_available();
+		}
+
+		/**
 		 * Displays payment gateway description.
 		 *
 		 * @return void
