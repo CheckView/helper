@@ -1,3 +1,4 @@
+# Directories excluded from the WordPress.org distribution build
 /.wordpress-org
 /.git
 /.github
@@ -9,11 +10,34 @@
 /.revision
 /.circleci
 /.phpunit.cache
+/bin
+/scripts
+
+# Linting / static analysis config
 .phpcs.xml.dist
+phpmd.xml
+
+# Packaging / VCS metadata
 .distignore
 .gitignore
 .removeable-files
 Gruntfile.js
-phpmd.xml
-phpunit.xml.dist
+
+# Build & tooling config
+tsconfig.json
+webpack.config.js
+.travis.yml
+.wp-env.json
+
+# Lockfiles / generated manifests (no runtime role; /vendor is excluded)
+composer.lock
+package-lock.json
+pnpm-lock.yaml
 yarn.lock
+package.xml
+
+# Test tooling & artifacts (PHPUnit phar, configs, caches, backups)
+*.phar
+phpunit.xml*
+.phpunit.result.cache
+*.bak
