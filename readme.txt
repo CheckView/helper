@@ -7,7 +7,7 @@ Tested up to: 7.0
 Requires PHP: 7.4
 License: GPLv3
 License URI: http://www.gnu.org/licenses/gpl-3.0.html
-Stable tag: 2.2.0
+Stable tag: 2.2.1-beta
 
 [CheckView](https://checkview.io/) automates WordPress form and WooCommerce testing, monitoring key flows to catch failures early before they cost you leads or sales everyday.
 
@@ -204,6 +204,11 @@ Support and test configuration are handled through the CheckView platform. Pleas
 3. CheckView general settings.
 
 == Changelog ==
+
+= 2.2.1 =
+* Remove unnecessary files and binaries.
+* Remove hardcoded public bot IPs.
+* Defense-in-depth for Woo test gateway availability with additional bot checks.
 
 = 2.2.0 =
 * Security: require RS256-signed header for bot detection by default.
@@ -607,6 +612,11 @@ Support and test configuration are handled through the CheckView platform. Pleas
 * Initial release.
 
 == Upgrade Notice ==
+
+= 2.2.1 =
+* Remove unnecessary files and binaries.
+* Remove hardcoded public bot IPs.
+* Defense-in-depth for Woo test gateway availability with additional bot checks.
 
 = 2.2.0 =
 * Security: require RS256-signed header for bot detection by default.
