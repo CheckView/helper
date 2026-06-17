@@ -543,9 +543,14 @@ if ( ! function_exists( 'checkview_get_api_ip' ) ) {
 		}
 
 		if ( is_array( $ip_address ) ) {
+			// Loopback only. Do NOT hardcode public IPs here. This allowlist is
+			// matched against client-supplied forwarding headers (X-Forwarded-For,
+			// etc.) in checkview_get_visitor_ip(), so any hardcoded public IP
+			// becomes a permanent, unauthenticated bypass of CheckView::is_bot()
+			// — and therefore of WooCommerce "test mode" and its $0 checkout
+			// gateway. Trusted bot IPs must come only from the authenticated SaaS
+			// whitelist (verify.checkview.io).
 			$ip_address[] = '::1';
-			$ip_address[] = '188.251.23.194';
-			$ip_address[] = '2001:8a0:e5d0:a900:70a5:138a:d159:5054';
 		}
 
 		return $ip_address;

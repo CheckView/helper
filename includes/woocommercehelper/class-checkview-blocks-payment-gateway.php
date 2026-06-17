@@ -48,12 +48,16 @@ final class Checkview_Blocks_Payment_Gateway extends AbstractPaymentMethodType {
 	}
 
 	/**
-	 * Returns true.
+	 * Whether the CheckView block payment method is active.
+	 *
+	 * Defense-in-depth: only expose the $0 block checkout gateway during an
+	 * active CheckView test session, never to a real shopper. Previously this
+	 * returned an unconditional true.
 	 *
 	 * @return boolean
 	 */
 	public function is_active() {
-		return true;
+		return class_exists( 'CheckView' ) && CheckView::is_bot();
 	}
 
 	/**
