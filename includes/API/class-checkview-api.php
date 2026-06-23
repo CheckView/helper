@@ -1944,6 +1944,63 @@ class CheckView_Api {
 			}
 		}
 
+		if ( is_plugin_active( 'elementor-pro/elementor-pro.php' ) ) {
+			/*
+			 * Elementor forms are not stored in a dedicated table or CPT; each
+			 * form is a widget embedded in a page's `_elementor_data` post meta
+			 * (JSON element tree). Find published posts whose Elementor data
+			 * contains a form widget, then walk the tree to collect each form.
+			 * The form id is the widget element id, which matches both the
+			 * rendered hidden `form_id` input and the submission hook's
+			 * get_form_settings( 'id' ) used by Checkview_Elementor_Helper.
+			 */
+			$elementor_pages = $wpdb->get_results(
+				$wpdb->prepare(
+					"SELECT p.ID, pm.meta_value FROM {$wpdb->prefix}posts p
+					INNER JOIN {$wpdb->prefix}postmeta pm ON pm.post_id = p.ID
+					WHERE pm.meta_key = %s
+					AND pm.meta_value LIKE %s
+					AND p.post_status = 'publish'
+					AND p.post_type NOT IN ('kadence_wootemplate', 'revision', 'elementor_library')",
+					'_elementor_data',
+					'%"widgetType":"form"%'
+				)
+			);
+			if ( $elementor_pages ) {
+				foreach ( $elementor_pages as $elementor_page ) {
+					$elementor_data = json_decode( $elementor_page->meta_value, true );
+					if ( ! is_array( $elementor_data ) ) {
+						continue;
+					}
+					$form_widgets = checkview_get_elementor_form_widgets( $elementor_data );
+					foreach ( $form_widgets as $form_widget ) {
+						if ( empty( $form_widget['id'] ) ) {
+							continue;
+						}
+						$form_id   = $form_widget['id'];
+						$form_name = ( ! empty( $form_widget['settings']['form_name'] ) )
+							? $form_widget['settings']['form_name']
+							: 'Form ' . $form_id;
+
+						if ( ! isset( $forms['Elementor'][ $form_id ] ) ) {
+							$forms['Elementor'][ $form_id ] = array(
+								'ID'   => $form_id,
+								'Name' => $form_name,
+							);
+						}
+
+						$page_url = checkview_must_ssl_url( get_the_permalink( $elementor_page->ID ) );
+						if ( ! empty( $page_url ) ) {
+							$forms['Elementor'][ $form_id ]['pages'][] = array(
+								'ID'  => $elementor_page->ID,
+								'url' => $page_url,
+							);
+						}
+					}
+				}
+			}
+		}
+
 		if ( is_array( $forms ) ) {
 			if ( ! empty( $forms ) ) {
 				set_transient( 'checkview_forms_list_transient', $forms, 12 * HOUR_IN_SECONDS );

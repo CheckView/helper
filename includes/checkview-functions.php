@@ -862,6 +862,50 @@ if ( ! function_exists( 'checkview_get_wp_block_pages' ) ) {
 		);
 	}
 }
+
+if ( ! function_exists( 'checkview_get_elementor_form_widgets' ) ) {
+	/**
+	 * Recursively collects Elementor Pro form widgets from an Elementor data tree.
+	 *
+	 * Elementor stores page content as a nested element tree in the
+	 * `_elementor_data` post meta. Form widgets are nodes with
+	 * `widgetType === 'form'`; a form's identifier is the element `id` (the same
+	 * value Elementor renders as the hidden `form_id` input and that
+	 * `Form_Record::get_form_settings( 'id' )` returns during submission).
+	 *
+	 * @since 1.0.0
+	 *
+	 * @param array $elements Decoded Elementor element tree (or a subtree).
+	 * @return array List of form-widget element arrays.
+	 */
+	function checkview_get_elementor_form_widgets( $elements ) {
+		$found = array();
+
+		if ( ! is_array( $elements ) ) {
+			return $found;
+		}
+
+		foreach ( $elements as $element ) {
+			if ( ! is_array( $element ) ) {
+				continue;
+			}
+
+			if ( isset( $element['widgetType'] ) && 'form' === $element['widgetType'] ) {
+				$found[] = $element;
+			}
+
+			if ( ! empty( $element['elements'] ) && is_array( $element['elements'] ) ) {
+				$found = array_merge(
+					$found,
+					checkview_get_elementor_form_widgets( $element['elements'] )
+				);
+			}
+		}
+
+		return $found;
+	}
+}
+
 if ( ! function_exists( 'checkview_reset_cache' ) ) {
 	/**
 	 * Deletes CheckView transients.
