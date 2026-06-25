@@ -144,6 +144,38 @@ class Checkview_Woo_Automated_Testing {
 				3
 			);
 
+			// Hide CheckView test orders from the WooCommerce REST API so
+			// pull-based integrations (Shippo et al.) that poll
+			// `GET /wc/v3/orders` with store API keys never ingest them. The
+			// webhook filter above only covers push deliveries; nothing else
+			// hid test orders from a REST pull, and the cleanup cron runs up
+			// to an hour later, so a poll in between would pick up the
+			// synthetic order. Registered always-on (NOT behind the is_bot()
+			// gate in checkview_test_mode) because a Shippo poll is a
+			// separate, non-bot request.
+			//
+			// Hook: the WC orders REST controller fires
+			// `woocommerce_rest_orders_prepare_object_query` in
+			// prepare_objects_query() (verified in WC source, since WC 4.5) —
+			// this is the load-bearing one. We ALSO register the generic
+			// `woocommerce_rest_shop_order_object_query` as a cross-version
+			// fallback; whichever fires, the callback only appends to
+			// post__not_in (idempotent), so registering both is safe.
+			$this->loader->add_filter(
+				'woocommerce_rest_orders_prepare_object_query',
+				$this,
+				'checkview_exclude_test_orders_from_rest',
+				10,
+				2
+			);
+			$this->loader->add_filter(
+				'woocommerce_rest_shop_order_object_query',
+				$this,
+				'checkview_exclude_test_orders_from_rest',
+				10,
+				2
+			);
+
 			$this->loader->add_filter(
 				'woocommerce_email_recipient_new_order',
 				$this,
@@ -903,55 +935,156 @@ class Checkview_Woo_Automated_Testing {
 	}
 
 	/**
+	 * Excludes CheckView test orders from WooCommerce REST API list queries,
+	 * so pull-based store integrations (Shippo, and any consumer of
+	 * `GET /wc/v3/orders` via REST API keys) never ingest them.
+	 *
+	 * Why this is needed: the webhook filter (`checkview_filter_webhooks`)
+	 * only covers `woocommerce_webhook_should_deliver` (push) deliveries.
+	 * Shippo's WooCommerce integration PULLS orders from the REST API on its
+	 * own schedule, and the cleanup cron deletes the test order up to an hour
+	 * later — so a poll in that window ingested the synthetic order
+	 * (Freshdesk #24669 / nicholaslodge.com).
+	 *
+	 * Marker, NOT predicate: this matches the durable CheckView marker
+	 * (`payment_method = 'checkview'` or `payment_made_by = 'checkview'` meta)
+	 * rather than `cv_is_suppressible_test_order()`. That predicate also
+	 * requires the per-test `disable_*_<uuid>` option, which
+	 * `complete_checkview_test()` deletes at the END of the test request —
+	 * long before an async REST poll (a separate, later request) arrives. The
+	 * marker is stamped at order creation (`checkview_stamp_order_meta`,
+	 * `woocommerce_new_order @ STAMP_PRIORITY`) and persists until the cleanup
+	 * cron deletes the order, so it is the only reliable signal at poll time.
+	 *
+	 * Blast radius: only orders bearing the CheckView marker are ever
+	 * excluded — real customer orders never match. CheckView's own order reads
+	 * use the `checkview/v1/store/order` namespace (direct `wc_get_order`), not
+	 * `wc/v3`, so this never affects test assertions. The incident kill switch
+	 * (`cv_suppression_kill_switch`) disables it.
+	 *
+	 * ID-based exclusion (not a negative `meta_query`/`payment_method` filter)
+	 * because `wc_get_orders()` exposes no negative match for those. Both
+	 * `post__not_in` (legacy WP_Query path) and `exclude` (HPOS WC_Order_Query
+	 * path) are set, since the controller uses a different query object per
+	 * backend. The CheckView order set is tiny and short-lived, so the
+	 * pre-query is cheap.
+	 *
+	 * @since 2.2.2
+	 *
+	 * @param array            $args    `wc_get_orders()` args built by the REST controller.
+	 * @param \WP_REST_Request $request The REST request (unused).
+	 * @return array Modified query args.
+	 */
+	public function checkview_exclude_test_orders_from_rest( $args, $request ) {
+		if ( get_option( 'cv_suppression_kill_switch' ) === 'true' ) {
+			return $args;
+		}
+		if ( ! function_exists( 'wc_get_orders' ) ) {
+			return $args;
+		}
+
+		$ids = $this->checkview_get_test_order_ids();
+		if ( empty( $ids ) ) {
+			return $args;
+		}
+
+		// Set BOTH exclusion keys: the orders REST controller runs WP_Query on
+		// legacy storage (honours `post__not_in`) but `new WC_Order_Query()` on
+		// HPOS (honours the WC-native `exclude`; verified the controller branches
+		// this way). Setting both makes the exclusion work on either backend —
+		// the key the active backend ignores is harmless.
+		foreach ( array( 'post__not_in', 'exclude' ) as $exclude_key ) {
+			$existing            = ( isset( $args[ $exclude_key ] ) && is_array( $args[ $exclude_key ] ) ) ? $args[ $exclude_key ] : array();
+			$args[ $exclude_key ] = array_values( array_unique( array_merge( $existing, $ids ) ) );
+		}
+
+		return $args;
+	}
+
+	/**
+	 * Returns the IDs of CheckView test orders currently in the store,
+	 * identified by the durable marker set at order creation. Mirrors the
+	 * two-query include pattern in `checkview_delete_orders()` (WooCommerce
+	 * offers no single query that ORs a meta key with the `payment_method`
+	 * property). Both are indexed lookups returning the small, short-lived set
+	 * of live test orders.
+	 *
+	 * @since 2.2.2
+	 *
+	 * @return int[] Order IDs (may be empty).
+	 */
+	private function checkview_get_test_order_ids() {
+		// Bounded, not `limit => -1`: live test orders number a handful (each
+		// deleted within ~15s–1h). A cap keeps this per-REST-request query cheap
+		// and avoids an unbounded scan if the cleanup cron ever lags; any excess
+		// beyond the cap would be stale garbage and is a tolerable degraded mode.
+		$by_meta = wc_get_orders(
+			array(
+				'limit'        => 500,
+				'type'         => 'shop_order',
+				'meta_key'     => 'payment_made_by', // phpcs:ignore WordPress.DB.SlowDBQuery.slow_db_query_meta_key
+				'meta_value'   => 'checkview',       // phpcs:ignore WordPress.DB.SlowDBQuery.slow_db_query_meta_value
+				'meta_compare' => '=',
+				'return'       => 'ids',
+			)
+		);
+		if ( is_wp_error( $by_meta ) ) {
+			Checkview_Admin_Logs::add( 'ip-logs', 'REST order exclusion: wc_get_orders(payment_made_by) failed: ' . $by_meta->get_error_message() );
+			$by_meta = array();
+		}
+
+		$by_gateway = wc_get_orders(
+			array(
+				'limit'          => 500,
+				'type'           => 'shop_order',
+				'payment_method' => 'checkview',
+				'return'         => 'ids',
+			)
+		);
+		if ( is_wp_error( $by_gateway ) ) {
+			Checkview_Admin_Logs::add( 'ip-logs', 'REST order exclusion: wc_get_orders(payment_method) failed: ' . $by_gateway->get_error_message() );
+			$by_gateway = array();
+		}
+
+		$ids = array_map( 'intval', array_merge( (array) $by_meta, (array) $by_gateway ) );
+
+		return array_values( array_unique( array_filter( $ids ) ) );
+	}
+
+	/**
 	 * Mailchimp kill-switch — replaces dead H9 filter.
 	 *
 	 * PR #203 hooked a filter named `mailchimp_should_push_order` that does
 	 * not exist anywhere in Mailchimp for WooCommerce 6.1 (verified by
 	 * source grep on a live customer install). That method was a no-op.
 	 *
-	 * Replacement strategy: install three Mailchimp filters when CV_TEST_ID
-	 * is defined AND the user has the per-test "Disable Form Integrations"
-	 * toggle on. Filter behavior in MC for WC 6.1 (verified by reading
-	 * `includes/class-mailchimp-woocommerce-service.php` and
-	 * `bootstrap.php` in the installed plugin source):
+	 * Replacement strategy (rev 2.2.2): the order/cart/customer sync in MC for
+	 * WC routes entirely through the `MailChimp_Service` class, each handler
+	 * gated on `mailchimp_is_configured()` and/or `mailchimp_carts_disabled()`.
+	 * Both are PLAIN functions with NO `apply_filters()` (verified in
+	 * `bootstrap.php`), so filtering them is a no-op — and their config is read
+	 * via `Mailchimp_Woocommerce_DB_Helpers::get_option()` behind an object
+	 * cache, so filtering `option_mailchimp-woocommerce` is unreliable too.
+	 * (PR #203 / the earlier rev of this method filtered those two names and
+	 * silently did nothing; orders kept syncing — Freshdesk #24669.)
 	 *
-	 *   - `mailchimp_allowed_to_use_cookie` → false: **LOAD-BEARING**.
-	 *     This is the only one of the three that MC 6.1 actually consults
-	 *     via `apply_filters()` (in `bootstrap.php:mailchimp_allowed_to_use_cookie`).
-	 *     Blocking it disables the browser-side tracking cookie path,
-	 *     which is upstream of cart/subscriber/order sync.
+	 * The robust, storage-agnostic neutralize is therefore to REMOVE
+	 * `MailChimp_Service`'s hook callbacks for this request before any of its
+	 * order/cart handlers fire (see `checkview_remove_mailchimp_service_hooks`).
+	 * We additionally filter `mailchimp_allowed_to_use_cookie => false`, which
+	 * IS a real MC filter and blocks the browser-side tracking-cookie path.
 	 *
-	 *   - `mailchimp_is_configured` → false: **DEFENSIVE, may no-op today**.
-	 *     The function of the same name in `bootstrap.php` returns
-	 *     `(bool) (mailchimp_get_api_key() && mailchimp_get_list_id())`
-	 *     directly — no `apply_filters()` call. Mailchimp may add the
-	 *     filter in future versions; if so, our hook engages then.
+	 * Timing: registered on `init @ 99` — after MC for WC registers on
+	 * `plugins_loaded @ 12`, and before any WooCommerce order event — so
+	 * `MailChimp_Service::handleOrderCreate @ woocommerce_new_order 200` never
+	 * fires and never enqueues a `Single_Order` push job.
 	 *
-	 *   - `mailchimp_carts_disabled` → true: **DEFENSIVE, may no-op today**.
-	 *     The function returns the option value directly with no
-	 *     `apply_filters()` call. Same rationale.
-	 *
-	 * Why these two stay despite being current no-ops: zero runtime cost,
-	 * forward-compatible with Mailchimp's API evolution, and the comment
-	 * documents the rationale so future maintainers don't remove them.
-	 *
-	 * Empirical suppression on nicholaslodge with toggle ON ALSO benefits
-	 * from a secondary effect: WC's webhook filter (separate path) blocks
-	 * `order.*` deliveries, and the SaaS-side `/store/deleteorders` call
-	 * wipes the order before Mailchimp's AS-deferred `Single_Order::process()`
-	 * dequeues — so its `getRealOrderNumber()` lookup fails and the push
-	 * aborts. That secondary effect is fragile (depends on race timing)
-	 * but reinforces the cookie-filter block.
-	 *
-	 * Option gate (mirrors `cv_is_suppressible_test_order` for the WC
-	 * webhook filter): only engage when the SaaS sent `disable_actions=true`
-	 * or `disable_webhooks=true` for this test. Without this gate the
-	 * kill-switch would fire on EVERY CheckView test, blocking Mailchimp
-	 * even on tests where the user explicitly wanted to exercise the
-	 * integration.
-	 *
-	 * Only engages when CV_TEST_ID is defined — real customer requests
-	 * never reach this branch.
+	 * Option gate (mirrors `cv_is_suppressible_test_order`): only engage when
+	 * the SaaS sent `disable_actions=true` or `disable_webhooks=true` for this
+	 * test, so tests that intentionally exercise the integration are untouched.
+	 * Honors the incident kill switch (`cv_suppression_kill_switch`). Only
+	 * engages when CV_TEST_ID is defined — real customer requests never reach
+	 * this branch.
 	 *
 	 * @since 2.0.34
 	 *
@@ -961,14 +1094,85 @@ class Checkview_Woo_Automated_Testing {
 		if ( ! defined( 'CV_TEST_ID' ) || ! CV_TEST_ID ) {
 			return;
 		}
+		if ( get_option( 'cv_suppression_kill_switch' ) === 'true' ) {
+			return;
+		}
 		$suppress = ( get_option( 'disable_actions_' . CV_TEST_ID ) === 'true' )
 				|| ( get_option( 'disable_webhooks_' . CV_TEST_ID ) === 'true' );
 		if ( ! $suppress ) {
 			return;
 		}
-		add_filter( 'mailchimp_is_configured',         '__return_false', PHP_INT_MAX );
+
+		// Real MC filter — blocks the browser-side tracking-cookie path.
 		add_filter( 'mailchimp_allowed_to_use_cookie', '__return_false', PHP_INT_MAX );
-		add_filter( 'mailchimp_carts_disabled',        '__return_true',  PHP_INT_MAX );
+
+		// Order/cart/customer sync — remove MailChimp_Service's callbacks (the
+		// `mailchimp_is_configured` / `mailchimp_carts_disabled` filters are
+		// no-ops in MC for WC; see docblock).
+		$this->checkview_remove_mailchimp_service_hooks();
+	}
+
+	/**
+	 * Removes every registered hook callback whose object is a
+	 * `MailChimp_Service` instance, neutralising Mailchimp for WooCommerce's
+	 * order/cart/customer sync for the current (CheckView test) request.
+	 *
+	 * Storage- and option-agnostic: depends only on the public class name
+	 * `MailChimp_Service`. Uses each discovered callback with the public
+	 * `remove_action()` (correct internal bookkeeping; collect-then-remove so
+	 * `$wp_filter` is never mutated mid-iteration). No-op — logged with a zero
+	 * count — if the class is absent or renamed, so version drift surfaces in
+	 * the logs instead of as a silent leak. Safe at `init @ 99`: none of the
+	 * targeted hooks have fired yet (nesting level 0).
+	 *
+	 * @since 2.2.2
+	 *
+	 * @return void
+	 */
+	private function checkview_remove_mailchimp_service_hooks() {
+		if ( ! class_exists( 'MailChimp_Service' ) ) {
+			Checkview_Admin_Logs::add( 'ip-logs', 'Mailchimp kill-switch: MailChimp_Service class not found; nothing to remove.' );
+			return;
+		}
+
+		// MC4WP routes order/cart/customer SYNC through MailChimp_Service, but
+		// the checkout newsletter and SMS-consent opt-in capture run on separate
+		// handler classes. Neutralise all three. A renamed/absent class simply
+		// doesn't match (guarded by class_exists), which surfaces via the
+		// removal count logged below rather than as a silent leak.
+		$mc_newsletter = class_exists( 'MailChimp_Newsletter' );
+		$mc_sms        = class_exists( 'MailChimp_Sms_Consent' );
+
+		global $wp_filter;
+		$targets = array();
+
+		foreach ( $wp_filter as $hook_name => $hook ) {
+			if ( ! ( $hook instanceof WP_Hook ) ) {
+				continue;
+			}
+			foreach ( $hook->callbacks as $priority => $callbacks ) {
+				foreach ( $callbacks as $cb ) {
+					$fn  = isset( $cb['function'] ) ? $cb['function'] : null;
+					$obj = ( is_array( $fn ) && isset( $fn[0] ) && is_object( $fn[0] ) ) ? $fn[0] : null;
+					if ( $obj && (
+						$obj instanceof MailChimp_Service
+						|| ( $mc_newsletter && $obj instanceof MailChimp_Newsletter )
+						|| ( $mc_sms && $obj instanceof MailChimp_Sms_Consent )
+					) ) {
+						$targets[] = array( $hook_name, $fn, $priority );
+					}
+				}
+			}
+		}
+
+		foreach ( $targets as $target ) {
+			remove_action( $target[0], $target[1], $target[2] );
+		}
+
+		Checkview_Admin_Logs::add(
+			'ip-logs',
+			'Mailchimp kill-switch: removed ' . count( $targets ) . ' MailChimp_Service hook callback(s) for test [' . CV_TEST_ID . '].'
+		);
 	}
 
 	/**
