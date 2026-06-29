@@ -83,6 +83,17 @@ if ( ! class_exists( 'Checkview_Elementor_Helper' ) ) {
 				3
 			);
 
+			// Expose allowed file types as a data attribute on upload fields.
+			add_action(
+				'elementor_pro/forms/render_field/upload',
+				array(
+					$this,
+					'checkview_add_upload_file_types',
+				),
+				9,
+				3
+			);
+
 			add_filter(
 				'cfturnstile_whitelisted',
 				'__return_true',
@@ -260,6 +271,22 @@ if ( ! class_exists( 'Checkview_Elementor_Helper' ) ) {
 			// array_values() so the returned list has sequential keys (Elementor
 			// iterates it); array_intersect preserves the original keys.
 			return array_values( array_intersect( $actions, array( 'email', 'collect_submissions' ) ) );
+		}
+
+		/**
+		 * Adds a `data-cv-file-types` attribute to Elementor upload fields.
+		 *
+		 * @param array                                                  $item       Field settings.
+		 * @param int                                                    $item_index Field index.
+		 * @param \ElementorPro\Modules\Forms\Widgets\Form               $form       Form widget instance.
+		 * @return void
+		 */
+		public function checkview_add_upload_file_types( $item, $item_index, $form ) {
+			if ( empty( $item['file_types'] ) ) {
+				return;
+			}
+
+			$form->add_render_attribute( 'input' . $item_index, 'data-cv-file-types', esc_attr( $item['file_types'] ) );
 		}
 
 		/**
