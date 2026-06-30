@@ -2153,7 +2153,15 @@ class CheckView_Api {
 						'field_name'  => $row->meta_key,
 						'field_value' => $value,
 					);
-				} else {
+				} elseif ( 'Elementor' === $result->form_type ) {
+					$value = $row->meta_value;
+
+					$results[] = array(
+						'field_id' => '',
+						'field_name' => $row->meta_key,
+						'field_value' => $value,
+					);
+				} else  {
 					$results[] = array(
 						'field_id'    => $row->meta_key,
 						'field_value' => maybe_unserialize( $row->meta_value ),
