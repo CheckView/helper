@@ -197,9 +197,10 @@ if ( ! class_exists( 'Checkview_Elementor_Helper' ) ) {
 			$values_table      = $wpdb->prefix . 'e_submissions_values';
 
 			if ( $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $submissions_table ) ) === $submissions_table ) {
+				// TODO: This removes ANY submission from the form - high-velocity forms could have a submission between CheckView submission and here
 				$submission_id = $wpdb->get_var(
 					$wpdb->prepare(
-						'SELECT id FROM ' . $submissions_table . ' WHERE form_id = %s ORDER BY id DESC LIMIT 1',
+						'SELECT id FROM ' . $submissions_table . ' WHERE element_id = %s ORDER BY id DESC LIMIT 1',
 						$form_id
 					)
 				);
@@ -208,6 +209,8 @@ if ( ! class_exists( 'Checkview_Elementor_Helper' ) ) {
 					$wpdb->delete( $values_table, array( 'submission_id' => $submission_id ), array( '%d' ) );
 					$wpdb->delete( $submissions_table, array( 'id' => $submission_id ), array( '%d' ) );
 					Checkview_Admin_Logs::add( 'ip-logs', 'Deleted Elementor submission [' . $submission_id . '] from ' . $submissions_table . '.' );
+				} else {
+					Checkview_Admin_Logs::add( 'ip-logs', 'Could delete Elementor submission with submission ID: ' . wp_json_encode( $submission_id ) );
 				}
 			}
 
