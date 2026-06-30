@@ -273,7 +273,7 @@ if ( ! class_exists( 'Checkview_Elementor_Helper' ) ) {
 
 			// array_values() so the returned list has sequential keys (Elementor
 			// iterates it); array_intersect preserves the original keys.
-			return array_values( array_intersect( $actions, array( 'email', 'collect_submissions' ) ) );
+			return array_values( array_intersect( $actions, array( 'email', 'save-to-database' ) ) );
 		}
 
 		/**
