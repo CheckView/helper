@@ -455,10 +455,12 @@ class Checkview_Admin {
 
 		if ( $cv_test_id && '' !== $cv_test_id ) {
 			setcookie( 'checkview_test_id', $cv_test_id, time() + 6600, COOKIEPATH, COOKIE_DOMAIN );
-		}
-
-		if ( $cv_test_id && '' !== $cv_test_id ) {
 			setcookie( 'checkview_test_id' . $cv_test_id, $cv_test_id, time() + 3600, COOKIEPATH, COOKIE_DOMAIN );
+
+			$cv_test_type = CheckView::test_type();
+			if ( $cv_test_type ) {
+				setcookie( CheckView::PARAM_TEST_TYPE, $cv_test_type, time() + 6600, COOKIEPATH, COOKIE_DOMAIN );
+			}
 		}
 
 		$cv_session = checkview_get_cv_session( $visitor_ip, $cv_test_id );

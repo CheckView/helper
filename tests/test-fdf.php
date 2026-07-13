@@ -68,7 +68,7 @@ class Test_Checkview_Formidable_Helper extends WP_UnitTestCase {
 	public function test_disable_form_actions_keeps_email_action_when_flag_set() {
 		$test_id                         = 'aaaaaaaa-bbbb-4ccc-9ddd-eeeeeeeeeeee';
 		$_REQUEST['checkview_test_id']   = $test_id;
-		$_REQUEST['checkview_test_type'] = 'form';
+		$_REQUEST[CheckView::PARAM_TEST_TYPE] = 'form';
 		update_option( 'disable_actions_' . $test_id, 'true', false );
 
 		$helper = new Checkview_Formidable_Helper();
@@ -77,13 +77,13 @@ class Test_Checkview_Formidable_Helper extends WP_UnitTestCase {
 		$this->assertFalse( $result, 'Email action must run (false = do not skip) even when disable_actions is set.' );
 
 		delete_option( 'disable_actions_' . $test_id );
-		unset( $_REQUEST['checkview_test_id'], $_REQUEST['checkview_test_type'] );
+		unset( $_REQUEST['checkview_test_id'], $_REQUEST[CheckView::PARAM_TEST_TYPE] );
 	}
 
 	public function test_disable_form_actions_keeps_register_action_when_flag_set() {
 		$test_id                         = 'aaaaaaaa-bbbb-4ccc-9ddd-eeeeeeeeeeee';
 		$_REQUEST['checkview_test_id']   = $test_id;
-		$_REQUEST['checkview_test_type'] = 'form';
+		$_REQUEST[CheckView::PARAM_TEST_TYPE] = 'form';
 		update_option( 'disable_actions_' . $test_id, 'true', false );
 
 		$helper = new Checkview_Formidable_Helper();
@@ -92,13 +92,13 @@ class Test_Checkview_Formidable_Helper extends WP_UnitTestCase {
 		$this->assertFalse( $result );
 
 		delete_option( 'disable_actions_' . $test_id );
-		unset( $_REQUEST['checkview_test_id'], $_REQUEST['checkview_test_type'] );
+		unset( $_REQUEST['checkview_test_id'], $_REQUEST[CheckView::PARAM_TEST_TYPE] );
 	}
 
 	public function test_disable_form_actions_keeps_on_submit_action_when_flag_set() {
 		$test_id                         = 'aaaaaaaa-bbbb-4ccc-9ddd-eeeeeeeeeeee';
 		$_REQUEST['checkview_test_id']   = $test_id;
-		$_REQUEST['checkview_test_type'] = 'form';
+		$_REQUEST[CheckView::PARAM_TEST_TYPE] = 'form';
 		update_option( 'disable_actions_' . $test_id, 'true', false );
 
 		$helper = new Checkview_Formidable_Helper();
@@ -107,13 +107,13 @@ class Test_Checkview_Formidable_Helper extends WP_UnitTestCase {
 		$this->assertFalse( $result );
 
 		delete_option( 'disable_actions_' . $test_id );
-		unset( $_REQUEST['checkview_test_id'], $_REQUEST['checkview_test_type'] );
+		unset( $_REQUEST['checkview_test_id'], $_REQUEST[CheckView::PARAM_TEST_TYPE] );
 	}
 
 	public function test_disable_form_actions_skips_third_party_when_flag_set() {
 		$test_id                         = 'aaaaaaaa-bbbb-4ccc-9ddd-eeeeeeeeeeee';
 		$_REQUEST['checkview_test_id']   = $test_id;
-		$_REQUEST['checkview_test_type'] = 'form';
+		$_REQUEST[CheckView::PARAM_TEST_TYPE] = 'form';
 		update_option( 'disable_actions_' . $test_id, 'true', false );
 
 		$helper = new Checkview_Formidable_Helper();
@@ -122,7 +122,7 @@ class Test_Checkview_Formidable_Helper extends WP_UnitTestCase {
 		$this->assertTrue( $result, 'Third-party action must be skipped (true = skip) when disable_actions is set.' );
 
 		delete_option( 'disable_actions_' . $test_id );
-		unset( $_REQUEST['checkview_test_id'], $_REQUEST['checkview_test_type'] );
+		unset( $_REQUEST['checkview_test_id'], $_REQUEST[CheckView::PARAM_TEST_TYPE] );
 	}
 
 	public function test_disable_form_actions_third_party_runs_without_flag() {

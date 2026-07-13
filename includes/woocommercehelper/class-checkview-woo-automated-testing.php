@@ -1447,6 +1447,8 @@ class Checkview_Woo_Automated_Testing {
 			if ( ! headers_sent() ) {
 				unset( $_COOKIE['checkview_test_id'] );
 				setcookie( 'checkview_test_id', '', time() - 6600, COOKIEPATH, COOKIE_DOMAIN );
+				unset( $_COOKIE[ CheckView::PARAM_TEST_TYPE ] );
+				setcookie( CheckView::PARAM_TEST_TYPE, '', time() - 6600, COOKIEPATH, COOKIE_DOMAIN );
 			}
 
 		} finally {

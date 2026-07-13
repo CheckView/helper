@@ -79,7 +79,7 @@ class Test_Checkview_Fluent_Forms_Helper extends WP_UnitTestCase {
 	public function test_disable_form_actions_strips_integrations_preserves_native_email() {
 		$test_id = 'aaaaaaaa-bbbb-4ccc-9ddd-eeeeeeeeeeee';
 		$_REQUEST['checkview_test_id']   = $test_id;
-		$_REQUEST['checkview_test_type'] = 'form';
+		$_REQUEST[CheckView::PARAM_TEST_TYPE] = 'form';
 		update_option( 'disable_actions_' . $test_id, 'true', false );
 
 		$input = array(
@@ -93,13 +93,13 @@ class Test_Checkview_Fluent_Forms_Helper extends WP_UnitTestCase {
 		$this->assertSame( array( 'notifications' => 'email_notifications' ), $result );
 
 		delete_option( 'disable_actions_' . $test_id );
-		unset( $_REQUEST['checkview_test_id'], $_REQUEST['checkview_test_type'] );
+		unset( $_REQUEST['checkview_test_id'], $_REQUEST[CheckView::PARAM_TEST_TYPE] );
 	}
 
 	public function test_disable_form_actions_integration_only_returns_empty() {
 		$test_id = 'aaaaaaaa-bbbb-4ccc-9ddd-eeeeeeeeeeee';
 		$_REQUEST['checkview_test_id']   = $test_id;
-		$_REQUEST['checkview_test_type'] = 'form';
+		$_REQUEST[CheckView::PARAM_TEST_TYPE] = 'form';
 		update_option( 'disable_actions_' . $test_id, 'true', false );
 
 		$input  = array( 'slack' => 'slack', 'webhook' => 'webhook' );
@@ -107,46 +107,46 @@ class Test_Checkview_Fluent_Forms_Helper extends WP_UnitTestCase {
 		$this->assertSame( array(), $result );
 
 		delete_option( 'disable_actions_' . $test_id );
-		unset( $_REQUEST['checkview_test_id'], $_REQUEST['checkview_test_type'] );
+		unset( $_REQUEST['checkview_test_id'], $_REQUEST[CheckView::PARAM_TEST_TYPE] );
 	}
 
 	public function test_disable_form_actions_empty_array_returns_empty() {
 		$test_id = 'aaaaaaaa-bbbb-4ccc-9ddd-eeeeeeeeeeee';
 		$_REQUEST['checkview_test_id']   = $test_id;
-		$_REQUEST['checkview_test_type'] = 'form';
+		$_REQUEST[CheckView::PARAM_TEST_TYPE] = 'form';
 		update_option( 'disable_actions_' . $test_id, 'true', false );
 
 		$result = $this->helper->checkview_disable_form_actions( array(), 1 );
 		$this->assertSame( array(), $result );
 
 		delete_option( 'disable_actions_' . $test_id );
-		unset( $_REQUEST['checkview_test_id'], $_REQUEST['checkview_test_type'] );
+		unset( $_REQUEST['checkview_test_id'], $_REQUEST[CheckView::PARAM_TEST_TYPE] );
 	}
 
 	public function test_disable_form_actions_null_input_returns_unchanged() {
 		$test_id = 'aaaaaaaa-bbbb-4ccc-9ddd-eeeeeeeeeeee';
 		$_REQUEST['checkview_test_id']   = $test_id;
-		$_REQUEST['checkview_test_type'] = 'form';
+		$_REQUEST[CheckView::PARAM_TEST_TYPE] = 'form';
 		update_option( 'disable_actions_' . $test_id, 'true', false );
 
 		$result = $this->helper->checkview_disable_form_actions( null, 1 );
 		$this->assertNull( $result );
 
 		delete_option( 'disable_actions_' . $test_id );
-		unset( $_REQUEST['checkview_test_id'], $_REQUEST['checkview_test_type'] );
+		unset( $_REQUEST['checkview_test_id'], $_REQUEST[CheckView::PARAM_TEST_TYPE] );
 	}
 
 	public function test_disable_form_actions_non_array_input_returns_unchanged() {
 		$test_id = 'aaaaaaaa-bbbb-4ccc-9ddd-eeeeeeeeeeee';
 		$_REQUEST['checkview_test_id']   = $test_id;
-		$_REQUEST['checkview_test_type'] = 'form';
+		$_REQUEST[CheckView::PARAM_TEST_TYPE] = 'form';
 		update_option( 'disable_actions_' . $test_id, 'true', false );
 
 		$result = $this->helper->checkview_disable_form_actions( 'unexpected_string', 1 );
 		$this->assertSame( 'unexpected_string', $result );
 
 		delete_option( 'disable_actions_' . $test_id );
-		unset( $_REQUEST['checkview_test_id'], $_REQUEST['checkview_test_type'] );
+		unset( $_REQUEST['checkview_test_id'], $_REQUEST[CheckView::PARAM_TEST_TYPE] );
 	}
 
 	public function tearDown(): void {

@@ -143,7 +143,7 @@ if ( ! function_exists( 'checkview_request_has_test_credentials' ) ) {
 	function checkview_request_has_test_credentials() {
 		if ( ! isset( $_GET['checkview_test_id'] )
 			|| ! is_string( $_GET['checkview_test_id'] )
-			|| empty( $_GET['checkview_test_type'] ) ) {
+			|| empty( $_GET[ CheckView::PARAM_TEST_TYPE ] ) ) {
 			return false;
 		}
 		$test_id = sanitize_text_field( wp_unslash( $_GET['checkview_test_id'] ) );

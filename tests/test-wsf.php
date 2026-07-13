@@ -20,7 +20,7 @@ class Test_Checkview_WSF_Helper extends WP_UnitTestCase {
 	public function test_disable_addons_feed_keeps_database_when_flag_set() {
 		$test_id                         = 'aaaaaaaa-bbbb-4ccc-9ddd-eeeeeeeeeeee';
 		$_REQUEST['checkview_test_id']   = $test_id;
-		$_REQUEST['checkview_test_type'] = 'form';
+		$_REQUEST[CheckView::PARAM_TEST_TYPE] = 'form';
 		update_option( 'disable_actions_' . $test_id, 'true', false );
 
 		// Pass $run=false to prove the allowlist FORCES true regardless of input.
@@ -29,13 +29,13 @@ class Test_Checkview_WSF_Helper extends WP_UnitTestCase {
 		$this->assertTrue( $result, 'Database action must run even when disable_actions is set and $run=false.' );
 
 		delete_option( 'disable_actions_' . $test_id );
-		unset( $_REQUEST['checkview_test_id'], $_REQUEST['checkview_test_type'] );
+		unset( $_REQUEST['checkview_test_id'], $_REQUEST[CheckView::PARAM_TEST_TYPE] );
 	}
 
 	public function test_disable_addons_feed_keeps_message_when_flag_set() {
 		$test_id                         = 'aaaaaaaa-bbbb-4ccc-9ddd-eeeeeeeeeeee';
 		$_REQUEST['checkview_test_id']   = $test_id;
-		$_REQUEST['checkview_test_type'] = 'form';
+		$_REQUEST[CheckView::PARAM_TEST_TYPE] = 'form';
 		update_option( 'disable_actions_' . $test_id, 'true', false );
 
 		$config = array( 'id' => 'message' );
@@ -43,13 +43,13 @@ class Test_Checkview_WSF_Helper extends WP_UnitTestCase {
 		$this->assertTrue( $result );
 
 		delete_option( 'disable_actions_' . $test_id );
-		unset( $_REQUEST['checkview_test_id'], $_REQUEST['checkview_test_type'] );
+		unset( $_REQUEST['checkview_test_id'], $_REQUEST[CheckView::PARAM_TEST_TYPE] );
 	}
 
 	public function test_disable_addons_feed_keeps_email_when_flag_set() {
 		$test_id                         = 'aaaaaaaa-bbbb-4ccc-9ddd-eeeeeeeeeeee';
 		$_REQUEST['checkview_test_id']   = $test_id;
-		$_REQUEST['checkview_test_type'] = 'form';
+		$_REQUEST[CheckView::PARAM_TEST_TYPE] = 'form';
 		update_option( 'disable_actions_' . $test_id, 'true', false );
 
 		$config = array( 'id' => 'email' );
@@ -57,13 +57,13 @@ class Test_Checkview_WSF_Helper extends WP_UnitTestCase {
 		$this->assertTrue( $result );
 
 		delete_option( 'disable_actions_' . $test_id );
-		unset( $_REQUEST['checkview_test_id'], $_REQUEST['checkview_test_type'] );
+		unset( $_REQUEST['checkview_test_id'], $_REQUEST[CheckView::PARAM_TEST_TYPE] );
 	}
 
 	public function test_disable_addons_feed_blocks_third_party_when_flag_set() {
 		$test_id                         = 'aaaaaaaa-bbbb-4ccc-9ddd-eeeeeeeeeeee';
 		$_REQUEST['checkview_test_id']   = $test_id;
-		$_REQUEST['checkview_test_type'] = 'form';
+		$_REQUEST[CheckView::PARAM_TEST_TYPE] = 'form';
 		update_option( 'disable_actions_' . $test_id, 'true', false );
 
 		$config = array( 'id' => 'mailchimp' );
@@ -71,7 +71,7 @@ class Test_Checkview_WSF_Helper extends WP_UnitTestCase {
 		$this->assertFalse( $result, 'Third-party action must be blocked when disable_actions is set.' );
 
 		delete_option( 'disable_actions_' . $test_id );
-		unset( $_REQUEST['checkview_test_id'], $_REQUEST['checkview_test_type'] );
+		unset( $_REQUEST['checkview_test_id'], $_REQUEST[CheckView::PARAM_TEST_TYPE] );
 	}
 
 	public function test_disable_addons_feed_third_party_runs_without_flag() {

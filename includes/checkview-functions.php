@@ -323,6 +323,7 @@ if ( ! function_exists( 'complete_checkview_test' ) ) {
 		if ( ! headers_sent() ) {
 			setcookie( 'checkview_test_id', '', time() - 6600, COOKIEPATH, COOKIE_DOMAIN );
 			setcookie( 'checkview_test_id' . $checkview_test_id, '', time() - 6600, COOKIEPATH, COOKIE_DOMAIN );
+			setcookie( CheckView::PARAM_TEST_TYPE, '', time() - 6600, COOKIEPATH, COOKIE_DOMAIN );
 		}
 
 		cv_delete_option( 'disable_actions_' . $checkview_test_id );

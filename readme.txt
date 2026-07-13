@@ -205,8 +205,10 @@ Support and test configuration are handled through the CheckView platform. Pleas
 
 == Changelog ==
 
-= 2.2.2 =
+= 2.3.0 =
 * Remove deprecated cv_running cookie check.
+* Fix bot detection for REST API form submissions (e.g. WS Form).
+* Persist test type via plugin-set cookie for deep navigations (Woo checkout, multi-step forms).
 
 = 2.2.1 =
 * Remove unnecessary files and binaries.
@@ -616,8 +618,10 @@ Support and test configuration are handled through the CheckView platform. Pleas
 
 == Upgrade Notice ==
 
-= 2.2.2 =
+= 2.3.0 =
 * Remove deprecated cv_running cookie check.
+* Fix bot detection for REST API form submissions (e.g. WS Form).
+* Persist test type via plugin-set cookie for deep navigations (Woo checkout, multi-step forms).
 
 = 2.2.1 =
 * Remove unnecessary files and binaries.

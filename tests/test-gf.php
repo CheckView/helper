@@ -118,7 +118,7 @@ class Test_Checkview_Gforms_Helper extends WP_UnitTestCase {
 	public function test_disable_addons_feed_returns_empty_when_flag_set() {
 		$test_id                         = 'aaaaaaaa-bbbb-4ccc-9ddd-eeeeeeeeeeee';
 		$_REQUEST['checkview_test_id']   = $test_id;
-		$_REQUEST['checkview_test_type'] = 'form';
+		$_REQUEST[CheckView::PARAM_TEST_TYPE] = 'form';
 		update_option( 'disable_actions_' . $test_id, 'true', false );
 
 		$feeds = array(
@@ -132,13 +132,13 @@ class Test_Checkview_Gforms_Helper extends WP_UnitTestCase {
 		$this->assertSame( array(), $result );
 
 		delete_option( 'disable_actions_' . $test_id );
-		unset( $_REQUEST['checkview_test_id'], $_REQUEST['checkview_test_type'] );
+		unset( $_REQUEST['checkview_test_id'], $_REQUEST[CheckView::PARAM_TEST_TYPE] );
 	}
 
 	public function test_disable_addons_feed_option_unset_returns_unchanged() {
 		$test_id                         = 'aaaaaaaa-bbbb-4ccc-9ddd-eeeeeeeeeeee';
 		$_REQUEST['checkview_test_id']   = $test_id;
-		$_REQUEST['checkview_test_type'] = 'form';
+		$_REQUEST[CheckView::PARAM_TEST_TYPE] = 'form';
 		delete_option( 'disable_actions_' . $test_id );
 
 		$feeds  = array( array( 'id' => 1, 'addon_slug' => 'gravityformsmailchimp' ) );
@@ -147,7 +147,7 @@ class Test_Checkview_Gforms_Helper extends WP_UnitTestCase {
 		$result = $this->helper->checkview_disable_addons_feed( $feeds, $entry, $form );
 		$this->assertSame( $feeds, $result );
 
-		unset( $_REQUEST['checkview_test_id'], $_REQUEST['checkview_test_type'] );
+		unset( $_REQUEST['checkview_test_id'], $_REQUEST[CheckView::PARAM_TEST_TYPE] );
 	}
 
 	/**

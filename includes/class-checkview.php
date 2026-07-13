@@ -60,6 +60,11 @@ class CheckView {
 	private static $instance = null;
 
 	/**
+	 * Query parameter / cookie name for the test type.
+	 */
+	const PARAM_TEST_TYPE = 'checkview_test_type';
+
+	/**
 	 * Constructor.
 	 *
 	 * Sets up class properties, loads dependencies, and hooks up functions.
@@ -148,15 +153,13 @@ class CheckView {
 	 * @return string|null Test type (e.g. "form", "full_checkout"), or null.
 	 */
 	public static function get_referrer_test_type(): ?string {
-		return self::get_referrer_param( 'checkview_test_type' ) ?? null;
+		return self::get_referrer_param( self::PARAM_TEST_TYPE ) ?? null;
 	}
 
 	/**
 	 * Determine if the request contains the query parameters necessary for detecting test type.
 	 *
-	 * TODO: Needs to support deep-navigations where referrer doesn't survive, e.g. WooCommerce Checkout and multi-page forms.
-	 *
-	 * TODO: constant-ize checkview_test_type, checkview_test_id
+	 * TODO: constant-ize checkview_test_id
 	 *
 	 * Returns one of:
 	 * - "form" - Supported form plugin tests.
@@ -168,7 +171,7 @@ class CheckView {
 	 * @return string|false Validated param value, or false.
 	 */
 	public static function test_type() {
-		$test_type = sanitize_text_field( wp_unslash( $_REQUEST['checkview_test_type'] ?? '' ) );
+		$test_type = sanitize_text_field( wp_unslash( $_REQUEST[ self::PARAM_TEST_TYPE ] ?? '' ) );
 		if ( ! empty( $test_type ) ) {
 			return $test_type;
 		}
@@ -179,6 +182,17 @@ class CheckView {
 		$ref_test_type = self::get_referrer_test_type();
 		if ( ! empty( $ref_test_type ) ) {
 			return $ref_test_type;
+		}
+
+		// Fallback: plugin-set cookie persists test type across deep navigations
+		// (e.g. WooCommerce redirects, multi-step forms) where URL params and
+		// referer are both lost.
+		$cv_test_id = get_checkview_test_id();
+		if ( ! empty( $cv_test_id ) && isset( $_COOKIE[ self::PARAM_TEST_TYPE ] ) ) {
+			$cookie_type = sanitize_text_field( wp_unslash( $_COOKIE[ self::PARAM_TEST_TYPE ] ) );
+			if ( ! empty( $cookie_type ) ) {
+				return $cookie_type;
+			}
 		}
 
 		return false;
