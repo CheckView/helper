@@ -118,19 +118,19 @@ class CheckView {
 			return $test_type;
 		}
 
-		// AJAX requests: check the HTTP referer URL for test parameters.
-		if ( wp_doing_ajax() ) {
-			$referer = wp_get_raw_referer();
-			if ( $referer ) {
-				$query = wp_parse_url( $referer, PHP_URL_QUERY );
-				if ( $query ) {
-					$params = array();
-					parse_str( $query, $params );
-					$ref_test_id   = sanitize_text_field( $params['checkview_test_id'] ?? '' );
-					$ref_test_type = sanitize_text_field( $params['checkview_test_type'] ?? '' );
-					if ( ! empty( $ref_test_id ) && checkview_is_valid_uuid( $ref_test_id ) && ! empty( $ref_test_type ) ) {
-						return $ref_test_type;
-					}
+		// Fallback: check the HTTP referer URL for test parameters.
+		// Covers AJAX (admin-ajax.php) and REST API submissions (e.g. WS Form)
+		// where the form page URL carries the test params but the POST body doesn't.
+		$referer = wp_get_raw_referer();
+		if ( $referer ) {
+			$query = wp_parse_url( $referer, PHP_URL_QUERY );
+			if ( $query ) {
+				$params = array();
+				parse_str( $query, $params );
+				$ref_test_id   = sanitize_text_field( $params['checkview_test_id'] ?? '' );
+				$ref_test_type = sanitize_text_field( $params['checkview_test_type'] ?? '' );
+				if ( ! empty( $ref_test_id ) && checkview_is_valid_uuid( $ref_test_id ) && ! empty( $ref_test_type ) ) {
+					return $ref_test_type;
 				}
 			}
 		}
