@@ -60,16 +60,6 @@ class CheckView {
 	private static $instance = null;
 
 	/**
-	 * Bot cookie name.
-	 *
-	 * @since 2.0.20
-	 * @access private
-	 *
-	 * @var string $bot_cookie Bot cookie name.
-	 */
-	private static string $bot_cookie = 'cv_running';
-
-	/**
 	 * Constructor.
 	 *
 	 * Sets up class properties, loads dependencies, and hooks up functions.
@@ -111,18 +101,15 @@ class CheckView {
 
 	/**
 	 * Determine if the request contains the query parameters necessary for detecting test type.
-	 * 
-	 * Legacy: Falls back to the value of `self::$bot_cookie` if it is valid.
 	 *
 	 * Returns one of:
 	 * - "form" - Supported form plugin tests.
 	 * - "custom" - Custom tests.
 	 * - "full_checkout" - WooCommerce full checkout tests.
 	 * - "add_to_cart" - WooCommerce add-to-cart test.
-	 * - "woo_checkout" - WooCommerce full checkout tests (deprecated; from legacy cookie).
 	 * - false - If not set or invalid value.
 	 *
-	 * @return string|false Validated cookie value, or false.
+	 * @return string|false Validated param value, or false.
 	 */
 	public static function test_type() {
 		$test_id = sanitize_text_field( wp_unslash( $_REQUEST['checkview_test_id'] ?? '' ) );
@@ -146,20 +133,6 @@ class CheckView {
 					}
 				}
 			}
-		}
-
-		// Fallback: valid test ID from request, referer, or cookie but no type param.
-		// Covers multi-step forms where page transitions lose query params.
-		$cv_test_id = get_checkview_test_id();
-		if ( ! empty( $cv_test_id ) ) {
-			$valid_values = array( 'woo_checkout', 'full_checkout', 'add_to_cart', 'form', 'custom' );
-			if ( isset( $_COOKIE[ self::$bot_cookie ] ) ) {
-				$cookie_value = sanitize_text_field( wp_unslash( $_COOKIE[ self::$bot_cookie ] ) );
-				if ( in_array( $cookie_value, $valid_values, true ) ) {
-					return $cookie_value;
-				}
-			}
-			return 'form';
 		}
 
 		return false;
