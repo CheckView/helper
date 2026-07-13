@@ -9,7 +9,7 @@ class CheckviewTestIdTest extends WP_UnitTestCase {
 	}
 
 	public function testGetCheckviewTestIdFromRequest() {
-		$_REQUEST['checkview_test_id'] = '12345';
+		$_REQUEST[CheckView::PARAM_TEST_ID] = '12345';
 		$this->assertSame( '12345', get_checkview_test_id() );
 	}
 
@@ -28,7 +28,7 @@ class CheckviewTestIdTest extends WP_UnitTestCase {
 	}
 
 	public function testInvalidCheckviewTestIdSanitizedInRequest() {
-		$_REQUEST['checkview_test_id'] = '<script>malicious_code()</script>123';
+		$_REQUEST[CheckView::PARAM_TEST_ID] = '<script>malicious_code()</script>123';
 		$this->assertSame( '123', get_checkview_test_id() );  // Assuming sanitize_text_field strips out scripts
 	}
 
@@ -38,7 +38,7 @@ class CheckviewTestIdTest extends WP_UnitTestCase {
 	}
 
 	public function testGetCheckviewTestIdWithMultipleSources() {
-		$_REQUEST['checkview_test_id'] = '12345';
+		$_REQUEST[CheckView::PARAM_TEST_ID] = '12345';
 		$_SERVER['HTTP_REFERER']       = 'http://example.com/testpage?checkview_test_id=67890';
 		$this->assertSame( '12345', get_checkview_test_id() );
 		//This tests that $_REQUEST has precedence over $_SERVER['HTTP_REFERER']

@@ -124,7 +124,7 @@ class Checkview_Cf7_Helper_Test extends WP_UnitTestCase {
 	public function test_enumerate_no_op_when_option_unset() {
 		$helper = new Checkview_Cf7_Helper();
 		$test_id = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
-		$_REQUEST['checkview_test_id'] = $test_id;
+		$_REQUEST[CheckView::PARAM_TEST_ID] = $test_id;
 		// Ensure option is unset.
 		delete_option( 'disable_actions_' . $test_id );
 
@@ -141,7 +141,7 @@ class Checkview_Cf7_Helper_Test extends WP_UnitTestCase {
 
 		// Cleanup.
 		remove_action( 'wpcf7_before_send_mail', array( $dummy, 'foo' ), 10 );
-		unset( $_REQUEST['checkview_test_id'] );
+		unset( $_REQUEST[CheckView::PARAM_TEST_ID] );
 	}
 
 	/**

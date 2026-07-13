@@ -76,7 +76,7 @@ class Checkview_Ninja_Forms_Helper_Test extends WP_UnitTestCase {
 	 */
 	public function test_disable_form_actions_passes_through_when_option_unset() {
 		$test_id = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc';
-		$_REQUEST['checkview_test_id'] = $test_id;
+		$_REQUEST[CheckView::PARAM_TEST_ID] = $test_id;
 		delete_option( 'disable_actions_' . $test_id );
 
 		$actions = array(
@@ -92,7 +92,7 @@ class Checkview_Ninja_Forms_Helper_Test extends WP_UnitTestCase {
 		$this->assertEquals( 1, $result[1]['settings']['active'], 'Webhooks action should pass through when option unset.' );
 		$this->assertEquals( 1, $result[2]['settings']['active'], 'Email action should always be active.' );
 
-		unset( $_REQUEST['checkview_test_id'] );
+		unset( $_REQUEST[CheckView::PARAM_TEST_ID] );
 	}
 
 	/**
@@ -102,7 +102,7 @@ class Checkview_Ninja_Forms_Helper_Test extends WP_UnitTestCase {
 	 */
 	public function test_disable_form_actions_suppresses_when_option_set() {
 		$test_id = 'dddddddd-dddd-4ddd-8ddd-dddddddddddd';
-		$_REQUEST['checkview_test_id'] = $test_id;
+		$_REQUEST[CheckView::PARAM_TEST_ID] = $test_id;
 		update_option( 'disable_actions_' . $test_id, 'true' );
 
 		$actions = array(
@@ -123,7 +123,7 @@ class Checkview_Ninja_Forms_Helper_Test extends WP_UnitTestCase {
 
 		// Cleanup.
 		delete_option( 'disable_actions_' . $test_id );
-		unset( $_REQUEST['checkview_test_id'] );
+		unset( $_REQUEST[CheckView::PARAM_TEST_ID] );
 	}
 
 	public function tearDown(): void {
@@ -167,9 +167,9 @@ class Checkview_Ninja_Forms_Helper_Test extends WP_UnitTestCase {
 			'fields'  => array(),
 		);
 
-		$_REQUEST['checkview_test_id'] = 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee';
+		$_REQUEST[CheckView::PARAM_TEST_ID] = 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee';
 		$this->helper->checkview_clone_entry( $form_data );
-		unset( $_REQUEST['checkview_test_id'] );
+		unset( $_REQUEST[CheckView::PARAM_TEST_ID] );
 
 		$scheduled = wp_next_scheduled( 'checkview_nf_deferred_entry_delete', array( (int) $entry_id ) );
 		$this->assertNotFalse( $scheduled, 'Deferred-delete event should be scheduled.' );

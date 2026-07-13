@@ -78,7 +78,7 @@ class Test_Checkview_Fluent_Forms_Helper extends WP_UnitTestCase {
 
 	public function test_disable_form_actions_strips_integrations_preserves_native_email() {
 		$test_id = 'aaaaaaaa-bbbb-4ccc-9ddd-eeeeeeeeeeee';
-		$_REQUEST['checkview_test_id']   = $test_id;
+		$_REQUEST[CheckView::PARAM_TEST_ID]   = $test_id;
 		$_REQUEST[CheckView::PARAM_TEST_TYPE] = 'form';
 		update_option( 'disable_actions_' . $test_id, 'true', false );
 
@@ -93,12 +93,12 @@ class Test_Checkview_Fluent_Forms_Helper extends WP_UnitTestCase {
 		$this->assertSame( array( 'notifications' => 'email_notifications' ), $result );
 
 		delete_option( 'disable_actions_' . $test_id );
-		unset( $_REQUEST['checkview_test_id'], $_REQUEST[CheckView::PARAM_TEST_TYPE] );
+		unset( $_REQUEST[CheckView::PARAM_TEST_ID], $_REQUEST[CheckView::PARAM_TEST_TYPE] );
 	}
 
 	public function test_disable_form_actions_integration_only_returns_empty() {
 		$test_id = 'aaaaaaaa-bbbb-4ccc-9ddd-eeeeeeeeeeee';
-		$_REQUEST['checkview_test_id']   = $test_id;
+		$_REQUEST[CheckView::PARAM_TEST_ID]   = $test_id;
 		$_REQUEST[CheckView::PARAM_TEST_TYPE] = 'form';
 		update_option( 'disable_actions_' . $test_id, 'true', false );
 
@@ -107,12 +107,12 @@ class Test_Checkview_Fluent_Forms_Helper extends WP_UnitTestCase {
 		$this->assertSame( array(), $result );
 
 		delete_option( 'disable_actions_' . $test_id );
-		unset( $_REQUEST['checkview_test_id'], $_REQUEST[CheckView::PARAM_TEST_TYPE] );
+		unset( $_REQUEST[CheckView::PARAM_TEST_ID], $_REQUEST[CheckView::PARAM_TEST_TYPE] );
 	}
 
 	public function test_disable_form_actions_empty_array_returns_empty() {
 		$test_id = 'aaaaaaaa-bbbb-4ccc-9ddd-eeeeeeeeeeee';
-		$_REQUEST['checkview_test_id']   = $test_id;
+		$_REQUEST[CheckView::PARAM_TEST_ID]   = $test_id;
 		$_REQUEST[CheckView::PARAM_TEST_TYPE] = 'form';
 		update_option( 'disable_actions_' . $test_id, 'true', false );
 
@@ -120,12 +120,12 @@ class Test_Checkview_Fluent_Forms_Helper extends WP_UnitTestCase {
 		$this->assertSame( array(), $result );
 
 		delete_option( 'disable_actions_' . $test_id );
-		unset( $_REQUEST['checkview_test_id'], $_REQUEST[CheckView::PARAM_TEST_TYPE] );
+		unset( $_REQUEST[CheckView::PARAM_TEST_ID], $_REQUEST[CheckView::PARAM_TEST_TYPE] );
 	}
 
 	public function test_disable_form_actions_null_input_returns_unchanged() {
 		$test_id = 'aaaaaaaa-bbbb-4ccc-9ddd-eeeeeeeeeeee';
-		$_REQUEST['checkview_test_id']   = $test_id;
+		$_REQUEST[CheckView::PARAM_TEST_ID]   = $test_id;
 		$_REQUEST[CheckView::PARAM_TEST_TYPE] = 'form';
 		update_option( 'disable_actions_' . $test_id, 'true', false );
 
@@ -133,12 +133,12 @@ class Test_Checkview_Fluent_Forms_Helper extends WP_UnitTestCase {
 		$this->assertNull( $result );
 
 		delete_option( 'disable_actions_' . $test_id );
-		unset( $_REQUEST['checkview_test_id'], $_REQUEST[CheckView::PARAM_TEST_TYPE] );
+		unset( $_REQUEST[CheckView::PARAM_TEST_ID], $_REQUEST[CheckView::PARAM_TEST_TYPE] );
 	}
 
 	public function test_disable_form_actions_non_array_input_returns_unchanged() {
 		$test_id = 'aaaaaaaa-bbbb-4ccc-9ddd-eeeeeeeeeeee';
-		$_REQUEST['checkview_test_id']   = $test_id;
+		$_REQUEST[CheckView::PARAM_TEST_ID]   = $test_id;
 		$_REQUEST[CheckView::PARAM_TEST_TYPE] = 'form';
 		update_option( 'disable_actions_' . $test_id, 'true', false );
 
@@ -146,7 +146,7 @@ class Test_Checkview_Fluent_Forms_Helper extends WP_UnitTestCase {
 		$this->assertSame( 'unexpected_string', $result );
 
 		delete_option( 'disable_actions_' . $test_id );
-		unset( $_REQUEST['checkview_test_id'], $_REQUEST[CheckView::PARAM_TEST_TYPE] );
+		unset( $_REQUEST[CheckView::PARAM_TEST_ID], $_REQUEST[CheckView::PARAM_TEST_TYPE] );
 	}
 
 	public function tearDown(): void {
@@ -183,9 +183,9 @@ class Test_Checkview_Fluent_Forms_Helper extends WP_UnitTestCase {
 		$form     = new stdClass();
 		$form->id = $form_id;
 
-		$_REQUEST['checkview_test_id'] = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc';
+		$_REQUEST[CheckView::PARAM_TEST_ID] = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc';
 		$this->helper->checkview_clone_fluentform_entry( $entry_id, array(), $form );
-		unset( $_REQUEST['checkview_test_id'] );
+		unset( $_REQUEST[CheckView::PARAM_TEST_ID] );
 
 		$scheduled = wp_next_scheduled( 'checkview_ff_deferred_entry_delete', array( $entry_id, $form_id ) );
 		$this->assertNotFalse( $scheduled, 'Deferred-delete event should be scheduled.' );
@@ -231,9 +231,9 @@ class Test_Checkview_Fluent_Forms_Helper extends WP_UnitTestCase {
 		$form     = new stdClass();
 		$form->id = $form_id;
 
-		$_REQUEST['checkview_test_id'] = 'dddddddd-dddd-4ddd-8ddd-dddddddddddd';
+		$_REQUEST[CheckView::PARAM_TEST_ID] = 'dddddddd-dddd-4ddd-8ddd-dddddddddddd';
 		$this->helper->checkview_clone_fluentform_entry( $entry_id, array(), $form );
-		unset( $_REQUEST['checkview_test_id'] );
+		unset( $_REQUEST[CheckView::PARAM_TEST_ID] );
 
 		$row = wpFluent()->table( 'fluentform_submissions' )
 			->where( 'id', $entry_id )

@@ -74,7 +74,7 @@ class TestCheckviewWpformsHelper extends WP_UnitTestCase {
 
 	public function test_disable_addons_option_unset_leaves_listeners_intact() {
 		$test_id                         = 'aaaaaaaa-bbbb-4ccc-9ddd-eeeeeeeeeeee';
-		$_REQUEST['checkview_test_id']   = $test_id;
+		$_REQUEST[CheckView::PARAM_TEST_ID]   = $test_id;
 		$_REQUEST[CheckView::PARAM_TEST_TYPE] = 'form';
 		delete_option( 'disable_actions_' . $test_id );
 
@@ -89,12 +89,12 @@ class TestCheckviewWpformsHelper extends WP_UnitTestCase {
 		);
 
 		remove_action( 'wpforms_process_complete', array( $dummy, 'fake_listener' ), 5 );
-		unset( $_REQUEST['checkview_test_id'], $_REQUEST[CheckView::PARAM_TEST_TYPE] );
+		unset( $_REQUEST[CheckView::PARAM_TEST_ID], $_REQUEST[CheckView::PARAM_TEST_TYPE] );
 	}
 
 	public function test_disable_addons_removes_third_party_listeners_when_flag_set() {
 		$test_id                         = 'aaaaaaaa-bbbb-4ccc-9ddd-eeeeeeeeeeee';
-		$_REQUEST['checkview_test_id']   = $test_id;
+		$_REQUEST[CheckView::PARAM_TEST_ID]   = $test_id;
 		$_REQUEST[CheckView::PARAM_TEST_TYPE] = 'form';
 		update_option( 'disable_actions_' . $test_id, 'true', false );
 
@@ -121,12 +121,12 @@ class TestCheckviewWpformsHelper extends WP_UnitTestCase {
 		);
 
 		delete_option( 'disable_actions_' . $test_id );
-		unset( $_REQUEST['checkview_test_id'], $_REQUEST[CheckView::PARAM_TEST_TYPE] );
+		unset( $_REQUEST[CheckView::PARAM_TEST_ID], $_REQUEST[CheckView::PARAM_TEST_TYPE] );
 	}
 
 	public function test_disable_addons_whitelists_by_class_instance_not_priority() {
 		$test_id                         = 'aaaaaaaa-bbbb-4ccc-9ddd-eeeeeeeeeeee';
-		$_REQUEST['checkview_test_id']   = $test_id;
+		$_REQUEST[CheckView::PARAM_TEST_ID]   = $test_id;
 		$_REQUEST[CheckView::PARAM_TEST_TYPE] = 'form';
 		update_option( 'disable_actions_' . $test_id, 'true', false );
 
@@ -179,12 +179,12 @@ class TestCheckviewWpformsHelper extends WP_UnitTestCase {
 		remove_action( 'wpforms_process_complete', array( $this->helper, 'checkview_log_wpform_test_entry' ), 50 );
 
 		delete_option( 'disable_actions_' . $test_id );
-		unset( $_REQUEST['checkview_test_id'], $_REQUEST[CheckView::PARAM_TEST_TYPE] );
+		unset( $_REQUEST[CheckView::PARAM_TEST_ID], $_REQUEST[CheckView::PARAM_TEST_TYPE] );
 	}
 
 	public function test_disable_addons_removes_string_function_callback() {
 		$test_id                         = 'aaaaaaaa-bbbb-4ccc-9ddd-eeeeeeeeeeee';
-		$_REQUEST['checkview_test_id']   = $test_id;
+		$_REQUEST[CheckView::PARAM_TEST_ID]   = $test_id;
 		$_REQUEST[CheckView::PARAM_TEST_TYPE] = 'form';
 		update_option( 'disable_actions_' . $test_id, 'true', false );
 
@@ -200,12 +200,12 @@ class TestCheckviewWpformsHelper extends WP_UnitTestCase {
 		);
 
 		delete_option( 'disable_actions_' . $test_id );
-		unset( $_REQUEST['checkview_test_id'], $_REQUEST[CheckView::PARAM_TEST_TYPE] );
+		unset( $_REQUEST[CheckView::PARAM_TEST_ID], $_REQUEST[CheckView::PARAM_TEST_TYPE] );
 	}
 
 	public function test_disable_addons_removes_closure_callback() {
 		$test_id                         = 'aaaaaaaa-bbbb-4ccc-9ddd-eeeeeeeeeeee';
-		$_REQUEST['checkview_test_id']   = $test_id;
+		$_REQUEST[CheckView::PARAM_TEST_ID]   = $test_id;
 		$_REQUEST[CheckView::PARAM_TEST_TYPE] = 'form';
 		update_option( 'disable_actions_' . $test_id, 'true', false );
 
@@ -220,12 +220,12 @@ class TestCheckviewWpformsHelper extends WP_UnitTestCase {
 		);
 
 		delete_option( 'disable_actions_' . $test_id );
-		unset( $_REQUEST['checkview_test_id'], $_REQUEST[CheckView::PARAM_TEST_TYPE] );
+		unset( $_REQUEST[CheckView::PARAM_TEST_ID], $_REQUEST[CheckView::PARAM_TEST_TYPE] );
 	}
 
 	public function test_disable_addons_removes_static_method_callback() {
 		$test_id                         = 'aaaaaaaa-bbbb-4ccc-9ddd-eeeeeeeeeeee';
-		$_REQUEST['checkview_test_id']   = $test_id;
+		$_REQUEST[CheckView::PARAM_TEST_ID]   = $test_id;
 		$_REQUEST[CheckView::PARAM_TEST_TYPE] = 'form';
 		update_option( 'disable_actions_' . $test_id, 'true', false );
 
@@ -241,12 +241,12 @@ class TestCheckviewWpformsHelper extends WP_UnitTestCase {
 		);
 
 		delete_option( 'disable_actions_' . $test_id );
-		unset( $_REQUEST['checkview_test_id'], $_REQUEST[CheckView::PARAM_TEST_TYPE] );
+		unset( $_REQUEST[CheckView::PARAM_TEST_ID], $_REQUEST[CheckView::PARAM_TEST_TYPE] );
 	}
 
 	public function test_disable_addons_clears_form_id_scoped_hook() {
 		$test_id                         = 'aaaaaaaa-bbbb-4ccc-9ddd-eeeeeeeeeeee';
-		$_REQUEST['checkview_test_id']   = $test_id;
+		$_REQUEST[CheckView::PARAM_TEST_ID]   = $test_id;
 		$_REQUEST[CheckView::PARAM_TEST_TYPE] = 'form';
 		update_option( 'disable_actions_' . $test_id, 'true', false );
 
@@ -261,6 +261,6 @@ class TestCheckviewWpformsHelper extends WP_UnitTestCase {
 		);
 
 		delete_option( 'disable_actions_' . $test_id );
-		unset( $_REQUEST['checkview_test_id'], $_REQUEST[CheckView::PARAM_TEST_TYPE] );
+		unset( $_REQUEST[CheckView::PARAM_TEST_ID], $_REQUEST[CheckView::PARAM_TEST_TYPE] );
 	}
 }

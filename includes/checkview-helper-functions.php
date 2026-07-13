@@ -141,12 +141,12 @@ if ( ! function_exists( 'checkview_request_has_test_credentials' ) ) {
 	 * @return bool
 	 */
 	function checkview_request_has_test_credentials() {
-		if ( ! isset( $_GET['checkview_test_id'] )
-			|| ! is_string( $_GET['checkview_test_id'] )
+		if ( ! isset( $_GET[ CheckView::PARAM_TEST_ID ] )
+			|| ! is_string( $_GET[ CheckView::PARAM_TEST_ID ] )
 			|| empty( $_GET[ CheckView::PARAM_TEST_TYPE ] ) ) {
 			return false;
 		}
-		$test_id = sanitize_text_field( wp_unslash( $_GET['checkview_test_id'] ) );
+		$test_id = sanitize_text_field( wp_unslash( $_GET[ CheckView::PARAM_TEST_ID ] ) );
 		return (bool) preg_match(
 			'/^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/i',
 			$test_id

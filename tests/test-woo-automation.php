@@ -81,9 +81,9 @@ class Test_Checkview_Woo_Automated_Testing extends WP_UnitTestCase {
 
 	public function test_checkview_test_mode() {
 		// Set up the test mode
-		$_GET['checkview_test_id'] = 'test_id';
+		$_GET[CheckView::PARAM_TEST_ID] = 'test_id';
 		$this->instance->checkview_test_mode();
 		// Assert that the test mode is enabled
-		$this->assertTrue( isset( $_GET['checkview_test_id'] ) ); // Add a more specific assertion here
+		$this->assertTrue( isset( $_GET[CheckView::PARAM_TEST_ID] ) ); // Add a more specific assertion here
 	}
 }

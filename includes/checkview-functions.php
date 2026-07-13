@@ -205,7 +205,7 @@ if ( ! function_exists( 'get_checkview_test_id' ) ) {
 	 * @return string|false Test ID, or `false` on failure.
 	 */
 	function get_checkview_test_id() {
-		$cv_test_id = isset( $_REQUEST['checkview_test_id'] ) ? sanitize_text_field( wp_unslash( $_REQUEST['checkview_test_id'] ) ) : '';
+		$cv_test_id = isset( $_REQUEST[ CheckView::PARAM_TEST_ID ] ) ? sanitize_text_field( wp_unslash( $_REQUEST[ CheckView::PARAM_TEST_ID ] ) ) : '';
 
 		if ( ! empty( $cv_test_id ) ) {
 			if ( ! checkview_is_valid_uuid( $cv_test_id ) ) {
@@ -223,8 +223,8 @@ if ( ! function_exists( 'get_checkview_test_id' ) ) {
 		// Fallback: check cookie for test ID (covers multi-step forms where
 		// page transitions lose the query parameter from the URL).
 		// This cookie is set server-side by WordPress in checkview_init_current_test.
-		if ( isset( $_COOKIE['checkview_test_id'] ) ) {
-			$cookie_test_id = sanitize_text_field( wp_unslash( $_COOKIE['checkview_test_id'] ) );
+		if ( isset( $_COOKIE[ CheckView::PARAM_TEST_ID ] ) ) {
+			$cookie_test_id = sanitize_text_field( wp_unslash( $_COOKIE[ CheckView::PARAM_TEST_ID ] ) );
 			if ( ! empty( $cookie_test_id ) && checkview_is_valid_uuid( $cookie_test_id ) ) {
 				return $cookie_test_id;
 			}
@@ -321,8 +321,8 @@ if ( ! function_exists( 'complete_checkview_test' ) ) {
 		// flushed, so the guard lets cookie cleanup work for them while
 		// avoiding silent failures at shutdown.
 		if ( ! headers_sent() ) {
-			setcookie( 'checkview_test_id', '', time() - 6600, COOKIEPATH, COOKIE_DOMAIN );
-			setcookie( 'checkview_test_id' . $checkview_test_id, '', time() - 6600, COOKIEPATH, COOKIE_DOMAIN );
+			setcookie( CheckView::PARAM_TEST_ID, '', time() - 6600, COOKIEPATH, COOKIE_DOMAIN );
+			setcookie( CheckView::PARAM_TEST_ID . $checkview_test_id, '', time() - 6600, COOKIEPATH, COOKIE_DOMAIN );
 			setcookie( CheckView::PARAM_TEST_TYPE, '', time() - 6600, COOKIEPATH, COOKIE_DOMAIN );
 		}
 
@@ -402,7 +402,7 @@ if ( ! function_exists( 'cv_is_suppressible_test_order' ) ) {
 		}
 
 		// Invariant 1: order has a valid checkview_test_id UUID meta.
-		$test_id = $order->get_meta( 'checkview_test_id' );
+		$test_id = $order->get_meta( CheckView::PARAM_TEST_ID );
 		if ( ! $test_id || ! checkview_is_valid_uuid( $test_id ) ) {
 			return false;
 		}

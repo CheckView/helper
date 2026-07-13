@@ -60,7 +60,7 @@ class TestCheckviewAdmin extends WP_UnitTestCase {
 		$visitor_ip                = '192.168.1.1';
 		$cv_bot_ip                 = '192.168.1.1';
 		$_SERVER['REMOTE_ADDR']    = $visitor_ip;
-		$_GET['checkview_test_id'] = '12345';
+		$_GET[CheckView::PARAM_TEST_ID] = '12345';
 		$this->assertEmpty( $admin->checkview_init_current_test() );
 	}
 
@@ -69,9 +69,9 @@ class TestCheckviewAdmin extends WP_UnitTestCase {
 		$visitor_ip                = '192.168.1.1';
 		$cv_bot_ip                 = '192.168.1.1';
 		$_SERVER['REMOTE_ADDR']    = $visitor_ip;
-		$_GET['checkview_test_id'] = '12345';
+		$_GET[CheckView::PARAM_TEST_ID] = '12345';
 		$this->assertEmpty( $admin->checkview_init_current_test() );
-		// $this->assertCookieSet('checkview_test_id', '12345');
+		// $this->assertCookieSet(CheckView::PARAM_TEST_ID, '12345');
 	}
 
 	public function testCheckviewInitCurrentTestGetCvSession() {
@@ -79,7 +79,7 @@ class TestCheckviewAdmin extends WP_UnitTestCase {
 		$visitor_ip                = '192.168.1.1';
 		$cv_bot_ip                 = '192.168.1.1';
 		$_SERVER['REMOTE_ADDR']    = $visitor_ip;
-		$_GET['checkview_test_id'] = '12345';
+		$_GET[CheckView::PARAM_TEST_ID] = '12345';
 		$this->assertEmpty( $admin->checkview_init_current_test() );
 		$cv_session = checkview_get_cv_session( $visitor_ip, '12345' );
 		$this->assertEmpty( $cv_session );
@@ -90,7 +90,7 @@ class TestCheckviewAdmin extends WP_UnitTestCase {
 		$visitor_ip                = '192.168.1.1';
 		$cv_bot_ip                 = '192.168.1.1';
 		$_SERVER['REMOTE_ADDR']    = $visitor_ip;
-		$_GET['checkview_test_id'] = '12345';
+		$_GET[CheckView::PARAM_TEST_ID] = '12345';
 		$this->assertEmpty( $admin->checkview_init_current_test() );
 		$this->assertFalse( defined( 'TEST_EMAIL' ) );
 		$this->assertFALSE( defined( 'CV_TEST_ID' ) );

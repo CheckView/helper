@@ -117,7 +117,7 @@ class Test_Checkview_Gforms_Helper extends WP_UnitTestCase {
 
 	public function test_disable_addons_feed_returns_empty_when_flag_set() {
 		$test_id                         = 'aaaaaaaa-bbbb-4ccc-9ddd-eeeeeeeeeeee';
-		$_REQUEST['checkview_test_id']   = $test_id;
+		$_REQUEST[CheckView::PARAM_TEST_ID]   = $test_id;
 		$_REQUEST[CheckView::PARAM_TEST_TYPE] = 'form';
 		update_option( 'disable_actions_' . $test_id, 'true', false );
 
@@ -132,12 +132,12 @@ class Test_Checkview_Gforms_Helper extends WP_UnitTestCase {
 		$this->assertSame( array(), $result );
 
 		delete_option( 'disable_actions_' . $test_id );
-		unset( $_REQUEST['checkview_test_id'], $_REQUEST[CheckView::PARAM_TEST_TYPE] );
+		unset( $_REQUEST[CheckView::PARAM_TEST_ID], $_REQUEST[CheckView::PARAM_TEST_TYPE] );
 	}
 
 	public function test_disable_addons_feed_option_unset_returns_unchanged() {
 		$test_id                         = 'aaaaaaaa-bbbb-4ccc-9ddd-eeeeeeeeeeee';
-		$_REQUEST['checkview_test_id']   = $test_id;
+		$_REQUEST[CheckView::PARAM_TEST_ID]   = $test_id;
 		$_REQUEST[CheckView::PARAM_TEST_TYPE] = 'form';
 		delete_option( 'disable_actions_' . $test_id );
 
@@ -147,7 +147,7 @@ class Test_Checkview_Gforms_Helper extends WP_UnitTestCase {
 		$result = $this->helper->checkview_disable_addons_feed( $feeds, $entry, $form );
 		$this->assertSame( $feeds, $result );
 
-		unset( $_REQUEST['checkview_test_id'], $_REQUEST[CheckView::PARAM_TEST_TYPE] );
+		unset( $_REQUEST[CheckView::PARAM_TEST_ID], $_REQUEST[CheckView::PARAM_TEST_TYPE] );
 	}
 
 	/**
@@ -184,7 +184,7 @@ class Test_Checkview_Gforms_Helper extends WP_UnitTestCase {
 		$entry = array( 'id' => (int) $entry_id, 'form_id' => $form_id );
 		$form  = array( 'id' => $form_id );
 
-		$_REQUEST['checkview_test_id'] = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+		$_REQUEST[CheckView::PARAM_TEST_ID] = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
 		$this->helper->checkview_clone_entry( $entry, $form );
 
 		$scheduled = wp_next_scheduled( 'checkview_gf_deferred_entry_delete', array( (int) $entry_id ) );
@@ -192,7 +192,7 @@ class Test_Checkview_Gforms_Helper extends WP_UnitTestCase {
 		$this->assertGreaterThanOrEqual( time() + ( 15 * MINUTE_IN_SECONDS ) - 60, $scheduled, 'Schedule should be at least ~15 min in the future.' );
 
 		// Cleanup.
-		unset( $_REQUEST['checkview_test_id'] );
+		unset( $_REQUEST[CheckView::PARAM_TEST_ID] );
 		GFAPI::delete_entry( $entry_id );
 		GFAPI::delete_form( $form_id );
 	}
@@ -223,14 +223,14 @@ class Test_Checkview_Gforms_Helper extends WP_UnitTestCase {
 		$entry = array( 'id' => (int) $entry_id, 'form_id' => $form_id );
 		$form  = array( 'id' => $form_id );
 
-		$_REQUEST['checkview_test_id'] = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
+		$_REQUEST[CheckView::PARAM_TEST_ID] = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
 		$this->helper->checkview_clone_entry( $entry, $form );
 
 		$fetched = GFAPI::get_entry( $entry_id );
 		$this->assertFalse( is_wp_error( $fetched ), 'Entry should still exist after clone_entry (deletion deferred).' );
 
 		// Cleanup.
-		unset( $_REQUEST['checkview_test_id'] );
+		unset( $_REQUEST[CheckView::PARAM_TEST_ID] );
 		GFAPI::delete_entry( $entry_id );
 		GFAPI::delete_form( $form_id );
 	}

@@ -1431,12 +1431,12 @@ class Checkview_Woo_Automated_Testing {
 			// Idempotency guard — first-wins on `checkview_test_id`. Keeps the
 			// original test association on failed-payment retries where the
 			// same order is touched twice.
-			if ( $order->get_meta( 'checkview_test_id' ) ) {
+			if ( $order->get_meta( CheckView::PARAM_TEST_ID ) ) {
 				return;
 			}
 
 			$order->update_meta_data( 'payment_made_by', 'checkview' );
-			$order->update_meta_data( 'checkview_test_id', CV_TEST_ID );
+			$order->update_meta_data( CheckView::PARAM_TEST_ID, CV_TEST_ID );
 			$order->save();
 
 			Checkview_Admin_Logs::add( 'ip-logs', 'Stamped CheckView meta on order [' . $order->get_id() . '] for test [' . CV_TEST_ID . '].' );
@@ -1445,8 +1445,8 @@ class Checkview_Woo_Automated_Testing {
 			// flush) — guarded by headers_sent() to avoid silent failure if a
 			// theme accidentally flushed early.
 			if ( ! headers_sent() ) {
-				unset( $_COOKIE['checkview_test_id'] );
-				setcookie( 'checkview_test_id', '', time() - 6600, COOKIEPATH, COOKIE_DOMAIN );
+				unset( $_COOKIE[ CheckView::PARAM_TEST_ID ] );
+				setcookie( CheckView::PARAM_TEST_ID, '', time() - 6600, COOKIEPATH, COOKIE_DOMAIN );
 				unset( $_COOKIE[ CheckView::PARAM_TEST_TYPE ] );
 				setcookie( CheckView::PARAM_TEST_TYPE, '', time() - 6600, COOKIEPATH, COOKIE_DOMAIN );
 			}
@@ -1509,7 +1509,7 @@ class Checkview_Woo_Automated_Testing {
 		}
 
 		$order = wc_get_order( $order_id );
-		if ( ! $order || $order->get_meta( 'checkview_test_id' ) !== CV_TEST_ID ) {
+		if ( ! $order || $order->get_meta( CheckView::PARAM_TEST_ID ) !== CV_TEST_ID ) {
 			return; // not OUR test order
 		}
 

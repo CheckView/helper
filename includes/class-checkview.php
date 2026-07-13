@@ -60,6 +60,11 @@ class CheckView {
 	private static $instance = null;
 
 	/**
+	 * Query parameter / cookie / meta key for the test ID.
+	 */
+	const PARAM_TEST_ID = 'checkview_test_id';
+
+	/**
 	 * Query parameter / cookie name for the test type.
 	 */
 	const PARAM_TEST_TYPE = 'checkview_test_type';
@@ -143,7 +148,7 @@ class CheckView {
 	 * @return string|null Valid UUID test ID, or null.
 	 */
 	public static function get_referrer_test_id(): ?string {
-		$test_id = self::get_referrer_param( 'checkview_test_id' );
+		$test_id = self::get_referrer_param( self::PARAM_TEST_ID );
 		return ( is_string( $test_id ) && checkview_is_valid_uuid( $test_id ) ) ? $test_id : null;
 	}
 
@@ -158,8 +163,6 @@ class CheckView {
 
 	/**
 	 * Determine if the request contains the query parameters necessary for detecting test type.
-	 *
-	 * TODO: constant-ize checkview_test_id
 	 *
 	 * Returns one of:
 	 * - "form" - Supported form plugin tests.
@@ -234,7 +237,7 @@ class CheckView {
 		$result = $test_type && $verified;
 
 		// Only log during actual tests
-		if ( isset( $_REQUEST['checkview_test_id'] ) ) {
+		if ( isset( $_REQUEST[ self::PARAM_TEST_ID ] ) ) {
 			// Sanitize for logging: remove control chars, limit length
 			$sanitize = function ( $val, $max_len = 200 ) {
 				$str = preg_replace( '/[\x00-\x1F\x7F]/', '', strval( $val ) );
@@ -245,7 +248,7 @@ class CheckView {
 				return ( strlen( $str ) > $max_len ) ? substr( $str, 0, $max_len ) . '...' : $str;
 			};
 
-			$test_id         = substr( sanitize_text_field( wp_unslash( $_REQUEST['checkview_test_id'] ) ), 0, 36 );
+			$test_id         = substr( sanitize_text_field( wp_unslash( $_REQUEST[ self::PARAM_TEST_ID ] ) ), 0, 36 );
 			$safe_visitor_ip = $sanitize( $visitor_ip, 45 );
 
 			// Collect IP headers
@@ -367,7 +370,7 @@ class CheckView {
 		$cv_bot_ip = checkview_get_api_ip();
 
 		// TODO: What is this for?
-		if ( ( 'checkview-saas' === get_option( $visitor_ip ) || isset( $_REQUEST['checkview_test_id'] ) || ( is_array( $cv_bot_ip ) && in_array( $visitor_ip, $cv_bot_ip ) ) ) ) {
+		if ( ( 'checkview-saas' === get_option( $visitor_ip ) || isset( $_REQUEST[ self::PARAM_TEST_ID ] ) || ( is_array( $cv_bot_ip ) && in_array( $visitor_ip, $cv_bot_ip ) ) ) ) {
 			update_option( $visitor_ip, 'checkview-saas', true );
 		}
 
