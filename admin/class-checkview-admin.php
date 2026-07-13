@@ -439,28 +439,12 @@ class Checkview_Admin {
 		$disable_actions = isset( $_REQUEST['disable_actions'] )
 			? sanitize_text_field( wp_unslash( $_REQUEST['disable_actions'] ) )
 			: '';
-		$referrer_url = sanitize_url( wp_get_raw_referer(), array( 'http', 'https' ) );
-
 		// If not Ajax submission and found test_id.
 		if ( isset( $_SERVER['REQUEST_URI'] ) && strpos( sanitize_url( wp_unslash( $_SERVER['REQUEST_URI'] ) ), 'admin-ajax.php' ) === false && '' !== $cv_test_id ) {
 			// Create session for later use when form submit VIA AJAX.
 			checkview_create_cv_session( $visitor_ip, $cv_test_id );
 
 			cv_update_option( $visitor_ip, 'checkview-saas', true);
-		}
-
-		// If submit VIA AJAX.
-		if ( isset( $_SERVER['REQUEST_URI'] ) && strpos( sanitize_url( wp_unslash( $_SERVER['REQUEST_URI'] ) ), 'admin-ajax.php' ) !== false ) {
-			$referer_url_query = wp_parse_url( $referrer_url, PHP_URL_QUERY );
-			$qry_str = array();
-
-			if ( $referer_url_query ) {
-				parse_str( $referer_url_query, $qry_str );
-			}
-
-			if ( isset( $qry_str['checkview_test_id'] ) ) {
-				$cv_test_id = $qry_str['checkview_test_id'];
-			}
 		}
 
 		if ( ! empty( $cv_test_id ) && ! checkview_is_valid_uuid( $cv_test_id ) ) {

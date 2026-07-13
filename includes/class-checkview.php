@@ -100,7 +100,63 @@ class CheckView {
 	}
 
 	/**
+	 * Extract a query parameter from a given URL.
+	 *
+	 * @param $url string URL.
+	 * @param $param string Parameter's key.
+	 *
+	 * @return string|null Parameter's value,
+	 */
+	public static function get_param( string $url, string $param): ?string {
+		$params = array();
+		parse_str( $url, $params );
+		return sanitize_text_field( $params[ $param ] ?? '' );
+	}
+
+	/**
+	 * Gets a query parameter from the current referrer.
+	 *
+	 * @param $param string Parameter's key.
+	 *
+	 * @return string|null Parameter's value, or null if not found.
+	 */
+	public static function get_referrer_param( string $param ): ?string {
+		$referer = wp_get_raw_referer();
+		if ( $referer ) {
+			$query = wp_parse_url( $referer, PHP_URL_QUERY );
+			if ( $query ) {
+				return self::get_param( $query, $param );
+			}
+		}
+
+		return null;
+	}
+
+	/**
+	 * Gets the CheckView test ID from the current referrer URL.
+	 *
+	 * @return string|null Valid UUID test ID, or null.
+	 */
+	public static function get_referrer_test_id(): ?string {
+		$test_id = self::get_referrer_param( 'checkview_test_id' );
+		return ( is_string( $test_id ) && checkview_is_valid_uuid( $test_id ) ) ? $test_id : null;
+	}
+
+	/**
+	 * Gets the CheckView test type from the current referrer URL.
+	 *
+	 * @return string|null Test type (e.g. "form", "full_checkout"), or null.
+	 */
+	public static function get_referrer_test_type(): ?string {
+		return self::get_referrer_param( 'checkview_test_type' ) ?? null;
+	}
+
+	/**
 	 * Determine if the request contains the query parameters necessary for detecting test type.
+	 *
+	 * TODO: Needs to support deep-navigations where referrer doesn't survive, e.g. WooCommerce Checkout and multi-page forms.
+	 *
+	 * TODO: constant-ize checkview_test_type, checkview_test_id
 	 *
 	 * Returns one of:
 	 * - "form" - Supported form plugin tests.
@@ -112,27 +168,17 @@ class CheckView {
 	 * @return string|false Validated param value, or false.
 	 */
 	public static function test_type() {
-		$test_id = sanitize_text_field( wp_unslash( $_REQUEST['checkview_test_id'] ?? '' ) );
 		$test_type = sanitize_text_field( wp_unslash( $_REQUEST['checkview_test_type'] ?? '' ) );
-		if ( ! empty( $test_id ) && checkview_is_valid_uuid( $test_id ) && ! empty( $test_type ) ) {
+		if ( ! empty( $test_type ) ) {
 			return $test_type;
 		}
 
 		// Fallback: check the HTTP referer URL for test parameters.
 		// Covers AJAX (admin-ajax.php) and REST API submissions (e.g. WS Form)
 		// where the form page URL carries the test params but the POST body doesn't.
-		$referer = wp_get_raw_referer();
-		if ( $referer ) {
-			$query = wp_parse_url( $referer, PHP_URL_QUERY );
-			if ( $query ) {
-				$params = array();
-				parse_str( $query, $params );
-				$ref_test_id   = sanitize_text_field( $params['checkview_test_id'] ?? '' );
-				$ref_test_type = sanitize_text_field( $params['checkview_test_type'] ?? '' );
-				if ( ! empty( $ref_test_id ) && checkview_is_valid_uuid( $ref_test_id ) && ! empty( $ref_test_type ) ) {
-					return $ref_test_type;
-				}
-			}
+		$ref_test_type = self::get_referrer_test_type();
+		if ( ! empty( $ref_test_type ) ) {
+			return $ref_test_type;
 		}
 
 		return false;

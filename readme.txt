@@ -205,6 +205,9 @@ Support and test configuration are handled through the CheckView platform. Pleas
 
 == Changelog ==
 
+= 2.2.2 =
+* Remove deprecated cv_running cookie check.
+
 = 2.2.1 =
 * Remove unnecessary files and binaries.
 * Remove hardcoded public bot IPs.
@@ -612,6 +615,9 @@ Support and test configuration are handled through the CheckView platform. Pleas
 * Initial release.
 
 == Upgrade Notice ==
+
+= 2.2.2 =
+* Remove deprecated cv_running cookie check.
 
 = 2.2.1 =
 * Remove unnecessary files and binaries.
