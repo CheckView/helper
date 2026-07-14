@@ -2598,7 +2598,7 @@ class CheckView_Api {
 			);
 		}
 
-		if ( ! is_ssl() ) {
+		if ( ! CheckView::is_checkview_dev() && ! is_ssl() ) {
 			Checkview_Admin_Logs::add( 'api-logs', 'Insecure request blocked.' );
 			return new WP_Error(
 				'insecure_request',

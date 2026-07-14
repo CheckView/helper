@@ -70,6 +70,15 @@ class CheckView {
 	const PARAM_TEST_TYPE = 'checkview_test_type';
 
 	/**
+	 * Determine if the `CHECKVIEW_DEV` constant is truthy.
+	 *
+	 * @return bool
+	 */
+	public static function is_checkview_dev(): bool {
+		return defined('CHECKVIEW_DEV') && CHECKVIEW_DEV;
+	}
+
+	/**
 	 * Constructor.
 	 *
 	 * Sets up class properties, loads dependencies, and hooks up functions.
