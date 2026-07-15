@@ -119,6 +119,12 @@ class Checkview_Woo_Automated_Testing {
 			);
 
 			$this->loader->add_filter(
+				'query_loop_block_query_vars',
+				$this,
+				'checkview_hide_test_product_from_block_query',
+			);
+
+			$this->loader->add_filter(
 				'wpseo_exclude_from_sitemap_by_post_ids',
 				$this,
 				'checkview_seo_hide_product_from_sitemap',
@@ -426,6 +432,27 @@ class Checkview_Woo_Automated_Testing {
 		}
 
 		return $should_publicize;
+	}
+
+	/**
+	 * Excludes the CheckView test product from Query Loop block queries.
+	 *
+	 * The editor preview is not affected by this filter.
+	 *
+	 * @param array $query_args WP_Query arguments for the Query Loop block.
+	 * @return array
+	 */
+	public function checkview_hide_test_product_from_block_query( $query_args ) {
+		$product_id = get_option( 'checkview_woo_product_id' );
+		if ( empty( $product_id ) ) {
+			return $query_args;
+		}
+
+		$existing = $query_args['post__not_in'] ?? array();
+		$query_args['post__not_in'] = wp_parse_id_list( $existing );
+		$query_args['post__not_in'][] = (int) $product_id;
+
+		return $query_args;
 	}
 
 	/**

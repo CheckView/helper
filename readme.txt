@@ -210,6 +210,7 @@ Support and test configuration are handled through the CheckView platform. Pleas
 * Fix bot detection for REST API form submissions (e.g. WS Form).
 * Persist test type via plugin-set cookie for deep navigations (Woo checkout, multi-step forms).
 * Remove unused test customer creation/management endpoints and related code.
+* Hide test product from Query Loop blocks (catalog_visibility only applies to WC queries).
 
 = 2.2.1 =
 * Remove unnecessary files and binaries.
@@ -624,6 +625,7 @@ Support and test configuration are handled through the CheckView platform. Pleas
 * Fix bot detection for REST API form submissions (e.g. WS Form).
 * Persist test type via plugin-set cookie for deep navigations (Woo checkout, multi-step forms).
 * Remove unused test customer creation/management endpoints and related code.
+* Hide test product from Query Loop blocks (catalog_visibility only applies to WC queries).
 
 = 2.2.1 =
 * Remove unnecessary files and binaries.
