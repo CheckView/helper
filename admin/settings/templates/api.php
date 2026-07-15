@@ -161,34 +161,6 @@ $allow_dev         = ! empty( $checkview_options['checkview_allowed_extensions']
 
 				<tr valign="top">
 					<th scope="row" >
-						<label for="checkview_create_customer">
-							<?php esc_html_e( 'Create customer', 'checkview' ); ?>
-						</label>
-						<p class="make-lib-description"><?php esc_html_e( 'Use this endpoint to create test customer for checkview', 'checkview' ); ?></p>
-					</th>
-					<td class="checkview-make-library-box">
-					<label  for="checkview_create_customer">
-						<p class="make-lib-description"><?php echo esc_url_raw( get_rest_url() . 'checkview/v1/store/createtestcustomer' ); ?></p>
-					</label>
-					</td>
-				</tr>
-
-				<tr valign="top">
-					<th scope="row" >
-						<label for="checkview_get_customer">
-							<?php esc_html_e( 'Get customer', 'checkview' ); ?>
-						</label>
-						<p class="make-lib-description"><?php esc_html_e( 'Use this endpoint to get credentials for the test customer created by SaaS.', 'checkview' ); ?></p>
-					</th>
-					<td class="checkview-make-library-box">
-					<label  for="checkview_delete_orders">
-						<p class="make-lib-description"><?php echo esc_url_raw( get_rest_url() . 'checkview/v1/store/gettestcustomer' ); ?></p>
-					</label>
-					</td>
-				</tr>
-
-				<tr valign="top">
-					<th scope="row" >
 						<label for="checkview_get_store_locations">
 							<?php esc_html_e( 'Get store locations', 'checkview' ); ?>
 						</label>
@@ -239,34 +211,6 @@ $allow_dev         = ! empty( $checkview_options['checkview_allowed_extensions']
 					<td class="checkview-make-library-box">
 					<label  for="checkview_get_helper_logs">
 						<p class="make-lib-description"><?php echo esc_url_raw( get_rest_url() . 'checkview/v1/get-logs' ); ?></p>
-					</label>
-					</td>
-				</tr>
-
-				<tr valign="top">
-					<th scope="row" >
-						<label for="checkview_verify_test_user_credentials">
-							<?php esc_html_e( 'Verify user', 'checkview' ); ?>
-						</label>
-						<p class="make-lib-description"><?php esc_html_e( 'Use this endpoint to verify test user by email.', 'checkview' ); ?></p>
-					</th>
-					<td class="checkview-make-library-box">
-					<label  for="checkview_verify_test_user_credentials">
-						<p class="make-lib-description"><?php echo esc_url_raw( get_rest_url() . 'checkview/v1/verifytestuser' ); ?></p>
-					</label>
-					</td>
-				</tr>
-
-				<tr valign="top">
-					<th scope="row" >
-						<label for="checkview_delete_test_user_credentials">
-							<?php esc_html_e( 'Delete user', 'checkview' ); ?>
-						</label>
-						<p class="make-lib-description"><?php esc_html_e( 'Use this endpoint to delete test user.', 'checkview' ); ?></p>
-					</th>
-					<td class="checkview-make-library-box">
-					<label  for="checkview_delete_test_user_credentials">
-						<p class="make-lib-description"><?php echo esc_url_raw( get_rest_url() . 'checkview/v1/deletetestuser' ); ?></p>
 					</label>
 					</td>
 				</tr>

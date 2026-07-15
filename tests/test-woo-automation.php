@@ -26,26 +26,6 @@ class Test_Checkview_Woo_Automated_Testing extends WP_UnitTestCase {
 		$this->assertNotEmpty( $gateways );
 	}
 
-	public function test_checkview_create_test_customer() {
-		$customer = $this->instance->checkview_create_test_customer();
-		$this->assertInstanceOf( 'WC_Customer', $customer );
-	}
-
-	public function test_checkview_get_test_credentials() {
-		$credentials = $this->instance->checkview_get_test_credentials();
-		$this->assertIsArray( $credentials );
-		$this->assertArrayHasKey( 'email', $credentials );
-		$this->assertArrayHasKey( 'username', $credentials );
-		$this->assertArrayHasKey( 'password', $credentials );
-	}
-
-	public function test_checkview_rotate_test_user_credentials() {
-		$this->instance->checkview_rotate_test_user_credentials();
-		// Assert that the password has been updated
-		$customer = $this->instance->checkview_get_test_customer();
-		$this->assertNotEquals( $customer, true );
-	}
-
 	public function test_checkview_get_test_product() {
 		$product = $this->instance->checkview_create_test_product();
 		$product = $this->instance->checkview_get_test_product();
