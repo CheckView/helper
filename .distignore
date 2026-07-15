@@ -12,6 +12,7 @@
 /.phpunit.cache
 /bin
 /scripts
+/docs
 
 # Linting / static analysis config
 .phpcs.xml.dist
