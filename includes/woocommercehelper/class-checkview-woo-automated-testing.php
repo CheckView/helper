@@ -1255,9 +1255,7 @@ class Checkview_Woo_Automated_Testing {
 	 * real customer's request.
 	 *
 	 * Round-9 hardening: includes a `wc_get_order` guard for sites where
-	 * WC isn't loaded, and clears the `checkview_test_id` cookie here (during
-	 * the request, before headers flush) — moved out of `complete_checkview_test()`
-	 * which now runs at shutdown where `setcookie()` would silently fail.
+	 * WC isn't loaded.
 	 *
 	 * Idempotent with first-wins policy: if the order already has a
 	 * `checkview_test_id` meta from a prior request (e.g. failed-payment retry),
@@ -1313,16 +1311,6 @@ class Checkview_Woo_Automated_Testing {
 			$order->save();
 
 			Checkview_Admin_Logs::add( 'ip-logs', 'Stamped CheckView meta on order [' . $order->get_id() . '] for test [' . CV_TEST_ID . '].' );
-
-			// Clear the test cookie HERE (during the request, before headers
-			// flush) — guarded by headers_sent() to avoid silent failure if a
-			// theme accidentally flushed early.
-			if ( ! headers_sent() ) {
-				unset( $_COOKIE[ CheckView::PARAM_TEST_ID ] );
-				setcookie( CheckView::PARAM_TEST_ID, '', time() - 6600, COOKIEPATH, COOKIE_DOMAIN );
-				unset( $_COOKIE[ CheckView::PARAM_TEST_TYPE ] );
-				setcookie( CheckView::PARAM_TEST_TYPE, '', time() - 6600, COOKIEPATH, COOKIE_DOMAIN );
-			}
 
 		} finally {
 			unset( $in_progress[ $order_id ] );
