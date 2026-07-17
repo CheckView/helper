@@ -211,6 +211,7 @@ Support and test configuration are handled through the CheckView platform. Pleas
 * Persist test type via plugin-set cookie for deep navigations (Woo checkout, multi-step forms).
 * Remove unused test customer creation/management endpoints and related code.
 * Hide test product from Query Loop blocks (catalog_visibility only applies to WC queries).
+* Hide test product from Qi Addons for Elementor product widgets (Product Slider, Product List).
 
 = 2.2.1 =
 * Remove unnecessary files and binaries.
@@ -626,6 +627,7 @@ Support and test configuration are handled through the CheckView platform. Pleas
 * Persist test type via plugin-set cookie for deep navigations (Woo checkout, multi-step forms).
 * Remove unused test customer creation/management endpoints and related code.
 * Hide test product from Query Loop blocks (catalog_visibility only applies to WC queries).
+* Hide test product from Qi Addons for Elementor product widgets (Product Slider, Product List).
 
 = 2.2.1 =
 * Remove unnecessary files and binaries.

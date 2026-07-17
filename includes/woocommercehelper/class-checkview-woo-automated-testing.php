@@ -125,6 +125,14 @@ class Checkview_Woo_Automated_Testing {
 			);
 
 			$this->loader->add_filter(
+				'qi_addons_for_elementor_filter_query_params',
+				$this,
+				'checkview_hide_test_product_from_qi_addons_query',
+				10,
+				2
+			);
+
+			$this->loader->add_filter(
 				'wpseo_exclude_from_sitemap_by_post_ids',
 				$this,
 				'checkview_seo_hide_product_from_sitemap',
@@ -453,6 +461,31 @@ class Checkview_Woo_Automated_Testing {
 		$query_args['post__not_in'][] = (int) $product_id;
 
 		return $query_args;
+	}
+
+	/**
+	 * Excludes the CheckView test product from Qi Addons for Elementor queries
+	 * (Product Slider, Product List, etc.).
+	 *
+	 * @param array $args  WP_Query arguments built by qi_addons_for_elementor_get_query_params().
+	 * @param array $atts  Widget shortcode attributes.
+	 * @return array
+	 */
+	public function checkview_hide_test_product_from_qi_addons_query( $args, $atts ) {
+		if ( ! isset( $args['post_type'] ) || 'product' !== $args['post_type'] ) {
+			return $args;
+		}
+
+		$product_id = get_option( 'checkview_woo_product_id' );
+		if ( empty( $product_id ) ) {
+			return $args;
+		}
+
+		$existing = $args['post__not_in'] ?? array();
+		$args['post__not_in'] = wp_parse_id_list( $existing );
+		$args['post__not_in'][] = (int) $product_id;
+
+		return $args;
 	}
 
 	/**
