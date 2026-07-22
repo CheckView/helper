@@ -55,7 +55,8 @@ if ( ! class_exists( 'Checkview_Mail_Redirect' ) ) {
 		 *
 		 * Mirrors Checkview_Gforms_Helper::checkview_inject_email() behavior:
 		 * - Default (REPLACE): replace `to` with TEST_EMAIL and strip Cc/Bcc.
-		 * - When `disable_email_receipt_<test_id>` option is 'true' (APPEND):
+		 * - When `disable_email_receipt_<test_id>` is 'true' or the site-scoped
+		 *   allow_original_recipients window is active (APPEND):
 		 *   append TEST_EMAIL to the existing recipients rather than replacing.
 		 *
 		 * Two skip conditions avoid double-work when an earlier filter
@@ -72,8 +73,12 @@ if ( ! class_exists( 'Checkview_Mail_Redirect' ) ) {
 			}
 
 			$cv_test_id  = get_checkview_test_id();
-			$append_mode = $cv_test_id
-				&& 'true' === get_option( 'disable_email_receipt_' . $cv_test_id, false );
+			// Append mode is signaled two ways: the legacy per-test option, or the
+			// site-scoped allow_original_recipients option the SaaS sets at test-init.
+			$append_mode = ( $cv_test_id
+				&& 'true' === get_option( 'disable_email_receipt_' . $cv_test_id, false ) )
+				|| ( function_exists( 'cv_should_allow_original_recipients' )
+					&& cv_should_allow_original_recipients() );
 
 			if ( $append_mode ) {
 				if ( $this->contains_test_email( $atts['to'] ) ) {
