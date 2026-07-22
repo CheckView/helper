@@ -362,13 +362,10 @@ if ( ! function_exists( 'cv_is_suppressible_test_order' ) ) {
 	 *
 	 * Reusable by:
 	 *   - the WooCommerce webhook filter (`checkview_filter_webhooks`)
+	 *   - the Mailchimp per-order gate
+	 *     (`checkview_mailchimp_should_push_order`, hooked to MC for WC's
+	 *     `mailchimp_should_push_order` filter in `mailchimp_handle_or_queue()`)
 	 *   - any future addon gate that needs the same invariant
-	 *
-	 * NOT used by the Mailchimp kill-switch — Mailchimp doesn't expose a
-	 * per-order suppression filter, so `checkview_mailchimp_killswitch`
-	 * reads the same `disable_*_<id>` options directly and short-circuits
-	 * `mailchimp_is_configured()` instead. Either gate fires under the
-	 * same condition this function checks below.
 	 *
 	 * Includes a kill-switch short-circuit at the top: if the
 	 * `cv_suppression_kill_switch` option is set to `'true'` (via WP-CLI for
