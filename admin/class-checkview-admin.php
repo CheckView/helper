@@ -602,9 +602,13 @@ class Checkview_Admin {
 		}
 
 		if ( is_plugin_active( 'elementor-pro/elementor-pro.php' ) ) {
-			Checkview_Admin_Logs::add( 'ip-logs', 'Loading Elementor Forms helper.' );
+			if ( defined( 'ELEMENTOR_PRO_VERSION' ) && version_compare( ELEMENTOR_PRO_VERSION, '4.2.0', '>=' ) ) {
+				Checkview_Admin_Logs::add( 'ip-logs', 'Loading Elementor Forms helper.' );
 
-			require_once CHECKVIEW_INC_DIR . 'formhelpers/class-checkview-elementor-helper.php';
+				require_once CHECKVIEW_INC_DIR . 'formhelpers/class-checkview-elementor-helper.php';
+			} else {
+				Checkview_Admin_Logs::add( 'ip-logs', 'Skipping Elementor Forms helper: Elementor Pro version ' . ( defined( 'ELEMENTOR_PRO_VERSION' ) ? ELEMENTOR_PRO_VERSION : 'unknown' ) . ' is below minimum 4.2.0.' );
+			}
 		}
 	}
 
