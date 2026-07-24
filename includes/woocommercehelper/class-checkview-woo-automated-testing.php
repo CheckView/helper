@@ -158,6 +158,28 @@ class Checkview_Woo_Automated_Testing {
 				3
 			);
 
+			// Mailchimp for WooCommerce DOES expose a per-order suppression
+			// filter: `mailchimp_handle_or_queue()` gates EVERY Single_Order
+			// enqueue on `mailchimp_should_push_order` (bootstrap.php, present
+			// in 6.1 — verified against the wp.org 6.1 zip AND a live 6.1
+			// install; PR #223 concluded otherwise from a grep against the
+			// wrong plugin folder name, `mailchimp-woocommerce` instead of
+			// `mailchimp-for-woocommerce`). This single choke point covers the
+			// classic checkout, the Blocks/Store API checkout, REST/admin
+			// order saves, and the catch-up sync — including the
+			// Blocks-checkout enqueue that the init-time hook sweep in
+			// `checkview_mailchimp_killswitch` cannot reach (static callbacks
+			// registered on `woocommerce_blocks_loaded`; Freshdesk #24669
+			// follow-up). Registered always-on, like the webhook filter above,
+			// because the enqueue can also happen outside the test request;
+			// the callback engages only for stamped test orders whose
+			// `disable_*_<uuid>` option is still active.
+			$this->loader->add_filter(
+				'mailchimp_should_push_order',
+				$this,
+				'checkview_mailchimp_should_push_order'
+			);
+
 			// Hide CheckView test orders from the WooCommerce REST API so
 			// pull-based integrations (Shippo et al.) that poll
 			// `GET /wc/v3/orders` with store API keys never ingest them. The
@@ -667,28 +689,20 @@ class Checkview_Woo_Automated_Testing {
 				0
 			);
 
-			// Mailchimp kill-switch. PR #203 originally tried to gate Mailchimp
-			// via a `mailchimp_should_push_order` filter — but that filter
-			// does not exist in Mailchimp for WooCommerce 6.1 (source-grep
-			// confirmed). Replacement: when CV_TEST_ID is defined AND the
-			// SaaS has signalled suppression via `disable_actions=true` or
-			// `disable_webhooks=true`, filter Mailchimp's
-			// `mailchimp_is_configured()` to false. That guard sits at the
-			// top of ~16 Mailchimp handlers (order push, cart push, customer
-			// sync, AS-dequeued jobs, pixel emit). One filter kills them
-			// all, AS jobs queued before the filter armed re-check on
-			// dequeue, no remove_action needed.
-			//
-			// Also filter `mailchimp_allowed_to_use_cookie => false` (kills
-			// the browser-side tracking cookie path) and
-			// `mailchimp_carts_disabled => true` (the actual subscriber-leak
-			// path: every cart mutation queues the customer email to
-			// Mailchimp Audience before the order is even placed).
+			// Mailchimp kill-switch: strips MC's hook callbacks for the
+			// current test request (service instances AND the Blocks-checkout
+			// integration classes) so its order/cart/customer handlers never
+			// fire. Works alongside the always-on
+			// `mailchimp_should_push_order` gate registered above, which
+			// blocks any Single_Order enqueue the sweep can't reach.
 			//
 			// Hooked on `init @ 99` — runs AFTER
 			// `checkview_init_current_test` (`init @ 10`) defines CV_TEST_ID
-			// and writes the `disable_*_<uuid>` options, BEFORE any WC order
-			// event (`woocommerce_init`, `woocommerce_new_order`, etc).
+			// and writes the `disable_*_<uuid>` options, AFTER the Blocks
+			// integration registers its static callbacks
+			// (`woocommerce_blocks_loaded`, fires during WooCommerce's
+			// `plugins_loaded`), and BEFORE any WC order event
+			// (`woocommerce_init`, `woocommerce_new_order`, etc).
 			if ( class_exists( 'MailChimp_WooCommerce' ) ) {
 				$this->loader->add_action(
 					'init',
@@ -958,32 +972,28 @@ class Checkview_Woo_Automated_Testing {
 	}
 
 	/**
-	 * Mailchimp kill-switch — replaces dead H9 filter.
+	 * Mailchimp kill-switch — strips MC for WC's hook callbacks for the
+	 * current CheckView test request.
 	 *
-	 * PR #203 hooked a filter named `mailchimp_should_push_order` that does
-	 * not exist anywhere in Mailchimp for WooCommerce 6.1 (verified by
-	 * source grep on a live customer install). That method was a no-op.
+	 * History: PR #203 gated Mailchimp solely via the
+	 * `mailchimp_should_push_order` filter; PR #223 removed that filter after
+	 * concluding it doesn't exist in MC 6.1 (a grep against the wrong plugin
+	 * folder name — it exists, in `mailchimp_handle_or_queue()`) and replaced
+	 * it with this hook sweep. The sweep alone still leaked (Freshdesk #24669
+	 * follow-up): the WC Blocks / Store API checkout enqueues a
+	 * `Single_Order` push from
+	 * `Mailchimp_Woocommerce_Newsletter_Blocks_Integration::order_processed`,
+	 * a STATIC callback on `woocommerce_store_api_checkout_update_order_from_request`
+	 * — no `MailChimp_Service` instance involved, so the instance-only sweep
+	 * never matched it and every Blocks-checkout test order synced to
+	 * Mailchimp (~15s delayed Action Scheduler job). Current design: this
+	 * sweep now also removes the Blocks integration classes' callbacks
+	 * (instance and static), and the always-on
+	 * `checkview_mailchimp_should_push_order` filter backstops any enqueue
+	 * path the sweep can't see.
 	 *
-	 * Replacement strategy (rev 2.2.2): the order/cart/customer sync in MC for
-	 * WC routes entirely through the `MailChimp_Service` class, each handler
-	 * gated on `mailchimp_is_configured()` and/or `mailchimp_carts_disabled()`.
-	 * Both are PLAIN functions with NO `apply_filters()` (verified in
-	 * `bootstrap.php`), so filtering them is a no-op — and their config is read
-	 * via `Mailchimp_Woocommerce_DB_Helpers::get_option()` behind an object
-	 * cache, so filtering `option_mailchimp-woocommerce` is unreliable too.
-	 * (PR #203 / the earlier rev of this method filtered those two names and
-	 * silently did nothing; orders kept syncing — Freshdesk #24669.)
-	 *
-	 * The robust, storage-agnostic neutralize is therefore to REMOVE
-	 * `MailChimp_Service`'s hook callbacks for this request before any of its
-	 * order/cart handlers fire (see `checkview_remove_mailchimp_service_hooks`).
 	 * We additionally filter `mailchimp_allowed_to_use_cookie => false`, which
 	 * IS a real MC filter and blocks the browser-side tracking-cookie path.
-	 *
-	 * Timing: registered on `init @ 99` — after MC for WC registers on
-	 * `plugins_loaded @ 12`, and before any WooCommerce order event — so
-	 * `MailChimp_Service::handleOrderCreate @ woocommerce_new_order 200` never
-	 * fires and never enqueues a `Single_Order` push job.
 	 *
 	 * Option gate (mirrors `cv_is_suppressible_test_order`): only engage when
 	 * the SaaS sent `disable_actions=true` or `disable_webhooks=true` for this
@@ -1049,6 +1059,19 @@ class Checkview_Woo_Automated_Testing {
 		$mc_newsletter = class_exists( 'MailChimp_Newsletter' );
 		$mc_sms        = class_exists( 'MailChimp_Sms_Consent' );
 
+		// The WC Blocks / Store API checkout path registers STATIC callbacks
+		// (`array( 'Class', 'method' )`) on
+		// `woocommerce_store_api_checkout_update_order_from_request` /
+		// `woocommerce_store_api_checkout_order_processed` (blocks/newsletter.php,
+		// on `woocommerce_blocks_loaded`) plus an instance callback for cart
+		// capture — none of which are `MailChimp_Service` instances, so the
+		// instance sweep below misses them. Match these classes by name for
+		// both static and instance callbacks.
+		$mc_blocks_classes = array(
+			'Mailchimp_Woocommerce_Newsletter_Blocks_Integration',
+			'Mailchimp_Woocommerce_Sms_Blocks_Integration',
+		);
+
 		global $wp_filter;
 		$targets = array();
 
@@ -1060,11 +1083,25 @@ class Checkview_Woo_Automated_Testing {
 				foreach ( $callbacks as $cb ) {
 					$fn  = isset( $cb['function'] ) ? $cb['function'] : null;
 					$obj = ( is_array( $fn ) && isset( $fn[0] ) && is_object( $fn[0] ) ) ? $fn[0] : null;
-					if ( $obj && (
+
+					$is_target = $obj && (
 						$obj instanceof MailChimp_Service
 						|| ( $mc_newsletter && $obj instanceof MailChimp_Newsletter )
 						|| ( $mc_sms && $obj instanceof MailChimp_Sms_Consent )
-					) ) {
+						|| in_array( get_class( $obj ), $mc_blocks_classes, true )
+					);
+
+					// Static `array( 'Class', 'method' )` callbacks.
+					if ( ! $is_target && is_array( $fn ) && isset( $fn[0] ) && is_string( $fn[0] ) ) {
+						$is_target = in_array( ltrim( $fn[0], '\\' ), $mc_blocks_classes, true );
+					}
+
+					// Static `'Class::method'` string callbacks.
+					if ( ! $is_target && is_string( $fn ) && false !== strpos( $fn, '::' ) ) {
+						$is_target = in_array( ltrim( strtok( $fn, ':' ), '\\' ), $mc_blocks_classes, true );
+					}
+
+					if ( $is_target ) {
 						$targets[] = array( $hook_name, $fn, $priority );
 					}
 				}
@@ -1079,6 +1116,43 @@ class Checkview_Woo_Automated_Testing {
 			'ip-logs',
 			'Mailchimp kill-switch: removed ' . count( $targets ) . ' MailChimp_Service hook callback(s) for test [' . CV_TEST_ID . '].'
 		);
+	}
+
+	/**
+	 * Blocks Mailchimp for WooCommerce from enqueueing a `Single_Order` push
+	 * job for CheckView test orders.
+	 *
+	 * Hooked always-on to `mailchimp_should_push_order`, which
+	 * `mailchimp_handle_or_queue()` applies to EVERY `Single_Order` enqueue
+	 * regardless of origin (classic checkout, Blocks/Store API checkout,
+	 * REST/admin order save, catch-up sync). Returning `false` aborts the
+	 * enqueue; any other value falls through unchanged.
+	 *
+	 * Per-order gating via `cv_is_suppressible_test_order()` — same invariant
+	 * as the WooCommerce webhook filter: the order must carry a valid
+	 * `checkview_test_id` stamp AND its per-test `disable_*_<uuid>` option
+	 * must still be active. Real customer orders always fall through.
+	 *
+	 * @since 2.3.0
+	 *
+	 * @param mixed $order_id Order ID being considered for push, or false if
+	 *                        another filter already blocked it.
+	 * @return mixed False to block the push, the incoming value otherwise.
+	 */
+	public function checkview_mailchimp_should_push_order( $order_id ) {
+		if ( false === $order_id || ! function_exists( 'cv_is_suppressible_test_order' ) ) {
+			return $order_id;
+		}
+
+		if ( cv_is_suppressible_test_order( $order_id ) ) {
+			Checkview_Admin_Logs::add(
+				'ip-logs',
+				'Mailchimp kill-switch: blocked Single_Order enqueue for test order [' . (int) $order_id . '].'
+			);
+			return false;
+		}
+
+		return $order_id;
 	}
 
 	/**
