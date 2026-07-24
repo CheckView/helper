@@ -36,7 +36,7 @@ if ( ! defined( 'WPINC' ) ) {
  *
  * @link https://semver.org
  */
-define( 'CHECKVIEW_VERSION', '2.3.0-beta2' );
+define( 'CHECKVIEW_VERSION', '2.3.0-beta' );
 
 if ( ! defined( 'CHECKVIEW_BASE_DIR' ) ) {
 	define( 'CHECKVIEW_BASE_DIR', plugin_basename( __FILE__ ) );
