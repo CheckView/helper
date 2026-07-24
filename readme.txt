@@ -212,6 +212,8 @@ Support and test configuration are handled through the CheckView platform. Pleas
 * Remove unused test customer creation/management endpoints and related code.
 * Hide test product from Query Loop blocks (catalog_visibility only applies to WC queries).
 * Hide test product from Qi Addons for Elementor product widgets (Product Slider, Product List).
+* Invalidate OPcache on plugin activation and version change to prevent stale bytecode on hosts with validate_timestamps=0.
+* Refactor anonymous closures in main plugin file to named functions with docblocks.
 
 = 2.2.1 =
 * Remove unnecessary files and binaries.
@@ -628,6 +630,8 @@ Support and test configuration are handled through the CheckView platform. Pleas
 * Remove unused test customer creation/management endpoints and related code.
 * Hide test product from Query Loop blocks (catalog_visibility only applies to WC queries).
 * Hide test product from Qi Addons for Elementor product widgets (Product Slider, Product List).
+* Invalidate OPcache on plugin activation and version change to prevent stale bytecode on hosts with validate_timestamps=0.
+* Refactor anonymous closures in main plugin file to named functions with docblocks.
 
 = 2.2.1 =
 * Remove unnecessary files and binaries.
