@@ -36,7 +36,7 @@ if ( ! defined( 'WPINC' ) ) {
  *
  * @link https://semver.org
  */
-define( 'CHECKVIEW_VERSION', '2.3.0-beta' );
+define( 'CHECKVIEW_VERSION', '2.3.0-beta2' );
 
 if ( ! defined( 'CHECKVIEW_BASE_DIR' ) ) {
 	define( 'CHECKVIEW_BASE_DIR', plugin_basename( __FILE__ ) );
@@ -71,6 +71,35 @@ if ( ! defined( 'CHECKVIEW_EMAIL' ) ) {
 if ( ! defined( 'CHECKVIEW_URI' ) ) {
 	define( 'CHECKVIEW_URI', trailingslashit( plugin_dir_url( __FILE__ ) ) );
 }
+
+/**
+ * Invalidate OPcache recursively.
+ *
+ * @since 2.3.0
+ *
+ * @return void
+ */
+function checkview_invalidate_opcache( $reason = '' ) {
+	if ( ! function_exists( 'opcache_invalidate' ) ) {
+		return;
+	}
+
+	$dir   = plugin_dir_path( __FILE__ );
+	$files = new RecursiveIteratorIterator(
+		new RecursiveDirectoryIterator( $dir, FilesystemIterator::SKIP_DOTS )
+	);
+	$count = 0;
+
+	foreach ( $files as $file ) {
+		if ( 'php' === $file->getExtension() ) {
+			opcache_invalidate( $file->getRealPath(), true );
+			++$count;
+		}
+	}
+
+	error_log( sprintf( '[CheckView] OPcache invalidated %d PHP files in %s (reason: %s)', $count, $dir, $reason ?: 'unspecified' ) );
+}
+
 /**
  * Handles CheckView activation.
  */
@@ -81,6 +110,7 @@ function activate_checkview() {
 	require_once plugin_dir_path( __FILE__ ) . 'includes/checkview-functions.php';
 	require_once plugin_dir_path( __FILE__ ) . 'includes/class-checkview-activator.php';
 	Checkview_Activator::activate();
+	checkview_invalidate_opcache( 'plugin activation' );
 }
 register_activation_hook( __FILE__, 'activate_checkview' );
 
@@ -119,15 +149,12 @@ require plugin_dir_path( __FILE__ ) . 'includes/class-checkview.php';
  * self-heals on first request after deploy. Cost: one cached `get_option`
  * per request until seeded once, then no-ops cheaply forever.
  */
-add_action(
-	'init',
-	function () {
-		if ( false === get_option( 'cv_suppression_kill_switch' ) ) {
-			add_option( 'cv_suppression_kill_switch', 'false', '', 'yes' );
-		}
-	},
-	1
-);
+function checkview_seed_kill_switch() {
+	if ( false === get_option( 'cv_suppression_kill_switch' ) ) {
+		add_option( 'cv_suppression_kill_switch', 'false', '', 'yes' );
+	}
+}
+add_action( 'init', 'checkview_seed_kill_switch', 1 );
 
 /**
  * Initiates the main CheckView class.
@@ -138,18 +165,33 @@ function run_checkview() {
 	$plugin = CheckView::get_instance();
 	$plugin->run();
 }
-add_action( 'plugins_loaded', 'run_checkview', '10' );
+add_action( 'plugins_loaded', 'run_checkview', 10 );
+
+/**
+ * Invalidate OPcache when the plugin version changes.
+ *
+ * Catches auto-updates and manual file uploads where
+ * `register_activation_hook` does not fire.
+ *
+ * @since 2.3.0
+ */
+function checkview_maybe_invalidate_opcache() {
+	$stored = get_option( 'checkview_version' );
+	if ( $stored !== CHECKVIEW_VERSION ) {
+		checkview_invalidate_opcache( sprintf( 'version change %s -> %s', $stored ?: 'none', CHECKVIEW_VERSION ) );
+		update_option( 'checkview_version', CHECKVIEW_VERSION );
+	}
+}
+add_action( 'plugins_loaded', 'checkview_maybe_invalidate_opcache', 1 );
 
 /**
  * Declares compatibility with WooCommerce high-performance order storage.
  *
  * @link https://woocommerce.com/document/high-performance-order-storage/
  */
-add_action(
-	'before_woocommerce_init',
-	function () {
-		if ( class_exists( '\Automattic\WooCommerce\Utilities\FeaturesUtil' ) ) {
-			\Automattic\WooCommerce\Utilities\FeaturesUtil::declare_compatibility( 'custom_order_tables', __FILE__, true );
-		}
+function checkview_declare_hpos_compat() {
+	if ( class_exists( '\Automattic\WooCommerce\Utilities\FeaturesUtil' ) ) {
+		\Automattic\WooCommerce\Utilities\FeaturesUtil::declare_compatibility( 'custom_order_tables', __FILE__, true );
 	}
-);
+}
+add_action( 'before_woocommerce_init', 'checkview_declare_hpos_compat' );
