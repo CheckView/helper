@@ -7,7 +7,7 @@ Tested up to: 7.0
 Requires PHP: 7.4
 License: GPLv3
 License URI: http://www.gnu.org/licenses/gpl-3.0.html
-Stable tag: 2.3.0-beta
+Stable tag: 2.3.0
 
 [CheckView](https://checkview.io/) automates WordPress form and WooCommerce testing, monitoring key flows to catch failures early before they cost you leads or sales everyday.
 
@@ -206,12 +206,16 @@ Support and test configuration are handled through the CheckView platform. Pleas
 == Changelog ==
 
 = 2.3.0 =
+* Add Elementor Pro Forms support (forms list, test results, upload field file types, save-to-database action).
+* Suppress test orders from Shippo shipment sync and fix Mailchimp suppression on WC Blocks checkout.
 * Remove deprecated cv_running cookie check.
 * Fix bot detection for REST API form submissions (e.g. WS Form).
 * Persist test type via plugin-set cookie for deep navigations (Woo checkout, multi-step forms).
 * Remove unused test customer creation/management endpoints and related code.
+* Remove dead checkview_get_status AJAX endpoint.
 * Hide test product from Query Loop blocks (catalog_visibility only applies to WC queries).
 * Hide test product from Qi Addons for Elementor product widgets (Product Slider, Product List).
+* Fix CHECKVIEW_VERSION constant mismatch.
 * Invalidate OPcache on plugin activation and version change to prevent stale bytecode on hosts with validate_timestamps=0.
 * Refactor anonymous closures in main plugin file to named functions with docblocks.
 
@@ -624,12 +628,16 @@ Support and test configuration are handled through the CheckView platform. Pleas
 == Upgrade Notice ==
 
 = 2.3.0 =
+* Add Elementor Pro Forms support (forms list, test results, upload field file types, save-to-database action).
+* Suppress test orders from Shippo shipment sync and fix Mailchimp suppression on WC Blocks checkout.
 * Remove deprecated cv_running cookie check.
 * Fix bot detection for REST API form submissions (e.g. WS Form).
 * Persist test type via plugin-set cookie for deep navigations (Woo checkout, multi-step forms).
 * Remove unused test customer creation/management endpoints and related code.
+* Remove dead checkview_get_status AJAX endpoint.
 * Hide test product from Query Loop blocks (catalog_visibility only applies to WC queries).
 * Hide test product from Qi Addons for Elementor product widgets (Product Slider, Product List).
+* Fix CHECKVIEW_VERSION constant mismatch.
 * Invalidate OPcache on plugin activation and version change to prevent stale bytecode on hosts with validate_timestamps=0.
 * Refactor anonymous closures in main plugin file to named functions with docblocks.
 
