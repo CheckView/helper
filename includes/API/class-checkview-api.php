@@ -1352,23 +1352,62 @@ class CheckView_Api {
 						'ID'   => $row->id,
 						'Name' => $row->title,
 					);
+					// Verified against Ninja Forms 3.14.11.
+					//
+					// The block pattern was written as '{\"formID\":' inside a
+					// SINGLE-quoted PHP string, where \" is a literal backslash,
+					// so it searched post_content for `{\"formID\":N` and could
+					// never match a real block.
+					//
+					// Its `formID` attribute is registered as 'type' => 'integer'
+					// (build/form-block.js block.json), so it serialises UNQUOTED:
+					//
+					//   <!-- wp:ninja-forms/form {"formID":7} /-->
+					//   <!-- wp:ninja-forms/form {"formID":7,"formTitle":"..."} /-->
+					//
+					// Unlike Gravity Forms and Formidable — whose formId is a
+					// quoted string, and whose closing quote bounds the value —
+					// an unquoted integer has no terminator. Simply removing the
+					// stray backslashes would make form 7 match forms 71 and 712.
+					// The two patterns below bound the value with `}` (formID is
+					// the only attribute) or `,` (further attributes follow),
+					// which are the only two characters that can legally end a
+					// JSON integer here.
+					//
+					// `formTitle` is declared after `formID`, and Gutenberg
+					// serialises comment attributes in registered-schema order,
+					// so `{"formID":` is a stable prefix.
+					//
+					// Ninja Forms also registers `ninja_forms` (plural) as a
+					// shortcode alias, and the block's own `deprecated` entry
+					// saved `[ninja_forms id=N]` — so that spelling exists in
+					// real post content on sites that used the older block and
+					// was never matched.
 					// WPDBPREPARE.
 					$form_pages = $wpdb->get_results(
 						$wpdb->prepare(
-							"SELECT * FROM {$wpdb->prefix}posts 
-						WHERE 1=1 
+							"SELECT * FROM {$wpdb->prefix}posts
+						WHERE 1=1
 						AND (
-							post_content LIKE %s 
-							OR post_content LIKE %s 
-							OR post_content LIKE %s 
+							post_content LIKE %s
 							OR post_content LIKE %s
-						) 
-						AND post_status = 'publish' 
+							OR post_content LIKE %s
+							OR post_content LIKE %s
+							OR post_content LIKE %s
+							OR post_content LIKE %s
+							OR post_content LIKE %s
+							OR post_content LIKE %s
+						)
+						AND post_status = 'publish'
 						AND post_type NOT IN ('kadence_wootemplate', 'kadence_element', 'revision')",
-							'%wp:ninja-forms/form {\"formID\":' . $row->id . '%',
+							'%wp:ninja-forms/form {"formID":' . $row->id . '}%',
+							'%wp:ninja-forms/form {"formID":' . $row->id . ',%',
 							'%[ninja_form id="' . $row->id . '"]%',
 							'%[ninja_form id=' . $row->id . ']%',
-							'%[ninja_form id=\'' . $row->id . '\']%'
+							"%[ninja_form id='" . $row->id . "']%",
+							'%[ninja_forms id="' . $row->id . '"]%',
+							'%[ninja_forms id=' . $row->id . ']%',
+							"%[ninja_forms id='" . $row->id . "']%"
 						)
 					);
 					if ( $form_pages ) {
