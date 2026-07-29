@@ -171,8 +171,8 @@ if ( ! class_exists( 'Checkview_Elementor_Helper' ) ) {
 				return $record;
 			}
 
-			$form_id = $record->get_form_settings( 'id' );
-			if ( empty( $form_id ) ) {
+			$element_id = $this->checkview_get_submission_element_id( $handler );
+			if ( null === $element_id ) {
 				return $record;
 			}
 
@@ -181,14 +181,46 @@ if ( ! class_exists( 'Checkview_Elementor_Helper' ) ) {
 				return $record;
 			}
 
-			$this->submission_watermarks[ (string) $form_id ] = (int) $wpdb->get_var(
+			$this->submission_watermarks[ $element_id ] = (int) $wpdb->get_var(
 				$wpdb->prepare(
 					'SELECT COALESCE(MAX(id), 0) FROM ' . $submissions_table . ' WHERE element_id = %s',
-					$form_id
+					$element_id
 				)
 			);
 
 			return $record;
+		}
+
+		/**
+		 * Resolves the value Elementor stores in `e_submissions.element_id`.
+		 *
+		 * Must come from `Ajax_Handler::get_current_form()['id']`, because that
+		 * is exactly what the `save-to-database` action writes to the column.
+		 * `$record->get_form_settings( 'id' )` is NOT equivalent: Ajax_Handler
+		 * assigns `$form['settings']['id'] = $form_id` from the posted id, but
+		 * when the form lives inside a global template it first reassigns
+		 * `$form = $template->get_elements_data()[0]`, leaving `$form['id']`
+		 * pointing at the template's element while `settings['id']` keeps the
+		 * posted one. Querying by the settings value silently matches nothing
+		 * for those forms.
+		 *
+		 * `current_form` is populated before `record/actions_before` fires, so
+		 * this resolves identically in both the capture and cleanup callbacks.
+		 *
+		 * @param \ElementorPro\Modules\Forms\Classes\Ajax_Handler $handler Ajax handler.
+		 * @return string|null Element id, or null when it cannot be resolved.
+		 */
+		private function checkview_get_submission_element_id( $handler ) {
+			if ( ! $handler || ! method_exists( $handler, 'get_current_form' ) ) {
+				return null;
+			}
+
+			$form = $handler->get_current_form();
+			if ( ! is_array( $form ) || empty( $form['id'] ) ) {
+				return null;
+			}
+
+			return (string) $form['id'];
 		}
 
 		/**
@@ -357,11 +389,17 @@ if ( ! class_exists( 'Checkview_Elementor_Helper' ) ) {
 				true
 			);
 
+			// Query by the element id Elementor actually stored, not by the form
+			// settings id — see checkview_get_submission_element_id().
+			$element_id = $this->checkview_get_submission_element_id( $handler );
+
 			if ( ! $saves_submissions ) {
 				Checkview_Admin_Logs::add( 'ip-logs', 'Skipping Elementor submission cleanup for form [' . $form_id . ']: form does not have the save-to-database action, so this test created no submission row.' );
+			} elseif ( null === $element_id ) {
+				Checkview_Admin_Logs::add( 'ip-logs', 'Skipping Elementor submission cleanup for form [' . $form_id . ']: could not resolve the submission element id from the ajax handler.' );
 			} elseif ( $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $submissions_table ) ) === $submissions_table ) {
-				$watermark = isset( $this->submission_watermarks[ (string) $form_id ] )
-					? $this->submission_watermarks[ (string) $form_id ]
+				$watermark = isset( $this->submission_watermarks[ $element_id ] )
+					? $this->submission_watermarks[ $element_id ]
 					: null;
 
 				if ( null === $watermark ) {
@@ -375,7 +413,7 @@ if ( ! class_exists( 'Checkview_Elementor_Helper' ) ) {
 					$candidates = $wpdb->get_results(
 						$wpdb->prepare(
 							'SELECT id, user_ip FROM ' . $submissions_table . ' WHERE element_id = %s AND id > %d ORDER BY id ASC',
-							$form_id,
+							$element_id,
 							$watermark
 						)
 					);
