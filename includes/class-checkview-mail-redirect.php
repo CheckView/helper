@@ -57,7 +57,8 @@ if ( ! class_exists( 'Checkview_Mail_Redirect' ) ) {
 		 * - Default (REPLACE): replace `to` with TEST_EMAIL and strip Cc/Bcc.
 		 * - When `disable_email_receipt_<test_id>` is 'true' or the site-scoped
 		 *   allow_original_recipients window is active (APPEND):
-		 *   append TEST_EMAIL to the existing recipients rather than replacing.
+		 *   append TEST_EMAIL to the existing recipients rather than replacing,
+		 *   and inject Reply-To: TEST_EMAIL for MTA-variance defense.
 		 *
 		 * Two skip conditions avoid double-work when an earlier filter
 		 * (e.g. gform_pre_send_email at priority 99) already did the rewrite:
@@ -81,6 +82,17 @@ if ( ! class_exists( 'Checkview_Mail_Redirect' ) ) {
 					&& cv_should_allow_original_recipients() );
 
 			if ( $append_mode ) {
+				// Injected before the recipient short-circuit below, because it is
+				// a separate concern: some form plugins build their headers with
+				// no filter in between (Ninja Forms assembles them in
+				// Actions/Email.php and hands them straight to wp_mail), so this
+				// backstop is the only place the MTA-variance defense can reach
+				// them. cv_inject_reply_to_header() dedups and preserves the input
+				// type, so helpers that already injected are left unchanged.
+				if ( function_exists( 'cv_inject_reply_to_header' ) ) {
+					$atts['headers'] = cv_inject_reply_to_header( $atts['headers'] ?? '' );
+				}
+
 				if ( $this->contains_test_email( $atts['to'] ) ) {
 					return $atts;
 				}

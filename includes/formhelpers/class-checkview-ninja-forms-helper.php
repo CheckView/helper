@@ -123,30 +123,24 @@ if ( ! class_exists( 'Checkview_Ninja_Forms_Helper' ) ) {
 		 * @return bool
 		 */
 		public function checkview_inject_email( $sent, $action_settings, $message, $headers, $attachments ) {
-			// New: append-mode branch — let Ninja Forms' own pipeline send ONE
-			// email with merged recipients (real + TEST_EMAIL) instead of the
-			// existing direct wp_mail() to TEST_EMAIL only. This avoids the
-			// double-send risk that the existing code structure has.
-			//
-			// We modify $action_settings['email_to'] in place (string,
-			// comma-separated per Ninja Forms data shape) and inject Reply-To
-			// into headers, then return the pass-through $sent value so NF
-			// continues its own send path.
+			// Append-mode branch — let Ninja Forms' own pipeline send ONE email
+			// with merged recipients (real + TEST_EMAIL) instead of the direct
+			// wp_mail() to TEST_EMAIL only that replace-mode does below. This
+			// avoids the double-send risk that the existing code structure has.
 			if ( cv_should_allow_original_recipients() ) {
-				$existing_to = isset( $action_settings['email_to'] ) ? $action_settings['email_to'] : '';
-				$action_settings['email_to'] = is_array( $existing_to )
-					? cv_append_test_email_array( $existing_to )
-					: cv_append_test_email_string( $existing_to );
+				// Nothing can be mutated at this hook. `ninja_forms_action_email_send`
+				// is a plain apply_filters(), so $action_settings arrives by value and
+				// any change is discarded; NF then sends with $action_settings['to']
+				// (Actions/Email.php), a key this callback is not even passed under
+				// that name. NF also exposes no filter between _get_headers() and
+				// wp_mail(), so neither recipients nor headers are reachable here.
+				//
+				// Both are handled by the wp_mail backstop (Checkview_Mail_Redirect),
+				// which appends TEST_EMAIL to the recipients and injects Reply-To for
+				// MTA-variance defense. Returning the pass-through $sent lets NF run
+				// its own send, so exactly one email goes out.
+				Checkview_Admin_Logs::add( 'ip-logs', 'Append-mode: NF send passed through to the wp_mail backstop.' );
 
-				// We don't have a way to influence headers here (NF builds them
-				// downstream after this filter), but Reply-To is best-effort —
-				// the To-header carries TEST_EMAIL via the recipient append, so
-				// Postmark will see it regardless.
-
-				Checkview_Admin_Logs::add( 'ip-logs', 'Append-mode: NF email_to = ' . wp_json_encode( $action_settings['email_to'] ) );
-
-				// Pass through $sent so NF's own pipeline runs (single email,
-				// merged recipients).
 				return $sent;
 			}
 
