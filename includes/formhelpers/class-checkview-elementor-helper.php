@@ -373,9 +373,13 @@ if ( ! class_exists( 'Checkview_Elementor_Helper' ) ) {
 				}
 			}
 
-			// Remove the just-saved submission from Elementor's tables.
+			// Remove the just-saved submission from Elementor's tables. All three
+			// are keyed to the submission: `e_submissions_actions_log` was
+			// previously left behind, orphaning one row per non-save action
+			// (e.g. the email action) on every test run.
 			$submissions_table = $wpdb->prefix . 'e_submissions';
 			$values_table      = $wpdb->prefix . 'e_submissions_values';
+			$actions_log_table = $wpdb->prefix . 'e_submissions_actions_log';
 
 			// Elementor only writes to `e_submissions` when the form's
 			// `save-to-database` action is enabled. When it is not, this test
@@ -426,16 +430,22 @@ if ( ! class_exists( 'Checkview_Elementor_Helper' ) ) {
 					if ( empty( $ids ) ) {
 						Checkview_Admin_Logs::add(
 							'ip-logs',
-							'Skipping Elementor submission cleanup for form [' . $form_id . ']: '
+							'Skipping Elementor submission cleanup for form [' . $form_id . '] (element_id [' . $element_id . ']): '
 							. count( is_array( $candidates ) ? $candidates : array() )
 							. ' row(s) newer than watermark [' . $watermark . '] and none could be attributed to this test.'
 						);
 					}
 
+					$has_actions_log = ! empty( $ids )
+						&& $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $actions_log_table ) ) === $actions_log_table;
+
 					foreach ( $ids as $submission_id ) {
+						if ( $has_actions_log ) {
+							$wpdb->delete( $actions_log_table, array( 'submission_id' => $submission_id ), array( '%d' ) );
+						}
 						$wpdb->delete( $values_table, array( 'submission_id' => $submission_id ), array( '%d' ) );
 						$wpdb->delete( $submissions_table, array( 'id' => $submission_id ), array( '%d' ) );
-						Checkview_Admin_Logs::add( 'ip-logs', 'Deleted Elementor submission [' . $submission_id . '] from ' . $submissions_table . '.' );
+						Checkview_Admin_Logs::add( 'ip-logs', 'Deleted Elementor submission [' . $submission_id . '] (element_id [' . $element_id . ']) from ' . $submissions_table . '.' );
 					}
 				}
 			}
