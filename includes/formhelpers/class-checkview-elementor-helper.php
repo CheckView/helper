@@ -35,12 +35,17 @@ if ( ! class_exists( 'Checkview_Elementor_Helper' ) ) {
 		public $loader;
 
 		/**
-		 * Highest `e_submissions.id` for this form immediately before Elementor
-		 * ran its submit actions, keyed by form (element) id.
+		 * Highest `e_submissions.id` seen immediately before Elementor ran its
+		 * submit actions, keyed by the submission element id.
 		 *
-		 * Used to bound submission cleanup to rows this test created. `null`
-		 * for a form means no watermark was captured, in which case cleanup
-		 * refuses to delete anything rather than guessing.
+		 * The key is the value from `checkview_get_submission_element_id()`,
+		 * i.e. what Elementor writes to `e_submissions.element_id` — not
+		 * `$record->get_form_settings( 'id' )`, which differs for forms inside
+		 * a global template.
+		 *
+		 * Used to bound submission cleanup to rows this test created. A missing
+		 * key means no watermark was captured for that element, in which case
+		 * cleanup refuses to delete anything rather than guessing.
 		 *
 		 * @var array<string,int>
 		 */
