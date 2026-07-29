@@ -1967,7 +1967,14 @@ if ( ! function_exists( 'cv_inject_reply_to_header' ) ) {
 			// Extract addresses already in this Reply-To and check via the
 			// shared parser to avoid substring false positives.
 			$value = trim( substr( $sanitized, strpos( $sanitized, ':' ) + 1 ) );
-			if ( ! cv_recipients_contain_test_email( $value ) ) {
+
+			if ( '' === $value ) {
+				// Valueless Reply-To. Elementor Pro emits a bare `Reply-To:`
+				// unconditionally when the form maps no reply-to field, and
+				// appending to it would yield a malformed `Reply-To:, addr`.
+				// Replace the whole header rather than append to nothing.
+				$list[ $existing_index ] = 'Reply-To: ' . TEST_EMAIL;
+			} elseif ( ! cv_recipients_contain_test_email( $value ) ) {
 				$list[ $existing_index ] = rtrim( $sanitized, ", \t" ) . ', ' . TEST_EMAIL;
 			}
 		}
