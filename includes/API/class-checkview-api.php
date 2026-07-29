@@ -1444,19 +1444,53 @@ class CheckView_Api {
 						'Name' => $row->name,
 					);
 
+					// Mirrors Formidable's own reference detection —
+					// FrmFormsListHelper::get_base_search_strings_for_form()
+					// (verified against Formidable 6.33.1). A form can be placed
+					// five ways; CheckView previously matched only the first:
+					//
+					//   1. [formidable id=N]
+					//   2. [formidable id=N title=false]   (extra attributes)
+					//   3. [formidable id="N"]             (what Formidable's UI emits)
+					//   4. [formidable id='N']
+					//   5. <!-- wp:formidable/simple-form {"formId":"N"} -->
+					//
+					// Patterns 2-5 never matched, so a form placed with the block
+					// editor — or with the shortcode copied from Formidable's own
+					// UI — was listed with no `pages` entry and could not be
+					// tested. The double-quoted variant was written as
+					// '%[formidable id=\"' inside a SINGLE-quoted PHP string,
+					// where \" is a literal backslash, so it searched for
+					// `id=\"N\"` and could never match real post content.
+					//
+					// Anchoring the block pattern on `{` is safe: FrmSimpleBlocks
+					// Controller registers `formId` first as 'type' => 'string',
+					// and Gutenberg serializes comment attributes in registered-
+					// schema order.
+					//
+					// Each pattern self-disambiguates by ID (closing `]`, trailing
+					// space, or closing quote), so form 12 does not match content
+					// referencing form 123. Only the integer `frm_forms.id` is
+					// interpolated, so no esc_like() handling is needed.
 					// WPDBPREPARE.
 					$form_pages = $wpdb->get_results(
 						$wpdb->prepare(
 							"SELECT ID, post_type FROM {$wpdb->prefix}posts
-						WHERE 1=1 
+						WHERE 1=1
 						AND (
-							post_content LIKE %s 
+							post_content LIKE %s
 							OR post_content LIKE %s
-						) 
-						AND post_status = 'publish' 
+							OR post_content LIKE %s
+							OR post_content LIKE %s
+							OR post_content LIKE %s
+						)
+						AND post_status = 'publish'
 						AND post_type NOT IN ('kadence_wootemplate', 'kadence_element', 'revision')",
-							'%[formidable id=\"' . $row->id . '\"%',
-							'%[formidable id=' . $row->id . ']%'
+							'%[formidable id=' . $row->id . ']%',
+							'%[formidable id=' . $row->id . ' %',
+							'%[formidable id="' . $row->id . '"%',
+							"%[formidable id='" . $row->id . "'%",
+							'%wp:formidable/simple-form {"formId":"' . $row->id . '"%'
 						)
 					);
 					if ( $form_pages ) {
