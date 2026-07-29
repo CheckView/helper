@@ -4,6 +4,7 @@
 /.github
 /.cache
 /node_modules
+/wordpress
 /tests
 /grunt
 /vendor

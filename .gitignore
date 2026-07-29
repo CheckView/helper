@@ -1,6 +1,8 @@
 node_modules
 .vscode
 wp-content
+# WordPress core, installed by the roots/wordpress dev dependency.
+/wordpress
 public_html/*
 site/*
 web/*
