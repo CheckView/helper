@@ -212,6 +212,32 @@ class Checkview_Woo_Automated_Testing {
 				2
 			);
 
+			// Hide the test product from the unauthenticated Store API. The
+			// product's `product_visibility` terms are correct — the shop
+			// archive is clean and `?catalog_visibility=visible` excludes it —
+			// but Store API only builds the `product_visibility` tax_query when
+			// the request supplies a `catalog_visibility` param, so a request
+			// without one applies NO visibility filtering at all and returns
+			// hidden products. Verified in WC 10.9.4,
+			// StoreApi/Utilities/ProductQuery::prepare_objects_query().
+			//
+			// Registered always-on (NOT behind the is_bot() gate in
+			// checkview_test_mode) because a third-party Store API poll is not a
+			// bot request — same reasoning as the orders REST guard above.
+			//
+			// Via rest_pre_dispatch rather than a bare pre_get_posts: Store API
+			// exposes no query-args filter to hook (ProductQuery has one
+			// apply_filters, for pricing; the Products route has none), so
+			// pre_get_posts is the only seam — and it must be attached for this
+			// request only, never globally on customer front-end traffic.
+			$this->loader->add_filter(
+				'rest_pre_dispatch',
+				$this,
+				'checkview_maybe_hide_test_product_from_store_api',
+				10,
+				3
+			);
+
 			$this->loader->add_filter(
 				'woocommerce_email_recipient_new_order',
 				$this,
@@ -508,6 +534,87 @@ class Checkview_Woo_Automated_Testing {
 		$args['post__not_in'][] = (int) $product_id;
 
 		return $args;
+	}
+
+	/**
+	 * Attaches the Store API product exclusion to this request only.
+	 *
+	 * Runs on `rest_pre_dispatch` for every REST request, matches the Store API
+	 * product-listing routes, and only then registers the `pre_get_posts`
+	 * callback — so no global query filter is added to ordinary front-end
+	 * traffic. Returns `$result` untouched; this is a filter purely for its
+	 * position in the request lifecycle.
+	 *
+	 * Matches `/wc/store/vN/products` and `/wc/store/vN/products/collection-data`.
+	 * The version is matched loosely so a future Store API v2 is covered.
+	 * `collection-data` is included because it derives its price range and
+	 * counts from a real WP_Query whose generated SQL becomes a subquery
+	 * (ProductQueryFilters), so the test product otherwise drags the store's
+	 * price-filter minimum down to its own price. Single-product reads
+	 * (`/products/<id>`) are deliberately not matched — a direct fetch by ID is
+	 * not a listing leak, and hiding it would only turn a known ID into a 404.
+	 *
+	 * @since 2.3.1
+	 *
+	 * @param mixed            $result  Dispatch result, passed through unchanged.
+	 * @param \WP_REST_Server  $server  REST server instance (unused).
+	 * @param \WP_REST_Request $request The REST request being dispatched.
+	 * @return mixed The unmodified `$result`.
+	 */
+	public function checkview_maybe_hide_test_product_from_store_api( $result, $server, $request ) {
+		if ( ! is_object( $request ) || ! method_exists( $request, 'get_route' ) ) {
+			return $result;
+		}
+
+		if ( ! preg_match( '#^/wc/store/v\d+/products(/collection-data)?$#', (string) $request->get_route() ) ) {
+			return $result;
+		}
+
+		if ( empty( get_option( 'checkview_woo_product_id' ) ) ) {
+			return $result;
+		}
+
+		add_action( 'pre_get_posts', array( $this, 'checkview_exclude_test_product_from_store_api_query' ) );
+
+		return $result;
+	}
+
+	/**
+	 * Excludes the CheckView test product from a Store API product query.
+	 *
+	 * Only ever hooked for the duration of a matched Store API request by
+	 * `checkview_maybe_hide_test_product_from_store_api()`. Left registered for
+	 * the rest of that request on purpose: the collection-data endpoint runs
+	 * several WP_Query instances, and every one of them needs the exclusion.
+	 * Appending through `wp_parse_id_list()` plus `array_unique()` keeps it
+	 * idempotent across those repeat firings.
+	 *
+	 * @since 2.3.1
+	 *
+	 * @param \WP_Query $query The query being prepared.
+	 * @return void
+	 */
+	public function checkview_exclude_test_product_from_store_api_query( $query ) {
+		if ( ! is_object( $query ) || ! method_exists( $query, 'get' ) ) {
+			return;
+		}
+
+		if ( 'product' !== $query->get( 'post_type' ) ) {
+			return;
+		}
+
+		$product_id = get_option( 'checkview_woo_product_id' );
+		if ( empty( $product_id ) ) {
+			return;
+		}
+
+		// Append, never overwrite: Store API already maps its own `exclude`
+		// request param into post__not_in, and writes to the same key again for
+		// `on_sale=false`.
+		$excluded   = wp_parse_id_list( $query->get( 'post__not_in' ) );
+		$excluded[] = (int) $product_id;
+
+		$query->set( 'post__not_in', array_values( array_unique( $excluded ) ) );
 	}
 
 	/**
