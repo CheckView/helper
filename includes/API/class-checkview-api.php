@@ -1260,9 +1260,19 @@ class CheckView_Api {
 						AND post_status = 'publish' 
 						AND post_type NOT IN ('kadence_wootemplate', 'kadence_element', 'revision')",
 							'%wp:gravityforms/form {"formId":"' . $row->id . '"%',
+							// The unquoted shortcode pattern was unterminated, so
+							// form 12 also matched [gravityform id=123] and
+							// silently inherited that form's pages. The two slots
+							// below previously held byte-identical duplicates, so
+							// both terminators fit without changing the
+							// placeholder count: `]` ends the shortcode, a space
+							// means further attributes follow (title, description,
+							// ajax, tabindex, field_values, theme). Either way the
+							// ID is bounded. The quoted variant above is already
+							// bounded by its closing quote.
 							'%[gravityform id="' . $row->id . '"%',
-							'%[gravityform id=' . $row->id . '%',
-							'%[gravityform id=' . $row->id . '%'
+							'%[gravityform id=' . $row->id . ']%',
+							'%[gravityform id=' . $row->id . ' %'
 						)
 					);
 					if ( $form_pages ) {
@@ -1314,9 +1324,21 @@ class CheckView_Api {
 						AND post_status = 'publish' 
 						AND post_type NOT IN ('kadence_wootemplate', 'kadence_element', 'revision')",
 							'%wp:fluentfom/guten-block {"formId":"' . $row->id . '"%',
+							// The unquoted shortcode pattern was unterminated, so
+							// form 12 also matched [fluentform id=123] and
+							// silently inherited that form's pages. The two slots
+							// below previously held byte-identical duplicates, so
+							// both terminators fit without changing the
+							// placeholder count: `]` ends the shortcode, a space
+							// means further attributes follow (Fluent merges its
+							// defaults through shortcode_atts() with the
+							// `fluentform/shortcode_defaults` filter, so the
+							// accepted set is open-ended). Either way the ID is
+							// bounded. The quoted variant above is already bounded
+							// by its closing quote.
 							'%[fluentform id="' . $row->id . '"%',
-							'%[fluentform id=' . $row->id . '%',
-							'%[fluentform id=' . $row->id . '%'
+							'%[fluentform id=' . $row->id . ']%',
+							'%[fluentform id=' . $row->id . ' %'
 						)
 					);
 					foreach ( $form_pages as $form_page ) {
@@ -1571,9 +1593,21 @@ class CheckView_Api {
 						AND post_status = 'publish' 
 						AND post_type NOT IN ('kadence_wootemplate', 'kadence_element', 'revision')",
 							'%wp:wsf-block/form-add {"form_id":"' . $row->id . '"%',
+							// The unquoted shortcode pattern was unterminated, so
+							// form 12 also matched [ws_form id=123] and silently
+							// inherited that form's pages. The two slots below
+							// previously held byte-identical duplicates, so both
+							// terminators fit without changing the placeholder
+							// count: `]` ends the shortcode, a space means further
+							// attributes follow (element, element_id, class,
+							// published, preview, form_html and field_<id>
+							// population attrs — see
+							// WS_Form_Public::shortcode_ws_form). Either way the
+							// ID is bounded. The quoted variant above is already
+							// bounded by its closing quote.
 							'%[ws_form id="' . $row->id . '"%',
-							'%[ws_form id=' . $row->id . '%',
-							'%[ws_form id=' . $row->id . '%'
+							'%[ws_form id=' . $row->id . ']%',
+							'%[ws_form id=' . $row->id . ' %'
 						)
 					);
 					foreach ( $form_pages as $form_page ) {
