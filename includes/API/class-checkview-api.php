@@ -1511,10 +1511,34 @@ class CheckView_Api {
 							AND post_status = %s
 							AND post_type NOT IN (%s, %s, %s)
 						)",
-							'%wp:contact-form-7/contact-form-selector {"id":"' . $hash . '%',
+							// Verified against Contact Form 7 6.1.6.
+							//
+							// The block stores the numeric POST ID in `id`
+							// ('type' => 'integer' in includes/block-editor/block.json,
+							// set as `id: parseInt(t)` in index.js) and keeps the
+							// hash in a separate `hash` string attribute. The old
+							// pattern looked for the 7-char hash, quoted, in the
+							// `id` slot — `{"id":"<hash>` — which never matched a
+							// real block, so a CF7 form placed with the block
+							// editor was never attributed to a page.
+							//
+							// Matching on the integer post ID needs an explicit
+							// terminator, since an unquoted integer has none:
+							// `,` (the editor always writes `hash` next) or `}`
+							// (defensive, if `id` were ever the only attribute).
+							// Without it, post 12 would match post 123.
+							//
+							// The shortcode patterns intentionally do NOT close
+							// the quote: `$hash` is a 7-char prefix of the full
+							// hash that CF7 writes into
+							// `[contact-form-7 id="<full hash>" title="..."]`
+							// (includes/contact-form.php:1369), so prefix matching
+							// is required. Collision needs two forms sharing the
+							// same 7 hex chars (~1 in 268M per pair).
+							'%wp:contact-form-7/contact-form-selector {"id":' . $row->ID . ',%',
+							'%wp:contact-form-7/contact-form-selector {"id":' . $row->ID . '}%',
 							'%[contact-form-7 id="' . $hash . '%',
-							'%[contact-form-7 id=' . $hash . '%',
-							'%[contact-form-7 id=' . $hash . '%',
+							"%[contact-form-7 id='" . $hash . '%',
 							'publish',
 							'kadence_wootemplate',
 							'kadence_element',
@@ -1621,14 +1645,46 @@ class CheckView_Api {
 							"SELECT ID, post_type FROM {$wpdb->prefix}posts
 						WHERE 1=1
 						AND (
-							(post_content LIKE %s OR post_content LIKE %s OR post_content LIKE %s OR post_content LIKE %s)
+							(post_content LIKE %s OR post_content LIKE %s OR post_content LIKE %s OR post_content LIKE %s OR post_content LIKE %s)
 							AND post_status = %s
 							AND post_type NOT IN (%s, %s, %s)
 						)",
-							'%wp:forminator/forms {"id":"' . $row->ID . '%',
-							'%[forminator_form id="' . $row->ID . '%',
-							'%[forminator_form id=' . $row->ID . '%',
-							'%[forminator_form id=' . $row->ID . '%',
+							// Verified against Forminator 1.56.0.
+							//
+							// The block attribute is `module_id`, not `id`
+							// (registerBlockType("forminator/forms", { attributes:
+							// { module_id: { type: "string" }, alignment: ... } })
+							// in addons/pro/gutenberg/js/forms-block.min.js), so
+							// the old `{"id":"N` pattern never matched a real
+							// block and a Forminator form placed with the block
+							// editor was never attributed to a page.
+							//
+							// `module_id` is a string and is declared first, so
+							// `{"module_id":"N"` is a stable, quote-bounded prefix.
+							//
+							// The shortcode quote is now closed. Previously
+							// `[forminator_form id="N` was unterminated, so form
+							// 12 matched form 123 and silently inherited another
+							// form's pages — attributing wrong pages rather than
+							// missing them. Forminator's canonical shortcode is
+							// double-quoted ([forminator_form id="276"]); the
+							// single-quoted variant is accepted for hand-authored
+							// content and replaces a slot that previously held a
+							// duplicate of the unquoted pattern.
+							//
+							// The unquoted variant needs BOTH terminators. The
+							// shortcode takes further attributes (`is_preview`,
+							// `preview_data`, `is_block_editor` — see
+							// Forminator_Render_Form::render_shortcode), so
+							// requiring only `]` would silently stop matching
+							// [forminator_form id=N is_preview=true]. `]` ends the
+							// shortcode; a space means more attributes follow.
+							// Either way the ID is bounded, so 12 cannot match 123.
+							'%wp:forminator/forms {"module_id":"' . $row->ID . '"%',
+							'%[forminator_form id="' . $row->ID . '"%',
+							"%[forminator_form id='" . $row->ID . "'%",
+							'%[forminator_form id=' . $row->ID . ']%',
+							'%[forminator_form id=' . $row->ID . ' %',
 							'publish',
 							'kadence_wootemplate',
 							'kadence_element',
@@ -1687,13 +1743,48 @@ class CheckView_Api {
 							OR post_content LIKE %s
 							OR post_content LIKE %s
 							OR post_content LIKE %s
+							OR post_content LIKE %s
+							OR post_content LIKE %s
 						)
 						AND post_status = 'publish'
 						AND post_type NOT IN ('kadence_wootemplate', 'kadence_element', 'revision')",
+							// Verified against Everest Forms 3.5.2.
+							//
+							// The block is correct as-is: `formId` is
+							// 'type' => 'string' (dist/form-selector/block.json),
+							// so it serialises quoted and the closing quote bounds
+							// the value. The second, unquoted block pattern below
+							// can never match current output — the `"` that
+							// follows `{"formId":` stops it — so it is inert
+							// rather than a false-positive source. Kept because it
+							// may cover output from an older version whose
+							// serialisation could not be verified here; removing
+							// it would risk silently dropping legacy content.
+							//
+							// The shortcode patterns are the fix. The unquoted
+							// variant was unterminated, so form 12 matched
+							// [everest_form id=123] and inherited another form's
+							// pages; it now requires the closing `]`. The
+							// single-quoted variant is newly matched — Everest's
+							// own Divi module emits exactly that form
+							// (addons/DiviBuilder/EverestFormsModule.php:137:
+							// sprintf( "[everest_form id='%s']", $form_id )), so
+							// it exists in real content on Divi sites.
 							'%wp:everest-forms/form-selector {"formId":"' . $row->ID . '"%',
 							'%wp:everest-forms/form-selector {"formId":' . $row->ID . '%',
+							//
+							// The unquoted variant needs BOTH terminators. The
+							// shortcode takes further attributes (`type`, `size`,
+							// `title`, `description`, `header_title`, … — see
+							// EVF_Shortcode_Form's shortcode_atts), so requiring
+							// only `]` would silently stop matching
+							// [everest_form id=N title="..."]. `]` ends the
+							// shortcode; a space means more attributes follow.
+							// Either way the ID is bounded, so 12 cannot match 123.
 							'%[everest_form id="' . $row->ID . '"%',
-							'%[everest_form id=' . $row->ID . '%'
+							"%[everest_form id='" . $row->ID . "'%",
+							'%[everest_form id=' . $row->ID . ']%',
+							'%[everest_form id=' . $row->ID . ' %'
 						)
 					);
 					if ( $form_pages ) {
