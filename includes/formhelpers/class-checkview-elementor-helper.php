@@ -33,6 +33,19 @@ if ( ! class_exists( 'Checkview_Elementor_Helper' ) ) {
 		 * @var Checkview_Loader $loader Maintains and registers all hooks for the plugin.
 		 */
 		public $loader;
+
+		/**
+		 * Highest `e_submissions.id` for this form immediately before Elementor
+		 * ran its submit actions, keyed by form (element) id.
+		 *
+		 * Used to bound submission cleanup to rows this test created. `null`
+		 * for a form means no watermark was captured, in which case cleanup
+		 * refuses to delete anything rather than guessing.
+		 *
+		 * @var array<string,int>
+		 */
+		private $submission_watermarks = array();
+
 		/**
 		 * Constructor.
 		 *
@@ -40,6 +53,22 @@ if ( ! class_exists( 'Checkview_Elementor_Helper' ) ) {
 		 */
 		public function __construct() {
 			$this->loader = new Checkview_Loader();
+
+			// Record the newest pre-existing submission id BEFORE Elementor runs
+			// its submit actions, so cleanup can tell our row from the customer's.
+			// `elementor_pro/forms/record/actions_before` (Elementor Pro 3.3.0+,
+			// Ajax_Handler) is the last seam before the action loop that contains
+			// `save-to-database`. A `new_record` callback cannot serve here at any
+			// priority — that action fires *after* the whole action loop.
+			add_filter(
+				'elementor_pro/forms/record/actions_before',
+				array(
+					$this,
+					'checkview_capture_submission_watermark',
+				),
+				1,
+				2
+			);
 
 			add_action(
 				'elementor_pro/forms/new_record',
@@ -113,6 +142,98 @@ if ( ! class_exists( 'Checkview_Elementor_Helper' ) ) {
 		}
 
 		/**
+		 * Records the highest existing `e_submissions.id` for this form before
+		 * Elementor runs its submit actions.
+		 *
+		 * Runs on `elementor_pro/forms/record/actions_before`, the last hook
+		 * that fires before the action loop containing `save-to-database`.
+		 * Everything created at or below this id predates the test submission
+		 * and must never be deleted by cleanup.
+		 *
+		 * Registered as a filter and returns `$record` untouched — the hook is
+		 * a filter on the record, not an action.
+		 *
+		 * @param \ElementorPro\Modules\Forms\Classes\Form_Record  $record  Form record.
+		 * @param \ElementorPro\Modules\Forms\Classes\Ajax_Handler $handler Ajax handler.
+		 * @return \ElementorPro\Modules\Forms\Classes\Form_Record Unmodified record.
+		 */
+		public function checkview_capture_submission_watermark( $record, $handler ) {
+			global $wpdb;
+
+			if ( ! $record || ! get_checkview_test_id() ) {
+				return $record;
+			}
+
+			$form_id = $record->get_form_settings( 'id' );
+			if ( empty( $form_id ) ) {
+				return $record;
+			}
+
+			$submissions_table = $wpdb->prefix . 'e_submissions';
+			if ( $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $submissions_table ) ) !== $submissions_table ) {
+				return $record;
+			}
+
+			$this->submission_watermarks[ (string) $form_id ] = (int) $wpdb->get_var(
+				$wpdb->prepare(
+					'SELECT COALESCE(MAX(id), 0) FROM ' . $submissions_table . ' WHERE element_id = %s',
+					$form_id
+				)
+			);
+
+			return $record;
+		}
+
+		/**
+		 * Decides which post-watermark submissions belong to this test run.
+		 *
+		 * Attribution is by visitor IP: Elementor stores the submitter's IP in
+		 * `e_submissions.user_ip`, and a real customer will not be submitting
+		 * from CheckView's bot IP. When the form has IP collection disabled
+		 * (`user_ip` is stored empty), fall back to the unambiguous case of a
+		 * single new row.
+		 *
+		 * Returns an empty array when attribution is ambiguous — the caller
+		 * must then delete nothing. Leaving a test row behind is recoverable;
+		 * deleting a customer's submission is not.
+		 *
+		 * Pure function of its inputs so it can be tested without a database.
+		 *
+		 * @param array  $candidates Rows with `id` and `user_ip`, newer than the watermark.
+		 * @param string $visitor_ip Current visitor IP (CheckView's bot IP during a test).
+		 * @return int[] Submission ids safe to delete; empty when undecidable.
+		 */
+		public function checkview_select_own_submissions( array $candidates, $visitor_ip ) {
+			$visitor_ip = (string) $visitor_ip;
+			$matched    = array();
+
+			if ( '' !== $visitor_ip ) {
+				foreach ( $candidates as $row ) {
+					$row_ip = is_object( $row ) ? ( $row->user_ip ?? '' ) : ( $row['user_ip'] ?? '' );
+					if ( (string) $row_ip === $visitor_ip ) {
+						$row_id    = is_object( $row ) ? ( $row->id ?? 0 ) : ( $row['id'] ?? 0 );
+						$matched[] = (int) $row_id;
+					}
+				}
+			}
+
+			if ( ! empty( $matched ) ) {
+				return $matched;
+			}
+
+			// No IP match. A single new row is unambiguously the one this test
+			// just created (Elementor stores an empty user_ip when the form
+			// omits `remote_ip` from its submissions metadata).
+			if ( 1 === count( $candidates ) ) {
+				$only    = reset( $candidates );
+				$only_id = is_object( $only ) ? ( $only->id ?? 0 ) : ( $only['id'] ?? 0 );
+				return array( (int) $only_id );
+			}
+
+			return array();
+		}
+
+		/**
 		 * Clones the Elementor submission into CheckView tables, deletes the
 		 * original Elementor submission, and finishes the testing session.
 		 *
@@ -134,11 +255,16 @@ if ( ! class_exists( 'Checkview_Elementor_Helper' ) ) {
 				$checkview_test_id = $form_id . gmdate( 'Ymd' );
 			}
 
-			// `cv_entry.form_id` is numeric (mediumint). Elementor's form id can
-			// be a non-numeric string, which the column would silently store as
-			// 0. Surface it so the SaaS-side form-id strategy can be finalized.
+			// Elementor form ids are 7-character widget element ids, so they are
+			// non-numeric roughly 96% of the time, and `cv_entry.form_id` is a
+			// mediumint that silently coerces them to 0. This is inert today:
+			// results are retrieved by `uid`, never by `form_id` (see
+			// Checkview_Api::checkview_get_test_results). Logged as a note
+			// rather than a WARNING because it is the normal case, not a fault.
+			// If `form_id` is ever made meaningful for Elementor, the column has
+			// to become a varchar first.
 			if ( ! is_numeric( $form_id ) ) {
-				Checkview_Admin_Logs::add( 'ip-logs', 'WARNING: Elementor form id [' . $form_id . '] is non-numeric; cv_entry.form_id will store 0.' );
+				Checkview_Admin_Logs::add( 'ip-logs', 'Note: Elementor form id [' . $form_id . '] is non-numeric; cv_entry.form_id stores 0 (unused for Elementor lookups).' );
 			}
 
 			Checkview_Admin_Logs::add( 'ip-logs', 'Cloning Elementor submission for form [' . $form_id . ']...' );
@@ -196,21 +322,60 @@ if ( ! class_exists( 'Checkview_Elementor_Helper' ) ) {
 			$submissions_table = $wpdb->prefix . 'e_submissions';
 			$values_table      = $wpdb->prefix . 'e_submissions_values';
 
-			if ( $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $submissions_table ) ) === $submissions_table ) {
-				// TODO: This removes ANY submission from the form - high-velocity forms could have a submission between CheckView submission and here
-				$submission_id = $wpdb->get_var(
-					$wpdb->prepare(
-						'SELECT id FROM ' . $submissions_table . ' WHERE element_id = %s ORDER BY id DESC LIMIT 1',
-						$form_id
-					)
-				);
+			// Elementor only writes to `e_submissions` when the form's
+			// `save-to-database` action is enabled. When it is not, this test
+			// created no row at all, so anything newer than the watermark
+			// belongs to a real visitor and must be left alone. Forms that once
+			// saved submissions and no longer do still have history here, which
+			// is what made the previous unscoped delete destructive.
+			$saves_submissions = in_array(
+				'save-to-database',
+				(array) $record->get_form_settings( 'submit_actions' ),
+				true
+			);
 
-				if ( $submission_id ) {
-					$wpdb->delete( $values_table, array( 'submission_id' => $submission_id ), array( '%d' ) );
-					$wpdb->delete( $submissions_table, array( 'id' => $submission_id ), array( '%d' ) );
-					Checkview_Admin_Logs::add( 'ip-logs', 'Deleted Elementor submission [' . $submission_id . '] from ' . $submissions_table . '.' );
+			if ( ! $saves_submissions ) {
+				Checkview_Admin_Logs::add( 'ip-logs', 'Skipping Elementor submission cleanup for form [' . $form_id . ']: form does not have the save-to-database action, so this test created no submission row.' );
+			} elseif ( $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $submissions_table ) ) === $submissions_table ) {
+				$watermark = isset( $this->submission_watermarks[ (string) $form_id ] )
+					? $this->submission_watermarks[ (string) $form_id ]
+					: null;
+
+				if ( null === $watermark ) {
+					// No watermark means we cannot distinguish our submission from
+					// the customer's. Deleting the newest row here is what caused
+					// real submissions to be destroyed; leaving the test row behind
+					// is the strictly safer failure.
+					Checkview_Admin_Logs::add( 'ip-logs', 'Skipping Elementor submission cleanup for form [' . $form_id . ']: no pre-submission watermark was captured, so the test row cannot be identified safely.' );
 				} else {
-					Checkview_Admin_Logs::add( 'ip-logs', 'Could delete Elementor submission with submission ID: ' . wp_json_encode( $submission_id ) );
+					// Only rows created after the watermark can belong to this test.
+					$candidates = $wpdb->get_results(
+						$wpdb->prepare(
+							'SELECT id, user_ip FROM ' . $submissions_table . ' WHERE element_id = %s AND id > %d ORDER BY id ASC',
+							$form_id,
+							$watermark
+						)
+					);
+
+					$ids = $this->checkview_select_own_submissions(
+						is_array( $candidates ) ? $candidates : array(),
+						checkview_get_visitor_ip()
+					);
+
+					if ( empty( $ids ) ) {
+						Checkview_Admin_Logs::add(
+							'ip-logs',
+							'Skipping Elementor submission cleanup for form [' . $form_id . ']: '
+							. count( is_array( $candidates ) ? $candidates : array() )
+							. ' row(s) newer than watermark [' . $watermark . '] and none could be attributed to this test.'
+						);
+					}
+
+					foreach ( $ids as $submission_id ) {
+						$wpdb->delete( $values_table, array( 'submission_id' => $submission_id ), array( '%d' ) );
+						$wpdb->delete( $submissions_table, array( 'id' => $submission_id ), array( '%d' ) );
+						Checkview_Admin_Logs::add( 'ip-logs', 'Deleted Elementor submission [' . $submission_id . '] from ' . $submissions_table . '.' );
+					}
 				}
 			}
 
