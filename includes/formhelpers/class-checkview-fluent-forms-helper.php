@@ -59,7 +59,16 @@ if ( ! class_exists( 'Checkview_Fluent_Forms_Helper' ) ) {
 					99,
 					4,
 				);
+			}
 
+			// Registered in BOTH disable_email_receipt branches (but still only
+			// inside a test session): `checkview_remove_email_header` is the only
+			// place Reply-To injection happens for Fluent, and append-mode needs
+			// it even when `disable_email_receipt` is set. Gating registration on
+			// the disable flag silently dropped the MTA-variance defense for that
+			// combination. The callback is branch-aware and leaves headers
+			// untouched in the disable path.
+			if ( defined( 'TEST_EMAIL' ) ) {
 				add_filter(
 					'fluentform/email_template_header',
 					array( $this, 'checkview_remove_email_header' ),
@@ -279,6 +288,14 @@ if ( ! class_exists( 'Checkview_Fluent_Forms_Helper' ) ) {
 			if ( cv_should_allow_original_recipients() ) {
 				$headers = cv_inject_reply_to_header( $headers );
 				Checkview_Admin_Logs::add( 'ip-logs', 'Append-mode submission email headers (CC/BCC preserved): ' . wp_json_encode( $headers ) );
+				return $headers;
+			}
+
+			// Disable-receipt path: the email is already being redirected wholesale,
+			// so leave headers alone. Matches the pre-existing behavior from when
+			// this filter was only registered outside the disable branch.
+			$cv_test_id = get_checkview_test_id();
+			if ( $cv_test_id && 'true' == get_option( 'disable_email_receipt_' . $cv_test_id, false ) ) {
 				return $headers;
 			}
 
