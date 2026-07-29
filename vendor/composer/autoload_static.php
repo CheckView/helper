@@ -17,67 +17,67 @@ class ComposerStaticInitcdf9877b6b6f16e6fbfbe3d480a3785e
     );
 
     public static $prefixLengthsPsr4 = array (
-        'c' => 
+        'c' =>
         array (
             'checkview\\' => 10,
         ),
-        'W' => 
+        'W' =>
         array (
             'WP_Mock\\' => 8,
         ),
-        'R' => 
+        'R' =>
         array (
             'Roots\\Composer\\' => 15,
         ),
-        'M' => 
+        'M' =>
         array (
             'Mockery\\' => 8,
         ),
-        'F' => 
+        'F' =>
         array (
             'Firebase\\JWT\\' => 13,
         ),
-        'D' => 
+        'D' =>
         array (
             'Doctrine\\Instantiator\\' => 22,
             'DeepCopy\\' => 9,
         ),
-        'B' => 
+        'B' =>
         array (
             'Brain\\Monkey\\' => 13,
         ),
     );
 
     public static $prefixDirsPsr4 = array (
-        'checkview\\' => 
+        'checkview\\' =>
         array (
             0 => __DIR__ . '/../..' . '/src',
         ),
-        'WP_Mock\\' => 
+        'WP_Mock\\' =>
         array (
             0 => __DIR__ . '/..' . '/10up/wp_mock/php/WP_Mock',
         ),
-        'Roots\\Composer\\' => 
+        'Roots\\Composer\\' =>
         array (
             0 => __DIR__ . '/..' . '/roots/wordpress-core-installer/src',
         ),
-        'Mockery\\' => 
+        'Mockery\\' =>
         array (
             0 => __DIR__ . '/..' . '/mockery/mockery/library/Mockery',
         ),
-        'Firebase\\JWT\\' => 
+        'Firebase\\JWT\\' =>
         array (
             0 => __DIR__ . '/..' . '/firebase/php-jwt/src',
         ),
-        'Doctrine\\Instantiator\\' => 
+        'Doctrine\\Instantiator\\' =>
         array (
             0 => __DIR__ . '/..' . '/doctrine/instantiator/src/Doctrine/Instantiator',
         ),
-        'DeepCopy\\' => 
+        'DeepCopy\\' =>
         array (
             0 => __DIR__ . '/..' . '/myclabs/deep-copy/src/DeepCopy',
         ),
-        'Brain\\Monkey\\' => 
+        'Brain\\Monkey\\' =>
         array (
             0 => __DIR__ . '/..' . '/brain/monkey/src',
         ),
