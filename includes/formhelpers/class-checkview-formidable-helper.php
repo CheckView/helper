@@ -577,8 +577,35 @@ if ( ! class_exists( 'Checkview_Formidable_Helper' ) ) {
 		 * @param string $event  Event ('create' or 'update').
 		 */
 		function checkview_disable_form_actions( $skip, $action, $entry, $form, $event ) {
-			// Keys to keep.
-			$keys_to_keep = array( 'email', 'register', 'on_submit' );
+			// Action types that always run, regardless of `disable_actions`.
+			//
+			// Only the email action. It is what `assert_email_received` depends
+			// on, so a test cannot verify a notification without it.
+			//
+			// `register` was removed. It is the User Registration add-on's slug
+			// (FrmFormActionsController maps 'register' => 'user-registration'),
+			// so keeping it here meant every test on a registration form created
+			// a real WordPress user account — and did so even when the SaaS had
+			// explicitly asked for actions to be disabled, because this
+			// allowlist short-circuits the `disable_actions` check below. It now
+			// honours that flag: skipped when actions are disabled, still run
+			// when the customer opts integrations in.
+			//
+			// Formidable was the only helper keeping a user-creating action.
+			// Gravity Forms returns an empty feed array (dropping User
+			// Registration with everything else), WS Form keeps only
+			// database/message/email, and Fluent Forms keeps only its
+			// `notifications` feed. Note `wppost` (Create WordPress Post) was
+			// already absent from this list, so post creation was disabled while
+			// user creation was not.
+			//
+			// `on_submit` was removed as dead weight, not as a behaviour change.
+			// Formidable core skips that action earlier in the same loop
+			// (FrmFormActionsController: `|| FrmOnSubmitAction::$slug ===
+			// $action->post_excerpt`), so it never reaches this filter.
+			// Confirmation and redirect behaviour is applied at render time, not
+			// through the action trigger.
+			$keys_to_keep = array( 'email' );
 			if ( in_array( $action->post_excerpt, $keys_to_keep, true ) ) {
 				return false;
 			}
