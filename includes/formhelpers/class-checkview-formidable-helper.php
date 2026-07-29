@@ -111,6 +111,70 @@ if ( ! class_exists( 'Checkview_Formidable_Helper' ) ) {
 				'__return_false'
 			);
 
+			// Anti-spam bypass, precise layer.
+			//
+			// Formidable's spam pipeline (FrmEntryValidate::spam_check) has
+			// eight independent gates. Only the honeypot (above) and the
+			// captcha field type (frm_fields_to_validate) were handled. Each
+			// filter below is the documented switch for one gate, verified
+			// against Formidable 6.33.1:
+			//
+			//   frm_run_antispam    FrmAntiSpam::run_antispam() — the token
+			//                       check. Fails closed when the token is
+			//                       missing, which happens on a stale cached
+			//                       page (tokens are only valid +/- 2 days) or
+			//                       when the form is rendered without its JS.
+			//   frm_check_blacklist FrmSpamCheckWPDisallowedWords::is_enabled()
+			//                       — the only gate that is ALWAYS on. It runs
+			//                       wp_check_comment_disallowed_list() over the
+			//                       entry content, the submitting IP and the
+			//                       user agent whenever WordPress's own
+			//                       disallowed_keys option is non-empty, which
+			//                       security plugins routinely populate.
+			//   frm_check_denylist  FrmSpamCheckDenylist::is_enabled() — the
+			//                       Formidable denylist (words, emails, IPs).
+			//
+			// StopForumSpam and the WP-comment-spam check have no enable
+			// filter, and Formidable's Akismet path reads
+			// get_option( 'wordpress_api_key' ) directly rather than going
+			// through `akismet_get_api_key` above — so neither is reachable
+			// from here. Those are caught by the frm_validate_entry backstop
+			// instead.
+			add_filter( 'frm_run_antispam', '__return_false', PHP_INT_MAX );
+			add_filter( 'frm_check_blacklist', '__return_false', PHP_INT_MAX );
+			add_filter( 'frm_check_denylist', '__return_false', PHP_INT_MAX );
+
+			// Bypass hCaptcha. Formidable's own hCaptcha support is the
+			// `captcha` field type already stripped by
+			// remove_recaptcha_field_from_list(), but the standalone
+			// "hCaptcha for WordPress" plugin ships its own Formidable
+			// integration that operates outside that field type. Matches the
+			// GF, WPForms, CF7, Fluent, Everest and Elementor helpers.
+			add_filter( 'hcap_activate', '__return_false' );
+
+			// Anti-spam bypass, backstop layer.
+			//
+			// Single choke point: frm_validate_entry fires AFTER spam_check()
+			// and its return value replaces the error array
+			// (FrmEntryValidate::validate). Clearing $errors['spam'] here
+			// therefore neutralises every gate at once, including the three
+			// that have no filter of their own. Runs at PHP_INT_MAX so it lands
+			// after any third-party callback that might add a spam verdict.
+			//
+			// Both layers are kept deliberately. The filters above are precise
+			// but fail silently if Formidable renames one; this backstop still
+			// catches the resulting error. Same belt-and-braces shape as the GF
+			// helper's explicit reCAPTCHA unhook plus its marker fallback.
+			add_filter(
+				'frm_validate_entry',
+				array(
+					$this,
+					'checkview_bypass_spam_validation',
+				),
+				PHP_INT_MAX,
+				1
+			);
+
 			// Disbale form action.
 			add_filter(
 				'frm_custom_trigger_action',
@@ -549,6 +613,50 @@ if ( ! class_exists( 'Checkview_Formidable_Helper' ) ) {
 			}
 			return $fields;
 		}
+		/**
+		 * Clears Formidable's spam verdict during a CheckView test.
+		 *
+		 * `frm_validate_entry` is applied after `FrmEntryValidate::spam_check()`
+		 * and its return value replaces the error array, so this is the one
+		 * place that catches every spam gate — including StopForumSpam, the
+		 * WP-comment-spam check and Akismet, none of which expose a filter this
+		 * helper can switch off directly.
+		 *
+		 * Scoping is provable rather than best-effort. Formidable keys genuine
+		 * field failures as `field<id>` (and `field<id>-<name>` for sub-fields),
+		 * nonce/permission failures as `form`, and uses `message`, `trash` and
+		 * `json` elsewhere. `spam` is written only by `spam_check()`. Removing
+		 * that single key therefore cannot suppress a real validation error, so
+		 * a test still fails honestly when the form genuinely rejects the
+		 * submission — the same principle as
+		 * Checkview_Gforms_Helper::checkview_bypass_captcha_validation(), which
+		 * deliberately keeps non-anti-bot failures.
+		 *
+		 * Only ever registered inside a verified test session: the helper is
+		 * loaded from checkview_init_current_test(), which requires is_bot().
+		 *
+		 * @param array $errors Validation errors keyed by field or reason.
+		 * @return array Errors with any spam verdict removed.
+		 */
+		public function checkview_bypass_spam_validation( $errors ) {
+			if ( ! is_array( $errors ) || ! isset( $errors['spam'] ) ) {
+				return $errors;
+			}
+
+			$message = is_string( $errors['spam'] ) ? $errors['spam'] : '';
+			unset( $errors['spam'] );
+
+			// Log the remaining keys so a genuine failure alongside the spam
+			// verdict stays visible in support logs rather than looking like a
+			// clean pass.
+			Checkview_Admin_Logs::add(
+				'ip-logs',
+				'Cleared Formidable spam verdict during CheckView test. Message was [' . substr( $message, 0, 200 ) . ']. Remaining validation errors: [' . ( empty( $errors ) ? 'none' : implode( ', ', array_keys( $errors ) ) ) . '].'
+			);
+
+			return $errors;
+		}
+
 		/**
 		 * Removes ReCAPTCHA field from form fields and form validation.
 		 *
