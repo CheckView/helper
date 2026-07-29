@@ -160,7 +160,14 @@ if ( ! class_exists( 'Checkview_Elementor_Helper' ) ) {
 		public function checkview_capture_submission_watermark( $record, $handler ) {
 			global $wpdb;
 
-			if ( ! $record || ! get_checkview_test_id() ) {
+			// Deliberately NOT gated on get_checkview_test_id(): cleanup in
+			// checkview_clone_elementor_entry() runs whenever this helper is
+			// loaded and tolerates an empty test id, so gating capture on it
+			// would let the two diverge — cleanup would find no watermark and
+			// silently skip. The helper is only ever loaded inside a verified
+			// test request, so capturing unconditionally costs one indexed
+			// MAX() per submission.
+			if ( ! $record ) {
 				return $record;
 			}
 
@@ -192,6 +199,22 @@ if ( ! class_exists( 'Checkview_Elementor_Helper' ) ) {
 		 * from CheckView's bot IP. When the form has IP collection disabled
 		 * (`user_ip` is stored empty), fall back to the unambiguous case of a
 		 * single new row.
+		 *
+		 * The IP match is best-effort and often will not fire behind a proxy.
+		 * Elementor resolves the stored value with `Utils::get_client_ip()`,
+		 * whose header list omits `HTTP_CF_CONNECTING_IP` and which requires the
+		 * whole header to pass `filter_var()` — so a comma-list
+		 * `X-Forwarded-For` falls through to `REMOTE_ADDR`. Behind Cloudflare
+		 * that is the edge IP, while `checkview_get_visitor_ip()` resolves the
+		 * real bot IP from `CF-Connecting-IP`. The two then disagree and no
+		 * candidate matches, which degrades safely to the single-row rule (and
+		 * to deleting nothing when a race actually occurs).
+		 *
+		 * Widening the comparison to "whatever Elementor would have stored for
+		 * this request" would be actively unsafe: behind a proxy a concurrent
+		 * customer submission carries that same edge IP, so it would start
+		 * matching real submissions. Only an exact bot-IP match is trustworthy,
+		 * because nothing else can legitimately carry it.
 		 *
 		 * Returns an empty array when attribution is ambiguous — the caller
 		 * must then delete nothing. Leaving a test row behind is recoverable;
