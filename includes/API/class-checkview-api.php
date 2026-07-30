@@ -1744,22 +1744,27 @@ class CheckView_Api {
 							OR post_content LIKE %s
 							OR post_content LIKE %s
 							OR post_content LIKE %s
-							OR post_content LIKE %s
 						)
 						AND post_status = 'publish'
 						AND post_type NOT IN ('kadence_wootemplate', 'kadence_element', 'revision')",
 							// Verified against Everest Forms 3.5.2.
 							//
-							// The block is correct as-is: `formId` is
+							// The block pattern is correct as-is: `formId` is
 							// 'type' => 'string' (dist/form-selector/block.json),
 							// so it serialises quoted and the closing quote bounds
-							// the value. The second, unquoted block pattern below
-							// can never match current output — the `"` that
-							// follows `{"formId":` stops it — so it is inert
-							// rather than a false-positive source. Kept because it
-							// may cover output from an older version whose
-							// serialisation could not be verified here; removing
-							// it would risk silently dropping legacy content.
+							// the value.
+							//
+							// A second, UNQUOTED block pattern used to sit here. It
+							// is now removed. The reasoning for keeping it was
+							// self-contradictory: it was justified both as "inert,
+							// can never match current output" and as "may cover
+							// legacy unquoted output". Only one can be true, and if
+							// the legacy output existed the pattern was unbounded —
+							// form 12 would have matched {"formId":123}, the exact
+							// collision this PR fixes for the shortcode. Since
+							// formId is documented as a string with a '' default,
+							// the pattern was dead, so removing it loses nothing
+							// and drops the contradiction.
 							//
 							// The shortcode patterns are the fix. The unquoted
 							// variant was unterminated, so form 12 matched
@@ -1771,7 +1776,6 @@ class CheckView_Api {
 							// sprintf( "[everest_form id='%s']", $form_id )), so
 							// it exists in real content on Divi sites.
 							'%wp:everest-forms/form-selector {"formId":"' . $row->ID . '"%',
-							'%wp:everest-forms/form-selector {"formId":' . $row->ID . '%',
 							//
 							// The unquoted variant needs BOTH terminators. The
 							// shortcode takes further attributes (`type`, `size`,
