@@ -334,6 +334,9 @@ if ( ! function_exists( 'complete_checkview_test' ) ) {
 		cv_delete_option( 'disable_actions' );
 		cv_delete_option( 'disable_email_receipt' );
 		cv_delete_option( 'disable_webhooks' );
+		cv_delete_option( 'allow_original_recipients_' . $checkview_test_id );
+		cv_delete_option( 'allow_original_recipients_set_at_' . $checkview_test_id );
+		// Legacy unscoped keys, from before the flag was per-test.
 		cv_delete_option( 'allow_original_recipients' );
 		cv_delete_option( 'allow_original_recipients_set_at' );
 
@@ -1735,9 +1738,13 @@ if ( ! function_exists( 'cv_should_allow_original_recipients' ) ) {
 	/**
 	 * Determines whether append-mode is active for the current request.
 	 *
-	 * Reads the site-scoped `allow_original_recipients` option (set during
-	 * test-init when the SaaS sends `?allow_original_recipients=true`) and
-	 * checks the companion `_set_at` timestamp.
+	 * Reads the per-test `allow_original_recipients_<test_id>` option (set during
+	 * test-init when the SaaS sends `?allow_original_recipients=true`) and checks
+	 * the companion `_set_at_<test_id>` timestamp.
+	 *
+	 * Keyed by test id, not site-scoped: the flag decides whether a customer's
+	 * real recipients receive test email, so two concurrent tests must not be able
+	 * to read each other's setting.
 	 *
 	 * Returns false on stale (>45min), missing, or future-dated timestamps to
 	 * fail safe. The 45-minute window protects orphan flags BETWEEN tests
@@ -1748,12 +1755,19 @@ if ( ! function_exists( 'cv_should_allow_original_recipients' ) ) {
 	 * @return boolean True if append-mode should fire, false otherwise.
 	 */
 	function cv_should_allow_original_recipients() {
-		// Site-scoped option (multisite-safe by default).
-		$flag = get_option( 'allow_original_recipients', false );
+		// Keyed by test id so two concurrent tests cannot read each other's
+		// setting. Without a resolvable test id there is nothing to authorise
+		// append-mode against, so fail closed.
+		$cv_test_id = function_exists( 'get_checkview_test_id' ) ? get_checkview_test_id() : '';
+		if ( empty( $cv_test_id ) ) {
+			return false;
+		}
+
+		$flag = get_option( 'allow_original_recipients_' . $cv_test_id, false );
 		if ( ! $flag ) {
 			return false;
 		}
-		$set_at = (int) get_option( 'allow_original_recipients_set_at', 0 );
+		$set_at = (int) get_option( 'allow_original_recipients_set_at_' . $cv_test_id, 0 );
 		if ( $set_at <= 0 || $set_at > time() || ( time() - $set_at ) > 2700 ) {
 			return false;
 		}
