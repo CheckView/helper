@@ -212,6 +212,32 @@ class Checkview_Woo_Automated_Testing {
 				2
 			);
 
+			// Hide the test product from the unauthenticated Store API. The
+			// product's `product_visibility` terms are correct — the shop
+			// archive is clean and `?catalog_visibility=visible` excludes it —
+			// but Store API only builds the `product_visibility` tax_query when
+			// the request supplies a `catalog_visibility` param, so a request
+			// without one applies NO visibility filtering at all and returns
+			// hidden products. Verified in WC 10.9.4,
+			// StoreApi/Utilities/ProductQuery::prepare_objects_query().
+			//
+			// Registered always-on (NOT behind the is_bot() gate in
+			// checkview_test_mode) because a third-party Store API poll is not a
+			// bot request — same reasoning as the orders REST guard above.
+			//
+			// Via rest_pre_dispatch rather than a bare pre_get_posts: Store API
+			// exposes no query-args filter to hook (ProductQuery has one
+			// apply_filters, for pricing; the Products route has none), so
+			// pre_get_posts is the only seam — and it must be attached for this
+			// request only, never globally on customer front-end traffic.
+			$this->loader->add_filter(
+				'rest_pre_dispatch',
+				$this,
+				'checkview_maybe_hide_test_product_from_store_api',
+				10,
+				3
+			);
+
 			$this->loader->add_filter(
 				'woocommerce_email_recipient_new_order',
 				$this,
@@ -508,6 +534,122 @@ class Checkview_Woo_Automated_Testing {
 		$args['post__not_in'][] = (int) $product_id;
 
 		return $args;
+	}
+
+	/**
+	 * Attaches the Store API product exclusion to this request only.
+	 *
+	 * Runs on `rest_pre_dispatch` for every REST request, matches the Store API
+	 * product-listing routes, and only then registers the `pre_get_posts`
+	 * callback — so no global query filter is added to ordinary front-end
+	 * traffic. Returns `$result` untouched; this is a filter purely for its
+	 * position in the request lifecycle.
+	 *
+	 * Matches `/wc/store/vN/products` and `/wc/store/vN/products/collection-data`.
+	 * The version is matched loosely so a future Store API v2 is covered.
+	 * `collection-data` is included because it derives its price range and
+	 * counts from a real WP_Query whose generated SQL becomes a subquery
+	 * (ProductQueryFilters), so the test product otherwise drags the store's
+	 * price-filter minimum down to its own price. Single-product reads
+	 * (`/products/<id>`) are deliberately not matched — a direct fetch by ID is
+	 * not a listing leak, and hiding it would only turn a known ID into a 404.
+	 *
+	 * @since 2.3.1
+	 *
+	 * @param mixed            $result  Dispatch result, passed through unchanged.
+	 * @param \WP_REST_Server  $server  REST server instance (unused).
+	 * @param \WP_REST_Request $request The REST request being dispatched.
+	 * @return mixed The unmodified `$result`.
+	 */
+	public function checkview_maybe_hide_test_product_from_store_api( $result, $server, $request ) {
+		if ( ! is_object( $request ) || ! method_exists( $request, 'get_route' ) ) {
+			return $result;
+		}
+
+		// The version segment is OPTIONAL and the match is case-insensitive.
+		// Both matter:
+		//
+		//   - WooCommerce registers every Store API route TWICE, once under
+		//     `wc/store/v1` and once under the bare `wc/store` namespace
+		//     (StoreApi/RoutesController.php:99-100). `/wc/store/products` is
+		//     therefore a live, unauthenticated route serving the same handler,
+		//     and a version-requiring pattern misses it entirely.
+		//   - `WP_REST_Server::dispatch()` matches routes case-insensitively
+		//     (`preg_match( '@^' . $route . '$@i', $path )`) but never calls
+		//     `set_route()`, so `$request->get_route()` returns the caller's
+		//     path verbatim — `/wc/store/v1/Products` dispatches fine and would
+		//     slip past a case-sensitive pattern.
+		if ( ! preg_match( '#^/wc/store/(?:v\d+/)?products(?:/collection-data)?/?$#i', (string) $request->get_route() ) ) {
+			return $result;
+		}
+
+		if ( empty( get_option( 'checkview_woo_product_id' ) ) ) {
+			return $result;
+		}
+
+		add_filter( 'posts_where', array( $this, 'checkview_exclude_test_product_from_store_api_query' ), 10, 2 );
+
+		return $result;
+	}
+
+	/**
+	 * Excludes the CheckView test product from a Store API product query by
+	 * appending an explicit `ID != x` clause to the WHERE.
+	 *
+	 * Only ever hooked for the duration of a matched Store API request by
+	 * `checkview_maybe_hide_test_product_from_store_api()`. Left registered for
+	 * the rest of that request on purpose: the collection-data endpoint builds
+	 * several WP_Query instances and each one needs the exclusion.
+	 *
+	 * Why a WHERE clause and not `post__not_in`: `WP_Query::get_posts()`
+	 * resolves post-ID restrictions through an if/elseif chain —
+	 * `p` then `post__in` then `post__not_in` (class-wp-query.php:2131-2140).
+	 * Store API maps its own `include` request param straight into `post__in`
+	 * (StoreApi/Utilities/ProductQuery.php:32) and writes it again for
+	 * `on_sale=true` (:199), so ANY request carrying `include` would have made
+	 * `post__not_in` unreachable and the test product would have been returned.
+	 * An appended WHERE clause is additive and cannot be superseded that way.
+	 *
+	 * `post_type` is read as an array because Store API widens it to
+	 * `array( 'product', 'product_variation' )` whenever a `sku` or `slug`
+	 * param is present (ProductQuery.php:47-49) — the test product's slug is
+	 * deterministic, so a string comparison here would have let
+	 * `?slug=checkview-testing-product` through.
+	 *
+	 * The clause also propagates to `/products/collection-data`, which derives
+	 * its price range and counts from `$query->request` (ProductQueryFilters).
+	 *
+	 * @since 2.3.1
+	 *
+	 * @param string    $where WHERE clause of the query.
+	 * @param \WP_Query $query The query being prepared.
+	 * @return string Possibly modified WHERE clause.
+	 */
+	public function checkview_exclude_test_product_from_store_api_query( $where, $query = null ) {
+		global $wpdb;
+
+		if ( ! is_object( $query ) || ! method_exists( $query, 'get' ) ) {
+			return $where;
+		}
+
+		if ( ! in_array( 'product', (array) $query->get( 'post_type' ), true ) ) {
+			return $where;
+		}
+
+		$product_id = (int) get_option( 'checkview_woo_product_id' );
+		if ( $product_id <= 0 ) {
+			return $where;
+		}
+
+		$clause = $wpdb->prepare( " AND {$wpdb->posts}.ID != %d ", $product_id );
+
+		// Idempotent: collection-data runs this several times per request and
+		// `prepare()` output is deterministic for a given id.
+		if ( false !== strpos( $where, $clause ) ) {
+			return $where;
+		}
+
+		return $where . $clause;
 	}
 
 	/**
