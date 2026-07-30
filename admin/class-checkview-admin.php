@@ -553,22 +553,13 @@ class Checkview_Admin {
 			cv_update_option( 'disable_actions_' . $cv_test_id, 'true', false );
 		}
 
-		// Persist append-mode flag + companion `_set_at` timestamp, keyed BY TEST
-		// ID like disable_actions / disable_email_receipt / disable_webhooks.
-		//
-		// This was previously a single site-scoped option, which made concurrent
-		// tests interfere: test B's init deleted the flag while test A was still
-		// running, and A's flag would then enable append-mode for B. Since the
-		// flag decides whether a customer's real recipients receive test email,
-		// that is not a cosmetic scoping issue.
-		//
-		// The watchdog `cv_should_allow_original_recipients()` reads both at
-		// filter time. `_set_at` is set ONCE per test-init using time() (UTC) —
-		// do NOT re-set it from form helpers; that would extend the staleness
-		// window.
+		// `_set_at` is set ONCE per test-init — do NOT re-set it from form
+		// helpers, that would extend the staleness window the watchdog enforces.
+		// Not autoloaded: a timed-out test never reaches complete_checkview_test()
+		// and so orphans both keys permanently.
 		if ( 'true' === $allow_original_recipients && ! empty( $cv_test_id ) ) {
-			cv_update_option( 'allow_original_recipients_' . $cv_test_id, 'true', true );
-			cv_update_option( 'allow_original_recipients_set_at_' . $cv_test_id, (string) time(), true );
+			cv_update_option( 'allow_original_recipients_' . $cv_test_id, 'true', false );
+			cv_update_option( 'allow_original_recipients_set_at_' . $cv_test_id, (string) time(), false );
 		}
 
 		delete_transient( 'checkview_forms_test_transient' );
