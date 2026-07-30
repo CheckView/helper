@@ -1378,6 +1378,14 @@ class CheckView_Api {
 					// serialises comment attributes in registered-schema order,
 					// so `{"formID":` is a stable prefix.
 					//
+					// The quoted variants no longer require a closing `]`, and the
+					// bare variant carries BOTH terminators — `]` for the end of
+					// the shortcode and a space for further attributes. Ninja
+					// Forms ignores extra attributes but WordPress still renders
+					// them, so `[ninja_form id=12 title="x"]` is valid content
+					// that a `]`-only pattern silently missed. The ID stays
+					// bounded either way, so form 12 cannot match form 123.
+					//
 					// Ninja Forms also registers `ninja_forms` (plural) as a
 					// shortcode alias, and the block's own `deprecated` entry
 					// saved `[ninja_forms id=N]` — so that spelling exists in
@@ -1397,17 +1405,21 @@ class CheckView_Api {
 							OR post_content LIKE %s
 							OR post_content LIKE %s
 							OR post_content LIKE %s
+							OR post_content LIKE %s
+							OR post_content LIKE %s
 						)
 						AND post_status = 'publish'
 						AND post_type NOT IN ('kadence_wootemplate', 'kadence_element', 'revision')",
 							'%wp:ninja-forms/form {"formID":' . $row->id . '}%',
 							'%wp:ninja-forms/form {"formID":' . $row->id . ',%',
-							'%[ninja_form id="' . $row->id . '"]%',
+							'%[ninja_form id="' . $row->id . '"%',
 							'%[ninja_form id=' . $row->id . ']%',
-							"%[ninja_form id='" . $row->id . "']%",
-							'%[ninja_forms id="' . $row->id . '"]%',
+							'%[ninja_form id=' . $row->id . ' %',
+							"%[ninja_form id='" . $row->id . "'%",
+							'%[ninja_forms id="' . $row->id . '"%',
 							'%[ninja_forms id=' . $row->id . ']%',
-							"%[ninja_forms id='" . $row->id . "']%"
+							'%[ninja_forms id=' . $row->id . ' %',
+							"%[ninja_forms id='" . $row->id . "'%"
 						)
 					);
 					if ( $form_pages ) {
