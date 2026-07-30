@@ -345,23 +345,73 @@ if ( ! class_exists( 'Checkview_Forminator_Helper' ) ) {
 				// makes addon-contributed fields (and, later, payment data) appear.
 				$meta_data = is_array( $entry->meta_data ) ? $entry->meta_data : array();
 
+				// Raw submitted values for choice fields, NOT the labels.
+				//
+				// Everything in $meta_data has been through
+				// replace_values_to_labels() (front-action.php:1800), so a select
+				// stores its label. The SaaS compares against the DOM `value`
+				// attribute captured in the test step, and Forminator keeps value
+				// and label separate (library/fields/select.php:96-102), so sending
+				// labels compares two different strings.
+				//
+				// It would not fail cleanly either: the comparison lowercases,
+				// strips punctuation and falls back to substring containment, so
+				// value="one"/label="One" passes while
+				// value="opt_1"/label="Premium Plan" fails. Per-form, intermittent,
+				// and harder to debug than a consistent break.
+				//
+				// Forminator preserves the raw values for us: it stashes a
+				// slug => value map under `_forminator_choice_values` BEFORE the
+				// label swap (front-action.php:1779-1797), covering select-,
+				// radio- and checkbox-prefixed fields. Only <select> actually
+				// matters to the SaaS today — radio and checkbox emit check steps
+				// that carry no value — but the map covers all three, so prefer it
+				// for any field it knows about.
+				$raw_choice_values = array();
+				if ( isset( $meta_data['_forminator_choice_values']['value'] ) && is_array( $meta_data['_forminator_choice_values']['value'] ) ) {
+					$raw_choice_values = $meta_data['_forminator_choice_values']['value'];
+				}
+
 				foreach ( $meta_data as $meta_key => $meta ) {
 					// Forminator's own bookkeeping rows, not submitted fields.
 					if ( in_array( $meta_key, array( '_forminator_user_ip', '_forminator_choice_values' ), true ) ) {
 						continue;
 					}
 
-					// Composite and multi-value fields (name, address, checkbox,
-					// select) unserialize to arrays. cv_entry_meta.meta_value is
-					// longtext, so re-serialize rather than handing wpdb an array.
 					$field_value = is_array( $meta ) && array_key_exists( 'value', $meta ) ? $meta['value'] : '';
 
-					// Unconditional. load_meta() puts every value through
-					// maybe_unserialize() (class-form-entry-model.php:342), which
-					// can yield an OBJECT as well as an array — and handing either
-					// to wpdb is a PHP 8 fatal that would abort before the delete
-					// and the completion below.
-					$field_value = maybe_serialize( $field_value );
+					if ( array_key_exists( $meta_key, $raw_choice_values ) ) {
+						$field_value = $raw_choice_values[ $meta_key ];
+					}
+
+					// Flatten to a string. load_meta() already ran
+					// maybe_unserialize() (class-form-entry-model.php:342), so
+					// multi-value and composite fields arrive as arrays — but
+					// FormSubmission.field_value is typed `string` on the SaaS side,
+					// and handing wpdb an array or object is a PHP 8 fatal that
+					// would abort before the delete and the completion below.
+					//
+					// Joined rather than re-serialized so the SaaS substring match
+					// works on purpose instead of incidentally matching inside
+					// serialized output. array_walk_recursive keeps nested
+					// composites (name, address) safe from an
+					// "Array to string conversion" notice.
+					if ( is_array( $field_value ) ) {
+						$parts = array();
+						array_walk_recursive(
+							$field_value,
+							function ( $leaf ) use ( &$parts ) {
+								if ( is_scalar( $leaf ) || null === $leaf ) {
+									$parts[] = (string) $leaf;
+								}
+							}
+						);
+						$field_value = implode( ', ', $parts );
+					} elseif ( ! is_scalar( $field_value ) && null !== $field_value ) {
+						// Objects have no sensible joined form; serialize so the
+						// insert cannot fatal.
+						$field_value = maybe_serialize( $field_value );
+					}
 
 					$entry_metadata = array(
 						'uid'        => $checkview_test_id,
