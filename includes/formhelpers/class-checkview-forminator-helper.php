@@ -45,6 +45,24 @@ if ( ! class_exists( 'Checkview_Forminator_Helper' ) ) {
 		protected $pending_entry_id = 0;
 
 		/**
+		 * Whether Forminator got as far as persisting an entry this request.
+		 *
+		 * Set from the pre-save hook, which fires after validation. Used only to
+		 * tell "rejected before save" apart from "saved but our hook never ran"
+		 * in the shutdown diagnostic.
+		 *
+		 * @var bool
+		 */
+		protected $submission_reached_save = false;
+
+		/**
+		 * Whether the post-save handler ran this request.
+		 *
+		 * @var bool
+		 */
+		protected $handler_ran = false;
+
+		/**
 		 * Constructor.
 		 *
 		 * Initiates loader property, adds hooks.
@@ -132,6 +150,20 @@ if ( ! class_exists( 'Checkview_Forminator_Helper' ) ) {
 				),
 				90,
 				2
+			);
+
+			// Diagnostic only — turns a silent failure into a stated reason.
+			// `shutdown` fires even when a request die()s, because WordPress
+			// registers shutdown_action_hook() through register_shutdown_function()
+			// (wp-settings.php:146, load.php:1094), which covers the wp_ajax path
+			// Forminator submits through.
+			add_action(
+				'shutdown',
+				array(
+					$this,
+					'checkview_log_unfinished_submission',
+				),
+				0
 			);
 
 			add_filter(
@@ -279,9 +311,60 @@ if ( ! class_exists( 'Checkview_Forminator_Helper' ) ) {
 		 * @return void
 		 */
 		public function checkview_capture_entry_id( $entry, $form_id, $form_fields = array() ) {
+			// Reaching this hook at all means validation passed and the entry was
+			// persisted — see checkview_log_unfinished_submission().
+			$this->submission_reached_save = true;
+
 			if ( is_object( $entry ) && ! empty( $entry->entry_id ) ) {
 				$this->pending_entry_id = (int) $entry->entry_id;
 			}
+		}
+
+		/**
+		 * Says why a Forminator submission never reached CheckView.
+		 *
+		 * Two very different failures look identical from the SaaS side — a green
+		 * submit click, then submission-not-found and a hung assert_email_received:
+		 *
+		 *   1. Forminator rejected the submission during validation (honeypot,
+		 *      spam, captcha, or an ordinary required-field error). Nothing was
+		 *      saved, so there was never anything to clone.
+		 *   2. Forminator saved the entry but neither post-save action reached
+		 *      this helper — a hook name or priority problem on our side.
+		 *
+		 * Both are silent otherwise. The pre-save hook fires only after validation
+		 * passes, so whether it ran separates the two cleanly.
+		 *
+		 * @return void
+		 */
+		public function checkview_log_unfinished_submission() {
+			if ( $this->handler_ran ) {
+				return;
+			}
+
+			// Both the AJAX and non-AJAX paths carry the same action marker
+			// (abstract-class-front-action.php:150), so one check covers each.
+			// Read-only diagnostic: Forminator has already verified its own nonce
+			// by this point, and nothing here acts on the value.
+			// phpcs:ignore WordPress.Security.NonceVerification.Missing
+			$action = isset( $_POST['action'] ) ? sanitize_text_field( wp_unslash( $_POST['action'] ) ) : '';
+
+			if ( 0 !== strpos( $action, 'forminator_submit_form_' ) ) {
+				return;
+			}
+
+			if ( $this->submission_reached_save ) {
+				Checkview_Admin_Logs::add(
+					'ip-logs',
+					'Forminator saved an entry for this submission but neither forminator_form_after_save_entry nor forminator_form_after_handle_submit reached CheckView, so nothing was cloned and the test was not completed. This is a hook-side problem, NOT a spam or honeypot rejection.'
+				);
+				return;
+			}
+
+			Checkview_Admin_Logs::add(
+				'ip-logs',
+				'Forminator submission request ended before an entry was saved, so validation rejected it — honeypot, spam protection, captcha, or an ordinary required-field error. CheckView never saw a submission to clone. This is NOT a missing-hook problem.'
+			);
 		}
 
 		/**
@@ -305,6 +388,7 @@ if ( ! class_exists( 'Checkview_Forminator_Helper' ) ) {
 			// entry, and completed the test green with no field data.
 			$entry_id = (int) $this->pending_entry_id;
 			$this->pending_entry_id = 0;
+			$this->handler_ran      = true;
 
 			// Idempotence: mirrors the guard in
 			// Checkview_Fluent_Forms_Helper::checkview_clone_fluentform_entry().
