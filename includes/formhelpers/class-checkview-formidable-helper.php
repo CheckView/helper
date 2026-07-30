@@ -121,6 +121,23 @@ if ( ! class_exists( 'Checkview_Formidable_Helper' ) ) {
 				99,
 				5
 			);
+
+			// CleanTalk Spam Protect reaches Formidable on two paths:
+			// `frm_entries_before_create` at priority 999999 (cleantalk.php:598),
+			// and `ct_ajax_hook` at priority 1 on
+			// wp_ajax[_nopriv]_frm_entries_create (inc/cleantalk-ajax.php:78-79),
+			// which is the path a normal AJAX-submitted Formidable form takes.
+			// Both funnel into apbct_base_call(), which short-circuits on this
+			// sentinel and returns a default response whose `allow` is 1
+			// (inc/cleantalk-common.php:110-124, CleantalkResponse.php:154), so
+			// neither path blocks. One lever covers both, with no coupling to
+			// CleanTalk's hook list or priorities.
+			//
+			// Same two lines the GF and Forminator helpers use. CAVEAT: this is
+			// an INTERNAL global, not a public API, so re-verify on CleanTalk
+			// updates. Harmless when CleanTalk is not installed.
+			global $cleantalk_executed;
+			$cleantalk_executed = true;
 		}
 		/**
 		 * Sets our email for test submissions.
