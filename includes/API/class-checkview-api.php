@@ -1587,6 +1587,26 @@ class CheckView_Api {
 						);
 					}
 
+					// CF7 still registers `[contact-form]` alongside
+					// `[contact-form-7]` (load.php:136-137), for content written
+					// before CF7 3.0. It does NOT take the same id: the legacy
+					// branch reads the first positional attribute and resolves it
+					// through the `_old_cf7_unit_id` post meta
+					// (contact-form-functions.php:258-264, :24-39), so the number
+					// in `[contact-form 1]` is an old unit id, unrelated to the
+					// post ID or the hash. Matching post IDs here would attribute
+					// other forms' pages to this one.
+					//
+					// Only forms migrated from pre-3.0 CF7 carry that meta, so on
+					// a modern install this adds no patterns at all.
+					$old_unit_id = get_post_meta( $row->ID, '_old_cf7_unit_id', true );
+					if ( '' !== $old_unit_id && is_numeric( $old_unit_id ) ) {
+						$old_unit_id = absint( $old_unit_id );
+						// Bounded, or form 1 also matches `[contact-form 12]`.
+						$cf7_patterns[] = '%[contact-form ' . $old_unit_id . ']%';
+						$cf7_patterns[] = '%[contact-form ' . $old_unit_id . ' %';
+					}
+
 					// Placeholder list is generated from the pattern count, not
 					// from any user-supplied value, so the interpolation below is
 					// a fixed repetition of `post_content LIKE %s`. Every actual
