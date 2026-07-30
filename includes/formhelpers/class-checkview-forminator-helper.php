@@ -64,14 +64,35 @@ if ( ! class_exists( 'Checkview_Forminator_Helper' ) ) {
 				1
 			);
 
+			// Post-save action, not the pre-save one.
+			//
+			// `forminator_form_after_save_entry` fires in save_entry() at
+			// abstract-class-front-action.php:528, i.e. AFTER handle_form()
+			// returns (:499) — so the entry is fully persisted, addon fields are
+			// attached and notifications have gone out — and immediately BEFORE
+			// wp_send_json_*, so the test is finished before the bot sees the
+			// response.
+			//
+			// The previously used `..._submit_before_set_fields` fires at
+			// front-action.php:1771, before addon fields attach (:1777) and before
+			// set_fields() persists (~:1815), which is why cloning there missed
+			// data and deleting there orphaned meta rows.
+			//
+			// The tag is built as 'forminator_' . module_slug . $status_suffix .
+			// '_after_save_entry' (:479-486), so the UNSUFFIXED name we hook here
+			// never fires for drafts or abandoned entries — they get
+			// `_draft` / `_abandoned` variants. Spam is NOT excluded that way,
+			// because $status_suffix is computed before handle_form() while
+			// self::$is_spam is only set during it, so the entry status is checked
+			// explicitly below.
 			add_action(
-				'forminator_custom_form_submit_before_set_fields',
+				'forminator_form_after_save_entry',
 				array(
 					$this,
 					'checkview_log_form_test_entry',
 				),
 				90,
-				3
+				2
 			);
 
 			add_filter(
@@ -203,74 +224,53 @@ if ( ! class_exists( 'Checkview_Forminator_Helper' ) ) {
 		 * @param array  $form_fields Form's fields.
 		 * @return void
 		 */
-		public function checkview_log_form_test_entry( $entry, $form_id, $form_fields = array() ) {
-			if ( ! is_object( $entry ) || empty( $entry->entry_id ) ) {
-				Checkview_Admin_Logs::add( 'ip-logs', 'Forminator submission hook fired without a usable entry; nothing to clone.' );
-				return;
-			}
+		public function checkview_log_form_test_entry( $form_id, $response = array() ) {
+			$form_id  = (int) $form_id;
+			$entry_id = is_array( $response ) && isset( $response['entry_id'] ) ? (int) $response['entry_id'] : 0;
 
-			$entry_id = (int) $entry->entry_id;
-			$form_id  = ! empty( $entry->form_id ) ? (int) $entry->form_id : (int) $form_id;
-
-			// Idempotence: this must not run twice for the same entry in one
-			// request. Mirrors the guard in
+			// Idempotence: mirrors the guard in
 			// Checkview_Fluent_Forms_Helper::checkview_clone_fluentform_entry().
-			static $scheduled = array();
+			static $processed = array();
 			$key              = $entry_id . '_' . $form_id;
-			if ( isset( $scheduled[ $key ] ) ) {
+			if ( isset( $processed[ $key ] ) ) {
 				return;
 			}
-			$scheduled[ $key ] = true;
+			$processed[ $key ] = true;
 
-			// Defer the clone to `shutdown` rather than doing it here.
-			//
-			// This action fires at front-action.php:1771, which is BEFORE
-			// `attach_addons_add_entry_fields()` (1777) and before
-			// `$entry->set_fields()` persists the entry (~1818). Cloning the
-			// in-flight `$form_fields` array here would therefore miss any
-			// addon-contributed fields, and deleting the entry here would leave
-			// `set_fields()` writing meta rows for a row that no longer exists —
-			// it gates only on the in-memory `! $this->entry_id`, so the insert
-			// would still run. There is no post-save action to hook instead:
-			// `set_fields()` fires none, and no `forminator_*after*save*entry`
-			// action exists anywhere in Forminator's library.
-			//
-			// By `shutdown` the entry is fully persisted, so we read it back
-			// through the model and get exactly what Forminator stored. Email
-			// ordering is unaffected: `process_mail` runs at
-			// front-action.php:1748, before both this hook and shutdown.
-			//
-			// `shutdown` is already used this way in
-			// Checkview_Woo_Automated_Testing::checkview_complete_test_deferred().
-			add_action(
-				'shutdown',
-				function () use ( $entry_id, $form_id ) {
-					$this->checkview_clone_entry_deferred( $entry_id, $form_id );
-				}
-			);
+			// No entry was persisted. Happens when the form has "Store
+			// submissions" disabled (prevent_store) and on leads forms, where
+			// $response['entry_id'] stays 0. There is nothing to clone or delete,
+			// but the notification WAS sent, so the test still has to be
+			// completed — otherwise it hangs to timeout.
+			if ( $entry_id <= 0 ) {
+				Checkview_Admin_Logs::add( 'ip-logs', 'Forminator form [' . $form_id . '] stored no entry (submission storage disabled or leads form); completing the test without cloning.' );
+				complete_checkview_test( get_checkview_test_id() );
+				return;
+			}
+
+			$this->checkview_clone_entry( $entry_id, $form_id );
 		}
 
 		/**
 		 * Clones the persisted Forminator entry, removes it, and finishes the
-		 * testing session. Runs on `shutdown` — see
-		 * checkview_log_form_test_entry() for why.
+		 * testing session.
 		 *
 		 * @param int $entry_id Forminator entry ID.
 		 * @param int $form_id  Forminator form ID.
 		 * @return void
 		 */
-		public function checkview_clone_entry_deferred( $entry_id, $form_id ) {
+		public function checkview_clone_entry( $entry_id, $form_id ) {
 			global $wpdb;
 
 			if ( ! class_exists( 'Forminator_Form_Entry_Model' ) ) {
-				Checkview_Admin_Logs::add( 'ip-logs', 'Forminator_Form_Entry_Model unavailable at shutdown; skipping clone of entry [' . $entry_id . '].' );
+				Checkview_Admin_Logs::add( 'ip-logs', 'Forminator_Form_Entry_Model unavailable; skipping clone of entry [' . $entry_id . '].' );
 				return;
 			}
 
 			$entry = new Forminator_Form_Entry_Model( $entry_id );
 
 			if ( empty( $entry->entry_id ) ) {
-				Checkview_Admin_Logs::add( 'ip-logs', 'Forminator entry [' . $entry_id . '] not found at shutdown; nothing to clone.' );
+				Checkview_Admin_Logs::add( 'ip-logs', 'Forminator entry [' . $entry_id . '] not found; nothing to clone.' );
 				return;
 			}
 
@@ -287,7 +287,18 @@ if ( ! class_exists( 'Checkview_Forminator_Helper' ) ) {
 			// so on a spam-flagged entry no email was sent and completing the
 			// test would strand assert_email_received with no explanation.
 			if ( 'active' !== $entry->status ) {
-				Checkview_Admin_Logs::add( 'ip-logs', 'Skipping Forminator entry [' . $entry_id . '] with status [' . $entry->status . ']; not a completed submission.' );
+				// Reachable for spam only: draft and abandoned entries fire
+				// suffixed action tags this helper does not hook.
+				//
+				// Still remove the row — it is our own test submission and would
+				// otherwise sit in the customer's entries as CheckView spam. But
+				// do NOT complete the test: Forminator skips the notification for
+				// a spam-flagged submission (front-action.php:1746), so completing
+				// would report a found submission for a test whose email never
+				// sent. Failing on the email assertion is the honest outcome.
+				Forminator_Form_Entry_Model::delete_by_entry( $entry_id );
+
+				Checkview_Admin_Logs::add( 'ip-logs', 'Forminator entry [' . $entry_id . '] has status [' . $entry->status . '] — no notification was sent, so the test is deliberately left to fail. Entry removed.' );
 				return;
 			}
 
@@ -335,7 +346,8 @@ if ( ! class_exists( 'Checkview_Forminator_Helper' ) ) {
 				$meta_data = is_array( $entry->meta_data ) ? $entry->meta_data : array();
 
 				foreach ( $meta_data as $meta_key => $meta ) {
-					if ( '_forminator_user_ip' === $meta_key ) {
+					// Forminator's own bookkeeping rows, not submitted fields.
+					if ( in_array( $meta_key, array( '_forminator_user_ip', '_forminator_choice_values' ), true ) ) {
 						continue;
 					}
 
@@ -343,7 +355,13 @@ if ( ! class_exists( 'Checkview_Forminator_Helper' ) ) {
 					// select) unserialize to arrays. cv_entry_meta.meta_value is
 					// longtext, so re-serialize rather than handing wpdb an array.
 					$field_value = is_array( $meta ) && array_key_exists( 'value', $meta ) ? $meta['value'] : '';
-					$field_value = is_array( $field_value ) ? maybe_serialize( $field_value ) : $field_value;
+
+					// Unconditional. load_meta() puts every value through
+					// maybe_unserialize() (class-form-entry-model.php:342), which
+					// can yield an OBJECT as well as an array — and handing either
+					// to wpdb is a PHP 8 fatal that would abort before the delete
+					// and the completion below.
+					$field_value = maybe_serialize( $field_value );
 
 					$entry_metadata = array(
 						'uid'        => $checkview_test_id,

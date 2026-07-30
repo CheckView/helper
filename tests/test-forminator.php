@@ -123,10 +123,23 @@ class Test_Checkview_Forminator_Helper extends WP_UnitTestCase {
 		$this->assertTrue( $this->instance->checkview_disable_form_actions( true ) );
 	}
 
-	public function test_log_form_test_entry_ignores_unusable_entry() {
-		// Must not fatal on a null or entry-less object.
-		$this->assertNull( $this->instance->checkview_log_form_test_entry( null, 7 ) );
-		$this->assertNull( $this->instance->checkview_log_form_test_entry( (object) array(), 7 ) );
+	public function test_log_form_test_entry_handles_missing_entry_id() {
+		// prevent_store forms and leads forms report entry_id 0. Must not fatal,
+		// and must still complete the test rather than hang.
+		$this->assertNull( $this->instance->checkview_log_form_test_entry( 7, array( 'entry_id' => 0 ) ) );
+	}
+
+	public function test_log_form_test_entry_handles_non_array_response() {
+		$this->assertNull( $this->instance->checkview_log_form_test_entry( 7, 'not-an-array' ) );
+	}
+
+	public function test_it_hooks_the_post_save_action_not_the_pre_save_one() {
+		// forminator_form_after_save_entry fires after handle_form() returns and
+		// before wp_send_json_*; the unsuffixed tag also excludes drafts and
+		// abandoned entries, which get _draft / _abandoned variants.
+		$callback = array( $this->instance, 'checkview_log_form_test_entry' );
+		$this->assertNotFalse( has_action( 'forminator_form_after_save_entry', $callback ) );
+		$this->assertFalse( has_action( 'forminator_custom_form_submit_before_set_fields', $callback ) );
 	}
 
 	public function test_bypass_captcha_method_is_gone() {
