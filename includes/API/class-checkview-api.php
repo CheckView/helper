@@ -1496,9 +1496,20 @@ class CheckView_Api {
 			$results = get_posts( $args );
 			if ( $results ) {
 				foreach ( $results as $row ) {
-					$hash                     = substr( get_post_meta( $row->ID, '_hash', true ), 0, absint( 7 ) );
+					$hash = substr( get_post_meta( $row->ID, '_hash', true ), 0, absint( 7 ) );
+
+					// Fall back to the post ID when `_hash` is missing. Without
+					// this, a hash-less form was reported to the SaaS with
+					// `ID => ''` — page discovery below now finds it, but the form
+					// itself was unidentifiable, so the guard alone left it
+					// half-broken.
+					//
+					// The post ID is a valid substitute rather than a placeholder:
+					// CF7 resolves the shortcode `id` by hash FIRST and falls back
+					// to the post ID (includes/contact-form-functions.php:248-252),
+					// so both identify the same form to CF7 itself.
 					$forms['CF7'][ $row->ID ] = array(
-						'ID'   => $hash,
+						'ID'   => '' !== $hash ? $hash : (string) $row->ID,
 						'Name' => $row->post_title,
 					);
 
