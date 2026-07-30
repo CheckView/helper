@@ -110,6 +110,40 @@ if ( ! class_exists( 'Checkview_Elementor_Helper' ) ) {
 				'hcap_activate',
 				'__return_false'
 			);
+
+			// WP Armour calls add_error() on the record rather than flagging the
+			// submission as spam, so the bypasses above never see it.
+			//
+			// On `init` at PHP_INT_MAX because WP Armour includes its
+			// integrations from an `init` callback at the default priority
+			// (wp-armour.php:17-24), the same priority this helper loads at.
+			add_action(
+				'init',
+				array( $this, 'checkview_unhook_wp_armour' ),
+				PHP_INT_MAX
+			);
+		}
+
+		/**
+		 * Removes WP Armour's Elementor Pro forms validation callback.
+		 *
+		 * Degrades to a logged no-op — nothing removed and no such function means
+		 * the plugin is absent; the function present but not removable means it
+		 * changed priority or was renamed, which is worth surfacing.
+		 *
+		 * @since 2.3.0
+		 *
+		 * @return void
+		 */
+		public function checkview_unhook_wp_armour() {
+			if ( remove_action( 'elementor_pro/forms/validation', 'wpa_elementor_extra_validation', 10 ) ) {
+				Checkview_Admin_Logs::add( 'ip-logs', 'Unhooked WP Armour from elementor_pro/forms/validation for this CheckView test.' );
+				return;
+			}
+
+			if ( function_exists( 'wpa_elementor_extra_validation' ) ) {
+				Checkview_Admin_Logs::add( 'ip-logs', 'WP Armour detected but its elementor_pro/forms/validation callback was not removable (priority changed or renamed?) — Elementor submissions may still be rejected as spam.' );
+			}
 		}
 
 		/**
