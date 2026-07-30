@@ -1496,53 +1496,122 @@ class CheckView_Api {
 			$results = get_posts( $args );
 			if ( $results ) {
 				foreach ( $results as $row ) {
-					$hash                     = substr( get_post_meta( $row->ID, '_hash', true ), 0, absint( 7 ) );
+					$hash = substr( get_post_meta( $row->ID, '_hash', true ), 0, absint( 7 ) );
+
+					// Fall back to the post ID when `_hash` is missing. Without
+					// this, a hash-less form was reported to the SaaS with
+					// `ID => ''` — page discovery below now finds it, but the form
+					// itself was unidentifiable, so the guard alone left it
+					// half-broken.
+					//
+					// The post ID is a valid substitute rather than a placeholder:
+					// CF7 resolves the shortcode `id` by hash FIRST and falls back
+					// to the post ID (includes/contact-form-functions.php:248-252),
+					// so both identify the same form to CF7 itself.
 					$forms['CF7'][ $row->ID ] = array(
-						'ID'   => $hash,
+						'ID'   => '' !== $hash ? $hash : (string) $row->ID,
 						'Name' => $row->post_title,
 					);
+
+					// Verified against Contact Form 7 6.1.6.
+					//
+					// The block stores the numeric POST ID in `id`
+					// ('type' => 'integer' in includes/block-editor/block.json,
+					// set as `id: parseInt(t)` in index.js) and keeps the hash in
+					// a separate `hash` string attribute. The old pattern looked
+					// for the 7-char hash, quoted, in the `id` slot —
+					// `{"id":"<hash>` — which never matched a real block, so a
+					// CF7 form placed with the block editor was never attributed
+					// to a page.
+					//
+					// Matching on the integer post ID needs an explicit
+					// terminator, since an unquoted integer has none: `,` (the
+					// editor always writes `hash` next) or `}` (defensive, if
+					// `id` were ever the only attribute). Without it, post 12
+					// would match post 123.
+					$cf7_patterns = array(
+						'%wp:contact-form-7/contact-form-selector {"id":' . $row->ID . ',%',
+						'%wp:contact-form-7/contact-form-selector {"id":' . $row->ID . '}%',
+					);
+
+					// CF7 resolves the shortcode `id` by hash FIRST and falls
+					// back to the post ID:
+					//
+					//   $contact_form = wpcf7_get_contact_form_by_hash( $id );
+					//   if ( ! $contact_form ) { $contact_form = wpcf7_contact_form( $id ); }
+					//
+					// (includes/contact-form-functions.php:248-252), so a numeric
+					// `[contact-form-7 id=123]` is valid, still renders, and is
+					// the spelling used by content predating CF7's hash ids. It
+					// was never matched before.
+					//
+					// Each is bounded — closing quote, `]`, or a space before
+					// further attributes — so post 12 cannot match post 123, and
+					// a numeric id cannot match a hash that merely begins with
+					// the same digits (a hash is far longer than the id, so the
+					// terminator never lines up).
+					$cf7_patterns[] = '%[contact-form-7 id="' . $row->ID . '"%';
+					$cf7_patterns[] = "%[contact-form-7 id='" . $row->ID . "'%";
+					$cf7_patterns[] = '%[contact-form-7 id=' . $row->ID . ']%';
+					$cf7_patterns[] = '%[contact-form-7 id=' . $row->ID . ' %';
+
+					// Hash-based shortcodes are only searched when a hash exists.
+					//
+					// `_hash` is written by add_post_meta() on save
+					// (includes/contact-form.php:1292), so a form created before
+					// CF7 introduced hash ids and never re-saved since — or one
+					// inserted by an import or migration — has none.
+					// get_post_meta() then returns '' and $hash is ''.
+					//
+					// Interpolating that produced `%[contact-form-7 id="%`, which
+					// matches EVERY CF7 shortcode on the site: the form claimed
+					// every page containing any CF7 form. That is the same
+					// wrong-attribution failure as an unbounded id, with a far
+					// wider blast radius, so the degenerate patterns are simply
+					// not emitted. Such a form is still discoverable through the
+					// block and numeric-id patterns above.
+					//
+					// The hash patterns deliberately do NOT close the quote:
+					// $hash is a 7-char prefix of the full hash CF7 writes into
+					// `[contact-form-7 id="<full hash>" title="..."]`
+					// (includes/contact-form.php:1369), so prefix matching is
+					// required. Collision needs two forms sharing the same 7 hex
+					// chars (~1 in 268M per pair).
+					if ( '' !== $hash ) {
+						$cf7_patterns[] = '%[contact-form-7 id="' . $hash . '%';
+						$cf7_patterns[] = "%[contact-form-7 id='" . $hash . '%';
+					} else {
+						Checkview_Admin_Logs::add(
+							'api-logs',
+							'CF7 form [' . $row->ID . '] has no _hash meta; skipping hash-based page discovery for it (block and numeric-id patterns still apply).'
+						);
+					}
+
+					// Placeholder list is generated from the pattern count, not
+					// from any user-supplied value, so the interpolation below is
+					// a fixed repetition of `post_content LIKE %s`. Every actual
+					// value is still bound through $wpdb->prepare().
+					// WPDBPREPARE.
+					$cf7_where = implode( ' OR ', array_fill( 0, count( $cf7_patterns ), 'post_content LIKE %s' ) );
 
 					$form_pages = $wpdb->get_results(
 						$wpdb->prepare(
 							"SELECT ID, post_type FROM {$wpdb->prefix}posts
 						WHERE 1=1
 						AND (
-							(post_content LIKE %s OR post_content LIKE %s OR post_content LIKE %s OR post_content LIKE %s)
+							( {$cf7_where} )
 							AND post_status = %s
 							AND post_type NOT IN (%s, %s, %s)
 						)",
-							// Verified against Contact Form 7 6.1.6.
-							//
-							// The block stores the numeric POST ID in `id`
-							// ('type' => 'integer' in includes/block-editor/block.json,
-							// set as `id: parseInt(t)` in index.js) and keeps the
-							// hash in a separate `hash` string attribute. The old
-							// pattern looked for the 7-char hash, quoted, in the
-							// `id` slot — `{"id":"<hash>` — which never matched a
-							// real block, so a CF7 form placed with the block
-							// editor was never attributed to a page.
-							//
-							// Matching on the integer post ID needs an explicit
-							// terminator, since an unquoted integer has none:
-							// `,` (the editor always writes `hash` next) or `}`
-							// (defensive, if `id` were ever the only attribute).
-							// Without it, post 12 would match post 123.
-							//
-							// The shortcode patterns intentionally do NOT close
-							// the quote: `$hash` is a 7-char prefix of the full
-							// hash that CF7 writes into
-							// `[contact-form-7 id="<full hash>" title="..."]`
-							// (includes/contact-form.php:1369), so prefix matching
-							// is required. Collision needs two forms sharing the
-							// same 7 hex chars (~1 in 268M per pair).
-							'%wp:contact-form-7/contact-form-selector {"id":' . $row->ID . ',%',
-							'%wp:contact-form-7/contact-form-selector {"id":' . $row->ID . '}%',
-							'%[contact-form-7 id="' . $hash . '%',
-							"%[contact-form-7 id='" . $hash . '%',
-							'publish',
-							'kadence_wootemplate',
-							'kadence_element',
-							'revision'
+							array_merge(
+								$cf7_patterns,
+								array(
+									'publish',
+									'kadence_wootemplate',
+									'kadence_element',
+									'revision',
+								)
+							)
 						)
 					);
 					if ( $form_pages ) {
