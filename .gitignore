@@ -10,3 +10,6 @@ CLAUDE.md
 *-har.json
 *.phar
 .phpunit.result.cache
+
+# Verification harness fixtures (downloaded, see tests/harness/fetch-fixtures.sh)
+tests/harness/fixtures/

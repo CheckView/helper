@@ -42,3 +42,5 @@ package.xml
 phpunit.xml*
 .phpunit.result.cache
 *.bak
+
+tests/harness/
