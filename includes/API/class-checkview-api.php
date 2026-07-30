@@ -1246,33 +1246,50 @@ class CheckView_Api {
 					foreach ( $addons as $addon ) {
 						$forms['GravityForms'][ $row->id ]['addons'][] = $addon->addon_slug;
 					}
+					// Gravity Forms registers BOTH `[gravityform]` and
+					// `[gravityforms]` to the same callback
+					// (gravityforms.php:252-253). The plural is the original
+					// spelling, so it is precisely the older content that carries
+					// it. The two tags do not overlap as LIKE patterns — after
+					// `[gravityform` the singular needs a space and the plural an
+					// `s` — so each spelling needs its own set.
+					//
+					// Each spelling gets three bounded ID forms. The unquoted one
+					// was unterminated, so form 12 also matched
+					// [gravityform id=123] and silently inherited its pages: `]`
+					// ends the shortcode, a space means further attributes follow
+					// (title, description, ajax, tabindex, field_values, theme).
+					// Quoted variants are bounded by their closing quote.
+					//
+					// Single quotes are included because WordPress's own
+					// shortcode parser accepts `id="7"`, `id='7'` and `id=7`
+					// identically (wp-includes/shortcodes.php:551), so a
+					// single-quoted embed is a working form that was undiscovered.
+					$gf_patterns = array(
+						'%wp:gravityforms/form {"formId":"' . $row->id . '"%',
+					);
+					foreach ( array( 'gravityform', 'gravityforms' ) as $gf_tag ) {
+						$gf_patterns[] = '%[' . $gf_tag . ' id="' . $row->id . '"%';
+						$gf_patterns[] = "%[" . $gf_tag . " id='" . $row->id . "'%";
+						$gf_patterns[] = '%[' . $gf_tag . ' id=' . $row->id . ']%';
+						$gf_patterns[] = '%[' . $gf_tag . ' id=' . $row->id . ' %';
+					}
+
+					// Placeholder list is generated from the pattern count, not
+					// from any user-supplied value, so the interpolation below is
+					// a fixed repetition of `post_content LIKE %s`. Every actual
+					// value is still bound through $wpdb->prepare().
 					// WPDBPREPARE.
+					$gf_where = implode( ' OR ', array_fill( 0, count( $gf_patterns ), 'post_content LIKE %s' ) );
+
 					$form_pages = $wpdb->get_results(
 						$wpdb->prepare(
 							"SELECT ID, post_type FROM {$wpdb->prefix}posts
-						WHERE 1=1 
-						AND (
-							post_content LIKE %s 
-							OR post_content LIKE %s 
-							OR post_content LIKE %s  
-							OR post_content LIKE %s
-						) 
-						AND post_status = 'publish' 
+						WHERE 1=1
+						AND ( {$gf_where} )
+						AND post_status = 'publish'
 						AND post_type NOT IN ('kadence_wootemplate', 'kadence_element', 'revision')",
-							'%wp:gravityforms/form {"formId":"' . $row->id . '"%',
-							// The unquoted shortcode pattern was unterminated, so
-							// form 12 also matched [gravityform id=123] and
-							// silently inherited that form's pages. The two slots
-							// below previously held byte-identical duplicates, so
-							// both terminators fit without changing the
-							// placeholder count: `]` ends the shortcode, a space
-							// means further attributes follow (title, description,
-							// ajax, tabindex, field_values, theme). Either way the
-							// ID is bounded. The quoted variant above is already
-							// bounded by its closing quote.
-							'%[gravityform id="' . $row->id . '"%',
-							'%[gravityform id=' . $row->id . ']%',
-							'%[gravityform id=' . $row->id . ' %'
+							$gf_patterns
 						)
 					);
 					if ( $form_pages ) {
