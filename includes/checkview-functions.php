@@ -329,14 +329,13 @@ if ( ! function_exists( 'complete_checkview_test' ) ) {
 		cv_delete_option( 'disable_actions_' . $checkview_test_id );
 		cv_delete_option( 'disable_email_receipt_' . $checkview_test_id );
 		cv_delete_option( 'disable_webhooks_' . $checkview_test_id );
+		cv_delete_option( 'allow_original_recipients_' . $checkview_test_id );
+		cv_delete_option( 'allow_original_recipients_set_at_' . $checkview_test_id );
 
 		// Legacy cleanup: remove global options from before per-test scoping.
 		cv_delete_option( 'disable_actions' );
 		cv_delete_option( 'disable_email_receipt' );
 		cv_delete_option( 'disable_webhooks' );
-		cv_delete_option( 'allow_original_recipients_' . $checkview_test_id );
-		cv_delete_option( 'allow_original_recipients_set_at_' . $checkview_test_id );
-		// Legacy unscoped keys, from before the flag was per-test.
 		cv_delete_option( 'allow_original_recipients' );
 		cv_delete_option( 'allow_original_recipients_set_at' );
 
