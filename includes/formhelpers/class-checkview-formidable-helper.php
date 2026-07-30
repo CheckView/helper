@@ -184,6 +184,26 @@ if ( ! class_exists( 'Checkview_Formidable_Helper' ) ) {
 		public function checkview_log_form_test_entry( $entry_id, $form_id, $args = array() ) {
 			global $wpdb;
 
+			$entry_id = (int) $entry_id;
+			$form_id  = (int) $form_id;
+
+			// Refuse a non-positive entry id before anything else touches the
+			// database. This is not defensive tidiness — the child-entry cleanup
+			// below queries `WHERE parent_item_id = %d`, and Formidable stores 0
+			// in that column for every TOP-LEVEL entry
+			// (FrmMigrate.php:234: `parent_item_id BIGINT(20) default 0`). So an
+			// entry_id of 0 would select the customer's entire entry table and
+			// then delete it.
+			//
+			// Formidable core cannot pass 0 here — the action fires with a real
+			// insert id — but the previous code was a harmless no-op in that case
+			// and the child cleanup made it destructive, so the invariant is now
+			// enforced rather than assumed.
+			if ( $entry_id <= 0 ) {
+				Checkview_Admin_Logs::add( 'ip-logs', 'Formidable submission hook fired with a non-positive entry id [' . $entry_id . ']; refusing to touch the database.' );
+				return;
+			}
+
 			// Child entries: `frm_after_create_entry` also fires for repeater
 			// and embedded-form child entries, passing compact( 'is_child' )
 			// (FrmEntry::after_entry_created_actions). Without this guard a form
