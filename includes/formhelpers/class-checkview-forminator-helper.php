@@ -233,34 +233,35 @@ if ( ! class_exists( 'Checkview_Forminator_Helper' ) ) {
 
 			// CleanTalk Spam Protect.
 			//
-			// The `forminator_spam_protection` => __return_false filter above
-			// does NOT neutralise CleanTalk. CleanTalk registers its check with
-			// add_action (Integrations.php:44-62), so on that filter its return
-			// value is discarded — it blocks by side effect via doBlock(), not by
-			// returning true. Worse, it also registers on
-			// wp_ajax[_nopriv]_forminator_submit_form_custom-forms at priority 1,
+			// `forminator_spam_protection` => __return_false does NOT stop
+			// CleanTalk: it registers with add_action (Integrations.php:44-62),
+			// so on a filter its return value is discarded, and it also sits at
+			// priority 1 on wp_ajax[_nopriv]_forminator_submit_form_custom-forms
 			// ahead of Forminator's own save_entry at 10
-			// (abstract-class-front-action.php:126-127), so it can terminate the
-			// submission before Forminator handles it at all.
+			// (abstract-class-front-action.php:126-127), where it terminates the
+			// request via doBlock() before Forminator ever handles it.
 			//
-			// The `$cleantalk_executed` sentinel the GF helper sets does not help
-			// either: in this newer integration path the global is only assigned
-			// (Integrations.php:179), never read as a skip condition, and
-			// CleanTalk's Forminator integration class exposes only
-			// getDataForChecking() and doBlock() — no skip hook.
+			// The `$cleantalk_executed` sentinel does work here, contrary to an
+			// earlier reading of this code. It is consulted one call deeper than
+			// the integration class: apbct_base_call() short-circuits on it and
+			// returns `array( 'ct_result' => new CleantalkResponse() )`
+			// (inc/cleantalk-common.php:110-124). That default response has
+			// `allow = 1` (CleantalkResponse.php:154), and checkSpam() only calls
+			// doBlock() when `allow == 0` (Integrations.php:190). So the check
+			// short-circuits to "allowed" on every Forminator hook at once, with
+			// no coupling to CleanTalk's hook list or class names.
 			//
-			// So the callbacks are removed explicitly, in the style of
-			// Checkview_Gforms_Helper::unhook_gf_recaptcha_addon(). Registered on
-			// `init` at a late priority because CleanTalk registers during
-			// `plugins_loaded`, so its callbacks exist by the time we run.
-			add_action(
-				'init',
-				array(
-					$this,
-					'checkview_unhook_cleantalk',
-				),
-				PHP_INT_MAX
-			);
+			// Same two lines the GF helper already uses. CAVEAT, as noted there:
+			// this is an INTERNAL global, not a public API, so re-verify on
+			// CleanTalk updates. Harmless when CleanTalk is not installed.
+			//
+			// Complementary, not redundant: checkview_init_current_test() already
+			// calls checkview_whitelist_api_ip() when CleanTalk is active
+			// (admin/class-checkview-admin.php:336-338), but that is a REMOTE
+			// allowlist call that early-returns without a configured service id
+			// and API key. This sentinel is local and unconditional.
+			global $cleantalk_executed;
+			$cleantalk_executed = true;
 
 			// Disbale form action.
 			add_filter(
@@ -634,89 +635,6 @@ if ( ! class_exists( 'Checkview_Forminator_Helper' ) ) {
 			Forminator_Form_Entry_Model::delete_by_entry( $entry_id );
 
 			complete_checkview_test( $checkview_test_id );
-		}
-
-		/**
-		 * Removes CleanTalk Spam Protect's spam check from Forminator's
-		 * submission path for the duration of a CheckView test.
-		 *
-		 * CleanTalk cannot be switched off through `forminator_spam_protection`:
-		 * it registers with `add_action`, so its return value is discarded, and it
-		 * blocks by calling `doBlock()` instead. It also sits at priority 1 on
-		 * `wp_ajax[_nopriv]_forminator_submit_form_custom-forms`, ahead of
-		 * Forminator's own handler. There is no accessible instance to pass to
-		 * `remove_action()` — CleanTalk constructs
-		 * `new \Cleantalk\Antispam\Integrations( … )` inside a `plugins_loaded`
-		 * closure — so the callback list is walked instead.
-		 *
-		 * Matching is deliberately narrow: the method must be `checkSpam` AND the
-		 * bound object's class must be in CleanTalk's namespace. That survives
-		 * CleanTalk moving or subclassing the integration class, without ever
-		 * matching an unrelated `checkSpam` from another plugin.
-		 *
-		 * Callbacks are collected before removal rather than removed mid-iteration.
-		 *
-		 * Degrades to a logged no-op: absent plugin, absent hooks, or a renamed
-		 * method all leave the request untouched and say so in the log.
-		 *
-		 * @return void
-		 */
-		public function checkview_unhook_cleantalk() {
-			global $wp_filter;
-
-			$hooks = array(
-				// Where CleanTalk actually intercepts (priority 1, before
-				// Forminator's save_entry at 10).
-				'wp_ajax_forminator_submit_form_custom-forms',
-				'wp_ajax_nopriv_forminator_submit_form_custom-forms',
-				// Registered because Forminator is flagged `ajax_and_post`.
-				'forminator_submit_form_custom-forms',
-				'forminator_spam_protection',
-			);
-
-			$targets = array();
-
-			foreach ( $hooks as $hook ) {
-				if ( empty( $wp_filter[ $hook ] ) || ! isset( $wp_filter[ $hook ]->callbacks ) ) {
-					continue;
-				}
-
-				foreach ( $wp_filter[ $hook ]->callbacks as $priority => $callbacks ) {
-					foreach ( $callbacks as $callback ) {
-						if ( ! isset( $callback['function'] ) || ! is_array( $callback['function'] ) ) {
-							continue;
-						}
-						if ( ! is_object( $callback['function'][0] ) || 'checkSpam' !== ( $callback['function'][1] ?? '' ) ) {
-							continue;
-						}
-						if ( 0 !== strpos( get_class( $callback['function'][0] ), 'Cleantalk' ) ) {
-							continue;
-						}
-
-						$targets[] = array(
-							'hook'     => $hook,
-							'function' => $callback['function'],
-							'priority' => $priority,
-						);
-					}
-				}
-			}
-
-			if ( empty( $targets ) ) {
-				// Silent when CleanTalk simply is not installed; only note the
-				// case where it IS present but nothing matched, since that means
-				// this shim has drifted from the plugin.
-				if ( class_exists( 'Cleantalk\Antispam\Integrations' ) ) {
-					Checkview_Admin_Logs::add( 'ip-logs', 'CleanTalk detected but no Forminator checkSpam callbacks were found to unhook (renamed method, moved namespace, or integration disabled in its settings) — Forminator submissions may still be blocked.' );
-				}
-				return;
-			}
-
-			foreach ( $targets as $target ) {
-				remove_action( $target['hook'], $target['function'], $target['priority'] );
-			}
-
-			Checkview_Admin_Logs::add( 'ip-logs', 'Unhooked [' . count( $targets ) . '] CleanTalk checkSpam callback(s) from the Forminator submission path.' );
 		}
 
 		/**
