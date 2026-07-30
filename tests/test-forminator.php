@@ -133,13 +133,23 @@ class Test_Checkview_Forminator_Helper extends WP_UnitTestCase {
 		$this->assertNull( $this->instance->checkview_log_form_test_entry( 7, 'not-an-array' ) );
 	}
 
-	public function test_it_hooks_the_post_save_action_not_the_pre_save_one() {
-		// forminator_form_after_save_entry fires after handle_form() returns and
-		// before wp_send_json_*; the unsuffixed tag also excludes drafts and
-		// abandoned entries, which get _draft / _abandoned variants.
-		$callback = array( $this->instance, 'checkview_log_form_test_entry' );
-		$this->assertNotFalse( has_action( 'forminator_form_after_save_entry', $callback ) );
-		$this->assertFalse( has_action( 'forminator_custom_form_submit_before_set_fields', $callback ) );
+	public function test_it_captures_the_id_early_and_acts_after_save() {
+		// The id is only available on the pre-save hook; the work can only be done
+		// after the entry is persisted. Hence two hooks.
+		$act     = array( $this->instance, 'checkview_log_form_test_entry' );
+		$capture = array( $this->instance, 'checkview_capture_entry_id' );
+
+		$this->assertNotFalse( has_action( 'forminator_custom_form_submit_before_set_fields', $capture ) );
+		$this->assertNotFalse( has_action( 'forminator_form_after_save_entry', $act ) );
+		// Forms submit as an ordinary POST unless AJAX is enabled.
+		$this->assertNotFalse( has_action( 'forminator_form_after_handle_submit', $act ) );
+		// The pre-save hook must NOT do the cloning.
+		$this->assertFalse( has_action( 'forminator_custom_form_submit_before_set_fields', $act ) );
+	}
+
+	public function test_capture_entry_id_tolerates_bad_input() {
+		$this->assertNull( $this->instance->checkview_capture_entry_id( null, 7 ) );
+		$this->assertNull( $this->instance->checkview_capture_entry_id( (object) array(), 7 ) );
 	}
 
 	public function test_bypass_captcha_method_is_gone() {

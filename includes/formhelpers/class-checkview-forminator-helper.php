@@ -33,6 +33,17 @@ if ( ! class_exists( 'Checkview_Forminator_Helper' ) ) {
 		 * @var Checkview_Loader $loader Maintains and registers all hooks for the plugin.
 		 */
 		protected $loader;
+
+		/**
+		 * Entry id captured from the pre-save hook, used by the post-save hook.
+		 *
+		 * Forminator does NOT expose the entry id on the post-save action — see
+		 * checkview_capture_entry_id() for why this relay exists.
+		 *
+		 * @var int
+		 */
+		protected $pending_entry_id = 0;
+
 		/**
 		 * Constructor.
 		 *
@@ -64,29 +75,57 @@ if ( ! class_exists( 'Checkview_Forminator_Helper' ) ) {
 				1
 			);
 
-			// Post-save action, not the pre-save one.
+			// Two hooks, because Forminator splits what we need across them.
 			//
-			// `forminator_form_after_save_entry` fires in save_entry() at
-			// abstract-class-front-action.php:528, i.e. AFTER handle_form()
-			// returns (:499) — so the entry is fully persisted, addon fields are
-			// attached and notifications have gone out — and immediately BEFORE
-			// wp_send_json_*, so the test is finished before the bot sees the
-			// response.
+			// CAPTURE the entry id at `..._submit_before_set_fields`
+			// (front-action.php:1771). That hook receives the entry object, and it
+			// is the ONLY place the id is available to us — see
+			// checkview_capture_entry_id().
 			//
-			// The previously used `..._submit_before_set_fields` fires at
-			// front-action.php:1771, before addon fields attach (:1777) and before
-			// set_fields() persists (~:1815), which is why cloning there missed
-			// data and deleting there orphaned meta rows.
+			// ACT after the entry is persisted. `..._after_save_entry` fires in
+			// save_entry() at abstract-class-front-action.php:528, after
+			// handle_form() returns (:499) — entry persisted, addon fields
+			// attached, notifications sent — and immediately before
+			// wp_send_json_*.
 			//
-			// The tag is built as 'forminator_' . module_slug . $status_suffix .
-			// '_after_save_entry' (:479-486), so the UNSUFFIXED name we hook here
-			// never fires for drafts or abandoned entries — they get
-			// `_draft` / `_abandoned` variants. Spam is NOT excluded that way,
-			// because $status_suffix is computed before handle_form() while
-			// self::$is_spam is only set during it, so the entry status is checked
-			// explicitly below.
+			// `..._after_handle_submit` (:339) is the NON-AJAX equivalent, in
+			// handle_submit() (:298). Forminator forms submit as an ordinary POST
+			// unless AJAX is enabled, so hooking only the AJAX action would have
+			// dropped those submissions entirely. Both pass ( $form_id, $response )
+			// and both call handle_form(), so the capture covers both paths.
+			//
+			// Cloning at the pre-save hook is what the earlier revision did and is
+			// wrong: it runs before addon fields attach (:1777) and before
+			// set_fields() persists (~:1815), so it missed data and its delete
+			// orphaned meta rows.
+			//
+			// The act tag is built as 'forminator_' . module_slug . $status_suffix
+			// . '_after_save_entry' (:479-486), so the UNSUFFIXED name never fires
+			// for drafts or abandoned entries. Spam is NOT excluded that way —
+			// $status_suffix is computed before handle_form() while self::$is_spam
+			// is set during it — so the entry status is checked explicitly below.
+			add_action(
+				'forminator_custom_form_submit_before_set_fields',
+				array(
+					$this,
+					'checkview_capture_entry_id',
+				),
+				1,
+				3
+			);
+
 			add_action(
 				'forminator_form_after_save_entry',
+				array(
+					$this,
+					'checkview_log_form_test_entry',
+				),
+				90,
+				2
+			);
+
+			add_action(
+				'forminator_form_after_handle_submit',
 				array(
 					$this,
 					'checkview_log_form_test_entry',
@@ -215,18 +254,57 @@ if ( ! class_exists( 'Checkview_Forminator_Helper' ) ) {
 			return $array_values;
 		}
 		/**
-		 * Stores the test results and finishes the testing session.
+		 * Records the entry id for the post-save handler to use.
 		 *
-		 * Deletes test submission from Forminator database table.
+		 * This relay exists because Forminator never hands the entry id to the
+		 * action we actually want to work on. `..._after_save_entry` and
+		 * `..._after_handle_submit` both pass only ( $form_id, $response ), and
+		 * `$response['entry_id']` is populated ONLY for leads forms — it is
+		 * assigned inside `if ( self::$is_leads )` at front-action.php:1809-1810
+		 * and nowhere else. `..._submit_before_set_fields` (:1771) is the one hook
+		 * that receives the entry object, but it fires too early to clone from.
 		 *
-		 * @param object $entry entry object.
-		 * @param int    $form_id Form entry ID.
-		 * @param array  $form_fields Form's fields.
+		 * So: read the id here, use it there.
+		 *
+		 * Registered at priority 1 so the id is recorded before anything else on
+		 * this hook can interfere. A missing or empty `entry_id` is left as 0 on
+		 * purpose — that is the legitimate `prevent_store()` case, where
+		 * front-action.php:1658-1660 skips `$entry->save()` entirely and no row
+		 * exists to clone.
+		 *
+		 * @param object $entry       Forminator entry model.
+		 * @param int    $form_id     Form ID (unused; the act hook supplies it).
+		 * @param array  $form_fields Pre-persistence field data (unused — the act
+		 *                            hook reads the persisted entry instead).
+		 * @return void
+		 */
+		public function checkview_capture_entry_id( $entry, $form_id, $form_fields = array() ) {
+			if ( is_object( $entry ) && ! empty( $entry->entry_id ) ) {
+				$this->pending_entry_id = (int) $entry->entry_id;
+			}
+		}
+
+		/**
+		 * Clones the persisted entry, removes it, and finishes the testing session.
+		 *
+		 * @param int   $form_id  Forminator form ID.
+		 * @param array $response Submission response (the id is NOT in here — see below).
 		 * @return void
 		 */
 		public function checkview_log_form_test_entry( $form_id, $response = array() ) {
-			$form_id  = (int) $form_id;
-			$entry_id = is_array( $response ) && isset( $response['entry_id'] ) ? (int) $response['entry_id'] : 0;
+			$form_id = (int) $form_id;
+
+			// DO NOT read the entry id from $response.
+			//
+			// Forminator only puts it there for LEADS forms:
+			// `self::$response_attrs['entry_id'] = $entry->entry_id;` is assigned
+			// inside `if ( self::$is_leads )` at front-action.php:1809-1810 and
+			// nowhere else in the file. For an ordinary custom form the key is
+			// absent, so reading it yielded 0 — and this handler then took the
+			// "nothing was stored" branch, cloned nothing, never deleted the test
+			// entry, and completed the test green with no field data.
+			$entry_id = (int) $this->pending_entry_id;
+			$this->pending_entry_id = 0;
 
 			// Idempotence: mirrors the guard in
 			// Checkview_Fluent_Forms_Helper::checkview_clone_fluentform_entry().
