@@ -152,6 +152,22 @@ if ( ! class_exists( 'Checkview_Formidable_Helper' ) ) {
 			// GF, WPForms, CF7, Fluent, Everest and Elementor helpers.
 			add_filter( 'hcap_activate', '__return_false' );
 
+			// Third-party anti-spam plugins that attach their failure to a key
+			// other than `spam`, which the frm_validate_entry backstop below
+			// cannot clear. Registered on `init` at PHP_INT_MAX because WP Armour
+			// includes its integrations from an `init` callback at the DEFAULT
+			// priority (wp-armour.php:17-24), i.e. the same priority this helper
+			// is loaded at — so ordering between the two would otherwise depend
+			// on registration order.
+			add_action(
+				'init',
+				array(
+					$this,
+					'checkview_unhook_third_party_spam_filters',
+				),
+				PHP_INT_MAX
+			);
+
 			// Anti-spam bypass, backstop layer.
 			//
 			// Single choke point: frm_validate_entry fires AFTER spam_check()
@@ -613,6 +629,47 @@ if ( ! class_exists( 'Checkview_Formidable_Helper' ) ) {
 			}
 			return $fields;
 		}
+		/**
+		 * Removes third-party anti-spam callbacks that reject a Formidable
+		 * submission through an error key the spam backstop cannot clear.
+		 *
+		 * `checkview_bypass_spam_validation()` unsets only `$errors['spam']`,
+		 * which is correct for Formidable core — core writes field failures as
+		 * `field<id>` and nonce/permission failures as `form`, and only
+		 * `spam_check()` writes `spam`. Third-party plugins are not bound by that
+		 * convention.
+		 *
+		 * WP Armour is the known case. Its Formidable integration hooks
+		 * `frm_validate_entry` at priority 10 and writes `$errors['my_error']`
+		 * (honeypot/includes/integration/wpa_formidable.php:6-14), so the backstop
+		 * runs after it, sees the key and leaves it — the submission still fails.
+		 *
+		 * It is also likely to fire rather than unlikely: `wpa_check_is_spam()`
+		 * (honeypot/includes/wpa_functions.php:136-152) is fails-closed. It
+		 * returns "not spam" only when the POST carries WP Armour's JS-injected
+		 * `alt_s` and named field, and treats anything else as spam. So the usual
+		 * "a headless browser will not fill a hidden honeypot, therefore it
+		 * passes" reasoning is inverted here and does not apply.
+		 *
+		 * Degrades to a logged no-op: nothing removed and no such function means
+		 * the plugin is absent; the function existing but not removable means it
+		 * moved priority or was renamed, which is worth knowing about.
+		 *
+		 * @since 2.3.1
+		 *
+		 * @return void
+		 */
+		public function checkview_unhook_third_party_spam_filters() {
+			if ( remove_filter( 'frm_validate_entry', 'wpa_formidable_extra_validation', 10 ) ) {
+				Checkview_Admin_Logs::add( 'ip-logs', 'Unhooked WP Armour from frm_validate_entry for this CheckView test.' );
+				return;
+			}
+
+			if ( function_exists( 'wpa_formidable_extra_validation' ) ) {
+				Checkview_Admin_Logs::add( 'ip-logs', 'WP Armour detected but its frm_validate_entry callback was not removable (priority changed or renamed?) — Formidable submissions may still be rejected as spam.' );
+			}
+		}
+
 		/**
 		 * Clears Formidable's spam verdict during a CheckView test.
 		 *
