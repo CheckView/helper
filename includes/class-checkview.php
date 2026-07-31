@@ -95,7 +95,6 @@ class CheckView {
 
 		$this->load_dependencies();
 
-		$this->loader->add_action( 'init', $this, 'load_textdomain' );
 		$this->loader->add_action( 'wp_enqueue_scripts', $this, 'dequeue_scripts', 20 );
 
 		$this->define_admin_hooks();
@@ -406,19 +405,6 @@ class CheckView {
 			'rest_api_init',
 			$plugin_api,
 			'checkview_register_rest_route'
-		);
-	}
-
-	/**
-	 * Loads the CheckView text domain.
-	 *
-	 * @since 1.0.0
-	 */
-	public function load_textdomain() {
-		load_plugin_textdomain(
-			'checkview',
-			false,
-			dirname( plugin_basename( __FILE__ ) ) . '/languages/'
 		);
 	}
 
