@@ -14,5 +14,8 @@
     "php": ">=8.0",
     "firebase/php-jwt": "^7.0",
     "ext-json": "*"
+  },
+  "config": {
+    "vendor-dir": "includes/vendor"
   }
 }
