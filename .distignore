@@ -25,7 +25,6 @@ phpmd.xml
 Gruntfile.js
 
 # Build & tooling config
-tsconfig.json
 webpack.config.js
 .travis.yml
 .wp-env.json

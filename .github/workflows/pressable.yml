@@ -22,7 +22,7 @@ jobs:
         run: npm install
 
       - name: Compile scripts
-        run: npx tsc
+        run: npx tsc -p scripts/tsconfig.json
 
       - name: Run script
         run: node scripts/dist/pressable.js
