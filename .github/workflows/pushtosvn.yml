@@ -19,8 +19,7 @@ jobs:
         run: |
           composer install --no-dev --prefer-dist --optimize-autoloader --no-scripts
           yarn install
-          grunt build
-          
+
       - uses: actions/checkout@master
       - name: Install SVN
         run: sudo apt-get install subversion

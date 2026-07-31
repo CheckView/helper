@@ -4,7 +4,6 @@
 /.github
 /.cache
 /node_modules
-/grunt
 /vendor
 /.revision
 /bin
@@ -19,7 +18,6 @@ phpmd.xml
 .distignore
 .gitignore
 .removeable-files
-Gruntfile.js
 
 # Build & tooling config
 webpack.config.js
