@@ -7,11 +7,5 @@ $baseDir = dirname($vendorDir);
 
 return array(
     'checkview\\' => array($baseDir . '/src'),
-    'WP_Mock\\' => array($vendorDir . '/10up/wp_mock/php/WP_Mock'),
-    'Roots\\Composer\\' => array($vendorDir . '/roots/wordpress-core-installer/src'),
-    'Mockery\\' => array($vendorDir . '/mockery/mockery/library/Mockery'),
     'Firebase\\JWT\\' => array($vendorDir . '/firebase/php-jwt/src'),
-    'Doctrine\\Instantiator\\' => array($vendorDir . '/doctrine/instantiator/src/Doctrine/Instantiator'),
-    'DeepCopy\\' => array($vendorDir . '/myclabs/deep-copy/src/DeepCopy'),
-    'Brain\\Monkey\\' => array($vendorDir . '/brain/monkey/src'),
 );
