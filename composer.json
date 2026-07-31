@@ -1,19 +1,15 @@
 {
-  "name": "wp-phpunit/example-plugin",
-  "description": "Example plugin using WP PHPUnit",
+  "name": "checkview/checkview",
+  "description": "CheckView is a fully automated solution to test your WordPress forms and detect form problems fast.",
   "type": "wordpress-plugin",
   "license": "GPL-2.0-or-later",
+  "homepage": "https://checkview.io",
   "authors": [
     {
-      "name": "Evan Mattson",
-      "email": "me@aaemnnost.tv"
+      "name": "CheckView",
+      "homepage": "https://checkview.io"
     }
   ],
-  "autoload": {
-    "psr-4": {
-      "checkview\\": "src"
-    }
-  },
   "require": {
     "php": ">=8.0",
     "firebase/php-jwt": "^7.0",
