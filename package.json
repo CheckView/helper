@@ -1,9 +1,11 @@
 {
-  "name": "woocommerce-gateway-checkview",
-  "title": "WooCommerce Checkview Payments",
-  "version": "1.0.6",
-  "author": "WooCommerce",
-  "license": "GPL-3.0+",
+  "name": "checkview",
+  "title": "CheckView",
+  "version": "2.3.0",
+  "description": "CheckView is a fully automated solution to test your WordPress forms and detect form problems fast.",
+  "homepage": "https://checkview.io",
+  "author": "CheckView",
+  "license": "GPL-2.0-or-later",
   "keywords": [],
   "packageManager": "pnpm@10.28.0",
   "engines": {
