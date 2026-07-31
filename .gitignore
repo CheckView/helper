@@ -9,4 +9,3 @@ scripts/dist
 CLAUDE.md
 *-har.json
 *.phar
-.phpunit.result.cache

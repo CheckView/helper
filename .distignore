@@ -4,12 +4,9 @@
 /.github
 /.cache
 /node_modules
-/tests
 /grunt
 /vendor
 /.revision
-/.circleci
-/.phpunit.cache
 /bin
 /scripts
 /docs
@@ -26,7 +23,6 @@ Gruntfile.js
 
 # Build & tooling config
 webpack.config.js
-.travis.yml
 .wp-env.json
 
 # Lockfiles / generated manifests (no runtime role; /vendor is excluded)
@@ -35,9 +31,3 @@ package-lock.json
 pnpm-lock.yaml
 yarn.lock
 package.xml
-
-# Test tooling & artifacts (PHPUnit phar, configs, caches, backups)
-*.phar
-phpunit.xml*
-.phpunit.result.cache
-*.bak
