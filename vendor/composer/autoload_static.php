@@ -11,73 +11,72 @@ class ComposerStaticInitcdf9877b6b6f16e6fbfbe3d480a3785e
         'c72349b1fe8d0deeedd3a52e8aa814d8' => __DIR__ . '/..' . '/mockery/mockery/library/helpers.php',
         'ce9671a430e4846b44e1c68c7611f9f5' => __DIR__ . '/..' . '/mockery/mockery/library/Mockery.php',
         '051bafe20e2674435a162870efa2d2a7' => __DIR__ . '/..' . '/brain/monkey/inc/api.php',
-        '3109cb1a231dcd04bee1f9f620d46975' => __DIR__ . '/..' . '/paragonie/sodium_compat/autoload.php',
         '38fbb71d514eee25044aa9d94851ee76' => __DIR__ . '/..' . '/wp-phpunit/wp-phpunit/__loaded.php',
         '7d3b315c4f303f2fc14aca642a738e50' => __DIR__ . '/..' . '/yoast/phpunit-polyfills/phpunitpolyfills-autoload.php',
     );
 
     public static $prefixLengthsPsr4 = array (
-        'c' => 
+        'c' =>
         array (
             'checkview\\' => 10,
         ),
-        'W' => 
+        'W' =>
         array (
             'WP_Mock\\' => 8,
         ),
-        'R' => 
+        'R' =>
         array (
             'Roots\\Composer\\' => 15,
         ),
-        'M' => 
+        'M' =>
         array (
             'Mockery\\' => 8,
         ),
-        'F' => 
+        'F' =>
         array (
             'Firebase\\JWT\\' => 13,
         ),
-        'D' => 
+        'D' =>
         array (
             'Doctrine\\Instantiator\\' => 22,
             'DeepCopy\\' => 9,
         ),
-        'B' => 
+        'B' =>
         array (
             'Brain\\Monkey\\' => 13,
         ),
     );
 
     public static $prefixDirsPsr4 = array (
-        'checkview\\' => 
+        'checkview\\' =>
         array (
             0 => __DIR__ . '/../..' . '/src',
         ),
-        'WP_Mock\\' => 
+        'WP_Mock\\' =>
         array (
             0 => __DIR__ . '/..' . '/10up/wp_mock/php/WP_Mock',
         ),
-        'Roots\\Composer\\' => 
+        'Roots\\Composer\\' =>
         array (
             0 => __DIR__ . '/..' . '/roots/wordpress-core-installer/src',
         ),
-        'Mockery\\' => 
+        'Mockery\\' =>
         array (
             0 => __DIR__ . '/..' . '/mockery/mockery/library/Mockery',
         ),
-        'Firebase\\JWT\\' => 
+        'Firebase\\JWT\\' =>
         array (
             0 => __DIR__ . '/..' . '/firebase/php-jwt/src',
         ),
-        'Doctrine\\Instantiator\\' => 
+        'Doctrine\\Instantiator\\' =>
         array (
             0 => __DIR__ . '/..' . '/doctrine/instantiator/src/Doctrine/Instantiator',
         ),
-        'DeepCopy\\' => 
+        'DeepCopy\\' =>
         array (
             0 => __DIR__ . '/..' . '/myclabs/deep-copy/src/DeepCopy',
         ),
-        'Brain\\Monkey\\' => 
+        'Brain\\Monkey\\' =>
         array (
             0 => __DIR__ . '/..' . '/brain/monkey/src',
         ),
