@@ -5,9 +5,10 @@
   "author": "WooCommerce",
   "license": "GPL-3.0+",
   "keywords": [],
+  "packageManager": "pnpm@10.28.0",
   "engines": {
-    "node": ">=6.9.4",
-    "npm": ">=1.1.0"
+    "node": ">=18",
+    "pnpm": ">=10"
   },
   "devDependencies": {
     "@types/node": "^22.13.5",
@@ -23,9 +24,9 @@
   },
   "scripts": {
     "start": "wp-scripts start",
-    "build": "wp-scripts build && npm run i18n:build",
-    "i18n": "npm run i18n:build",
-    "i18n:build": "npm run i18n:pot && ./bin/build_i18n.sh",
+    "build": "wp-scripts build && pnpm run i18n:build",
+    "i18n": "pnpm run i18n:build",
+    "i18n:build": "pnpm run i18n:pot && ./bin/build_i18n.sh",
     "i18n:pot": "php -d xdebug.max_nesting_level=512 $(which wp) i18n make-pot --exclude=\"node_modules/,languages/,assets/\" --headers='{\"Report-Msgid-Bugs-To\":\"https://woocommerce.com/my-account/create-a-ticket/\", \"language-team\":\"LANGUAGE <EMAIL@ADDRESS>\"}' . languages/checkview.pot",
     "i18n:json": "$(which wp) i18n make-json languages --no-purge",
     "packages-update": "wp-scripts packages-update",

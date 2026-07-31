@@ -25,7 +25,5 @@ webpack.config.js
 
 # Lockfiles / generated manifests (no runtime role; /vendor is excluded)
 composer.lock
-package-lock.json
 pnpm-lock.yaml
-yarn.lock
 package.xml
