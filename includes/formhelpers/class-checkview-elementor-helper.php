@@ -133,6 +133,11 @@ if ( ! class_exists( 'Checkview_Elementor_Helper' ) ) {
 				'__return_true',
 				999
 			);
+
+			// The filter above is necessary but not sufficient for Elementor.
+			// See checkview_unhook_turnstile_elementor_widget() for why.
+			$this->checkview_unhook_turnstile_elementor_widget();
+
 			add_filter(
 				'akismet_get_api_key',
 				'__return_null',
@@ -291,6 +296,57 @@ if ( ! class_exists( 'Checkview_Elementor_Helper' ) ) {
 			}
 
 			return array();
+		}
+
+		/**
+		 * Stops Simple CAPTCHA with Cloudflare Turnstile from rendering its
+		 * widget on Elementor forms during a test.
+		 *
+		 * That plugin consults `cfturnstile_whitelisted()` only in its
+		 * verification callback (`elementor_pro/forms/validation`). Its Elementor
+		 * widget is rendered by a *separate* `wp_enqueue_scripts` callback which
+		 * never checks the whitelist, and which loads
+		 * `js/integrations/elementor-forms.js` to inject the field client-side.
+		 *
+		 * So during a test the widget still renders, `cf-turnstile-response`
+		 * stays empty, and the submission is blocked in the browser — meaning
+		 * the validation hook never fires and the `cfturnstile_whitelisted`
+		 * filter is never reached. Whitelisting alone guards a door the request
+		 * never gets to; the widget has to be stopped from rendering.
+		 *
+		 * Elementor is the only integration in that plugin with this gap. Every
+		 * other one (CF7, WPForms, Gravity, Fluent, Formidable, Forminator,
+		 * WooCommerce) renders through the shared `cfturnstile_field_show()`,
+		 * which does check `cfturnstile_whitelisted()` before emitting anything.
+		 *
+		 * Timing: that plugin registers the enqueue when its integration file is
+		 * included at plugin-load, while this helper is constructed from
+		 * `checkview_init_current_test()` on `init` priority 10 — earlier than
+		 * `wp_enqueue_scripts`, so the callback is present and removable here.
+		 *
+		 * The priority is looked up rather than hardcoded, so an upstream change
+		 * to it degrades into a logged no-op instead of a silent one.
+		 *
+		 * @return void
+		 */
+		private function checkview_unhook_turnstile_elementor_widget() {
+			// Absent unless Simple CF Turnstile is active with its Elementor
+			// integration loaded. Nothing to do, and nothing worth logging.
+			if ( ! function_exists( 'cfturnstile_elementor_enqueue_scripts' ) ) {
+				return;
+			}
+
+			// Strict comparison: has_action() returns the priority, which may
+			// legitimately be 0.
+			$priority = has_action( 'wp_enqueue_scripts', 'cfturnstile_elementor_enqueue_scripts' );
+
+			if ( false === $priority ) {
+				Checkview_Admin_Logs::add( 'ip-logs', 'Simple CF Turnstile Elementor enqueue exists but is not hooked to wp_enqueue_scripts; the Turnstile widget may still render and block submission (upstream hook may have changed).' );
+				return;
+			}
+
+			remove_action( 'wp_enqueue_scripts', 'cfturnstile_elementor_enqueue_scripts', $priority );
+			Checkview_Admin_Logs::add( 'ip-logs', 'Unhooked Simple CF Turnstile Elementor widget enqueue (priority ' . $priority . ') so the Turnstile field does not render during the test.' );
 		}
 
 		/**
