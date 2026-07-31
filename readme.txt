@@ -5,9 +5,9 @@ Tags: form testing, form monitoring, wordpress testing, woocommerce testing, sit
 Requires at least: 5.0.1
 Tested up to: 7.0
 Requires PHP: 8.0
-License: GPLv3
-License URI: http://www.gnu.org/licenses/gpl-3.0.html
-Stable tag: 2.3.0
+License: GPLv2 or later
+License URI: http://www.gnu.org/licenses/gpl-2.0.html
+Stable tag: 2.3.1-rc
 
 [CheckView](https://checkview.io/) automates WordPress form and WooCommerce testing, monitoring key flows to catch failures early before they cost you leads or sales everyday.
 
@@ -204,6 +204,13 @@ Support and test configuration are handled through the CheckView platform. Pleas
 3. CheckView general settings.
 
 == Changelog ==
+
+= 2.3.1 =
+* PHP 8.4 compatibility: upgrade bundled firebase/php-jwt to 7.1.0 and raise the minimum PHP version to 8.0.
+* Correct Elementor watermark capture gating and document proxy IP limitations.
+* Query Elementor submissions by the element id Elementor actually stores, and remove the submission's actions-log rows on cleanup.
+* Prevent Simple Cloudflare Turnstile's Elementor widget from rendering during tests.
+* Reduce the shipped bundle size by removing unused dependencies.
 
 = 2.3.0 =
 * Add Elementor Pro Forms support (forms list, test results, upload field file types, save-to-database action).

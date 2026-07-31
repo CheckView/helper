@@ -88,9 +88,8 @@ class CheckView {
 	public function __construct() {
 		if ( defined( 'CHECKVIEW_VERSION' ) ) {
 			$this->version = CHECKVIEW_VERSION;
-		} else {
-			$this->version = '2.3.0';
 		}
+
 		$this->plugin_name = 'checkview';
 
 		$this->load_dependencies();
