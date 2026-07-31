@@ -15,9 +15,8 @@
         }
     },
     "require": {
-        "php": ">=7.4",
-        "firebase/php-jwt": "^6.5",
-        "paragonie/sodium_compat": "^1.20",
+        "php": ">=8.0",
+        "firebase/php-jwt": "^7.0",
         "ext-json": "*"
     },
     "require-dev": {
