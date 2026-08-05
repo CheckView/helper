@@ -213,32 +213,58 @@ class Checkview_Admin {
 	/**
 	 * Determine if the current request is for a Checkview REST API endpoint.
 	 *
-	 * Checks both pretty permalinks (/wp-json/checkview/...) and plain permalinks
-	 * (?rest_route=/checkview/...) to detect Checkview API requests.
+	 * The route is read from the query var WordPress itself dispatches on --
+	 * `$GLOBALS['wp']->query_vars['rest_route']`, the value `rest_api_loaded()`
+	 * hands to `WP_REST_Server::serve_request()` -- and never from REQUEST_URI.
+	 *
+	 * REQUEST_URI is not a statement of which route runs. `WP::parse_request()`
+	 * gives `$_GET['rest_route']` precedence over the value produced by the
+	 * `wp-json` rewrite, so a URI whose path looks like a Checkview endpoint can
+	 * still dispatch to some other route; and any request at all can carry the
+	 * string `/wp-json/checkview/` somewhere in its query string. Matching the
+	 * URI therefore both under- and over-identifies Checkview requests.
 	 *
 	 * @since 2.0.29
 	 * @return bool True if a Checkview API endpoint request, false otherwise.
 	 */
 	public static function is_checkview_rest_request() {
-		$rest_route = '';
+		$route = isset( $GLOBALS['wp']->query_vars['rest_route'] )
+			? $GLOBALS['wp']->query_vars['rest_route']
+			: '';
 
-		// 1. Check pretty permalinks (e.g. /wp-json/checkview/v1/...
-		if ( isset( $_SERVER['REQUEST_URI'] ) ) {
-			$request_uri = esc_url_raw( wp_unslash( $_SERVER['REQUEST_URI'] ) );
-			if ( preg_match( '#/wp-json/(checkview/.*)#', $request_uri, $matches ) ) {
-				$rest_route = $matches[1];
-			}
+		return self::is_checkview_route( $route );
+	}
+
+	/**
+	 * Whether a dispatched REST route belongs to the Checkview namespace.
+	 *
+	 * Deliberately kept as strict as WordPress's own dispatch, so the branch can
+	 * never be entered by a request that will not actually reach a Checkview
+	 * endpoint:
+	 *
+	 * - The leading slash is required rather than normalised away.
+	 *   `rest_api_loaded()` passes the route through verbatim (only
+	 *   `untrailingslashit()`), and `register_rest_route()` registers
+	 *   `/checkview/v1/...`, so `checkview/v1/...` and `//checkview/v1/...`
+	 *   simply do not match any handler.
+	 * - The comparison is case-insensitive because
+	 *   `WP_REST_Server::match_request_to_handler()` matches with `@^...$@i`.
+	 *   `/CheckView/v1/...` really does dispatch to our endpoints, so treating it
+	 *   as foreign here would silently stop clearing security-plugin blocks for
+	 *   that spelling.
+	 * - A non-string route (`?rest_route[]=...` survives `WP::parse_request()` as
+	 *   an array) is rejected outright.
+	 *
+	 * @since 2.3.2
+	 * @param mixed $route Route as WordPress would dispatch it.
+	 * @return bool
+	 */
+	private static function is_checkview_route( $route ) {
+		if ( ! is_string( $route ) || '' === $route ) {
+			return false;
 		}
 
-		// 2. Check plain permalinks (e.g. ?rest_route=/checkview/vw/...)
-		if ( empty( $rest_route ) && isset( $_GET['rest_route'] ) ) {
-			$route = ltrim( esc_url_raw( wp_unslash( $_GET['rest_route'] ) ), '/' );
-			if ( strpos( $route, 'checkview/' ) === 0 ) {
-				$rest_route = $route;
-			}
-		}
-
-		return ! empty( $rest_route );
+		return 0 === stripos( $route, '/checkview/' );
 	}
 
 	/**
@@ -248,10 +274,16 @@ class Checkview_Admin {
 	 * direct access without interference from security plugins or caching layers.
 	 * Sets DONOTCACHE* constants and disables external object cache.
 	 *
+	 * The authentication error is only discarded for an unauthenticated request.
+	 * CheckView's own endpoints authenticate with a JWT in the Authorization
+	 * header and are called logged out, so nothing legitimate depends on
+	 * clearing an error while a user is signed in -- whereas doing so would hand
+	 * that user's privileges to whoever made the request.
+	 *
 	 * @since 2.0.29
 	 * @param mixed $result The current authentication result.
-	 * @return mixed|null Returns null to bypass authentication for Checkview requests,
-	 *                    or the original result for other requests.
+	 * @return mixed|null Returns null to bypass authentication for unauthenticated
+	 *                    Checkview requests, or the original result otherwise.
 	 */
 	public static function bypass_rest_authentication( $result ) {
 		if ( ! self::is_checkview_rest_request() ) {
@@ -278,8 +310,31 @@ class Checkview_Admin {
 			wp_using_ext_object_cache( false );
 		}
 
-		// Clear 401/403 blocks from security plugins
+		/*
+		 * Nothing to clear unless an error was actually raised. `null` and `true`
+		 * both mean "no error" to WP_REST_Server::serve_request(), which only
+		 * tests is_wp_error(), so pass the incoming value straight back rather
+		 * than flattening a deliberate `true` into `null`.
+		 */
+		if ( ! is_wp_error( $result ) ) {
+			return $result;
+		}
 
+		/*
+		 * Never discard an error raised against a request that still carries a
+		 * signed-in user. That is exactly the state WordPress leaves behind when
+		 * a nonce is present and invalid -- rest_cookie_check_errors() only
+		 * resets the user with wp_set_current_user( 0 ) when the nonce is
+		 * missing -- so clearing it here would dispatch the request with that
+		 * user's capabilities. Checkview's own endpoints authenticate with a JWT
+		 * in the Authorization header and are called logged out, so nothing
+		 * legitimate depends on clearing an error for an authenticated request.
+		 */
+		if ( is_user_logged_in() ) {
+			return $result;
+		}
+
+		// Clear 401/403 blocks from security plugins.
 		return null;
 	}
 
