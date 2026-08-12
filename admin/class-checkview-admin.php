@@ -93,7 +93,8 @@ class Checkview_Admin {
 		add_filter(
 			'rest_post_dispatch',
 			array( $this, 'modify_rest_response_headers' ),
-			15
+			15,
+			3
 		);
 	}
 
@@ -344,12 +345,24 @@ class Checkview_Admin {
 	 * Adds cache-control headers to Checkview REST API responses to ensure
 	 * fresh data is always returned without browser or proxy caching.
 	 *
-	 * @since 2.0.29
+	 * Keys off the dispatched request rather than the global route, because
+	 * `rest_post_dispatch` also fires for `_embed` sub-responses and for each
+	 * sub-request of a batch, which carry routes of their own.
+	 *
 	 * @param WP_REST_Response|mixed $response The REST API response object.
+	 * @param WP_REST_Server|null $server Unused. The server instance.
+	 * @param WP_REST_Request|null $request The request that was dispatched.
+	 *
 	 * @return WP_REST_Response|mixed The response object with modified headers.
+	 *
+	 * @since 2.0.29
 	 */
-	public static function modify_rest_response_headers( $response ) {
-		if ( ! self::is_checkview_rest_request() ) {
+	public static function modify_rest_response_headers( $response, $server = null, $request = null ) {
+		$is_checkview = ( $request instanceof WP_REST_Request )
+			? self::is_checkview_route( $request->get_route() )
+			: self::is_checkview_rest_request();
+
+		if ( ! $is_checkview ) {
 			return $response;
 		}
 
