@@ -72,6 +72,12 @@ if ( ! defined( 'CHECKVIEW_URI' ) ) {
 	define( 'CHECKVIEW_URI', trailingslashit( plugin_dir_url( __FILE__ ) ) );
 }
 
+// Registered here rather than on a hook so a fatal raised during another
+// plugin's `init` is still recorded. Nothing is written unless the request
+// later verifies as a CheckView test.
+require_once CHECKVIEW_INC_DIR . 'class-checkview-fatal-capture.php';
+Checkview_Fatal_Capture::init();
+
 /**
  * Invalidate OPcache recursively.
  *
