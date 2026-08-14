@@ -772,7 +772,7 @@ if ( ! class_exists( 'Checkview_Gforms_Helper' ) ) {
 		 * Variadic on purpose: Zero Spam fires this filter with a varying
 		 * number of arguments. `gf_apply_filters()` passes 3 (value, form,
 		 * entry) because the form-id modifier is consumed by GF itself, while
-		 * two call sites use a plain `apply_filters()` that passes only 2. A
+		 * three call sites use a plain `apply_filters()` that passes only 2. A
 		 * fixed 4-parameter signature therefore threw an uncaught
 		 * ArgumentCountError and 500'd the whole page render.
 		 *
