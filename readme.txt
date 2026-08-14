@@ -7,7 +7,7 @@ Tested up to: 7.0
 Requires PHP: 8.0
 License: GPLv2 or later
 License URI: http://www.gnu.org/licenses/gpl-2.0.html
-Stable tag: 2.3.3-beta
+Stable tag: 2.3.3
 
 [CheckView](https://checkview.io/) automates WordPress form and WooCommerce testing, monitoring key flows to catch failures early before they cost you leads or sales everyday.
 
@@ -205,8 +205,10 @@ Support and test configuration are handled through the CheckView platform. Pleas
 
 == Changelog ==
 
-= 2.3.3-beta =
+= 2.3.3 =
 * Formidable: Strengthen test clean up.
+* Gravity Forms: Stop 500 errors related to argument count when Zero Spam fires certain filters.
+* Improve REST API sub-request handling.
 
 = 2.3.2 =
 * Security: fix an authentication bypass in the REST API request filter. Reported by Usama Arshad.
