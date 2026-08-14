@@ -769,13 +769,17 @@ if ( ! class_exists( 'Checkview_Gforms_Helper' ) ) {
 		/**
 		 * Returns false.
 		 *
-		 * @param int    $form_id Form's ID.
-		 * @param int    $should_check_key_field Check for filed.
-		 * @param object $form Forms object.
-		 * @param array  $entry Entry details.
+		 * Variadic on purpose: Zero Spam fires this filter with a varying
+		 * number of arguments. `gf_apply_filters()` passes 3 (value, form,
+		 * entry) because the form-id modifier is consumed by GF itself, while
+		 * three call sites use a plain `apply_filters()` that passes only 2. A
+		 * fixed 4-parameter signature therefore threw an uncaught
+		 * ArgumentCountError and 500'd the whole page render.
+		 *
+		 * @param mixed ...$args Ignored; the answer is always false.
 		 * @return bool
 		 */
-		public function checkview_disable_zero_spam_addon( $form_id, $should_check_key_field, $form, $entry ) {
+		public function checkview_disable_zero_spam_addon( ...$args ) {
 			return false;
 		}
 
