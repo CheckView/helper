@@ -39,7 +39,9 @@
     background: #fff !important;
   }
   
-  .swal2-content {
+  /* `.swal2-content` was renamed `.swal2-html-container` in SweetAlert2 11. */
+  .swal2-content,
+  .swal2-html-container {
     z-index: 1;
     justify-content: center;
     margin: 0;

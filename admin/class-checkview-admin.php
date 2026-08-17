@@ -28,10 +28,14 @@ class Checkview_Admin {
 	 * when the bundled copy in `admin/assets/js/vendor/` is actually upgraded,
 	 * rather than on every plugin release. Keep in sync with that file.
 	 *
+	 * Do not downgrade to a 9.x/10.x release: 9.17.3+ and 10.x carry
+	 * protestware (GHSA-pg98-6v7f-2xfv) that disables pointer events on the
+	 * whole page for some users. See `admin/assets/js/vendor/README.md`.
+	 *
 	 * @since 2.3.3
 	 * @var string
 	 */
-	const SWEETALERT2_VERSION = '9.17.4';
+	const SWEETALERT2_VERSION = '11.26.25';
 
 	/**
 	 * Plugin identifier.

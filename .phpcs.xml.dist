@@ -4,9 +4,13 @@
 
 	<!-- What to scan -->
 	<file>.</file>
-	<exclude-pattern>/includes/vendor/</exclude-pattern>
-	<exclude-pattern>/node_modules/</exclude-pattern>
-	<exclude-pattern>/wordpress/</exclude-pattern>
+	<!-- Composer's vendor-dir is includes/vendor (see composer.json). -->
+	<exclude-pattern>*/includes/vendor/*</exclude-pattern>
+	<!-- Bundled third-party admin JS; non-PHP but excluded explicitly. -->
+	<exclude-pattern>*/admin/assets/js/vendor/*</exclude-pattern>
+	<exclude-pattern>*/node_modules/*</exclude-pattern>
+	<!-- Only a stray WordPress core checkout at the repo root, not .wordpress-org/. -->
+	<exclude-pattern>^wordpress/*</exclude-pattern>
 
 	<!-- How to scan -->
 	<!-- Usage instructions: https://github.com/squizlabs/PHP_CodeSniffer/wiki/Usage -->
