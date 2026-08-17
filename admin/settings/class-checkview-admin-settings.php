@@ -139,25 +139,41 @@ class Checkview_Admin_Settings {
 	 * @since 1.0.0
 	 */
 	public function checkview_update_cache() {
+		// A nonce proves intent, not authority: gate on capability like the
+		// other settings handlers do, so a lower-role user who obtains a
+		// nonce still cannot flush the caches.
+		//
+		// Messages use __() rather than esc_html__(): the payload is JSON and
+		// the client renders it as text, so HTML-escaping here would show
+		// literal entities (&#039;) in the dialog for translated strings.
+		if ( ! current_user_can( 'manage_options' ) ) {
+			wp_send_json(
+				array(
+					'success' => false,
+					'message' => __( 'You do not have permission to do this.', 'checkview' ),
+				),
+				403
+			);
+		}
+
 		check_ajax_referer( 'checkview_reset_cache', '_nonce' );
 
 		$data = checkview_reset_cache( true );
 		if ( empty( $data ) || false === $data ) {
-			echo wp_json_encode(
+			wp_send_json(
 				array(
 					'success' => false,
-					'message' => esc_html__( 'Cache Could Not Be Updated.', 'checkview' ),
-				)
-			);
-		} else {
-			echo wp_json_encode(
-				array(
-					'success' => true,
-					'message' => esc_html__( 'Cache updated Successfully.', 'checkview' ),
+					'message' => __( 'Cache Could Not Be Updated.', 'checkview' ),
 				)
 			);
 		}
-		wp_die();
+
+		wp_send_json(
+			array(
+				'success' => true,
+				'message' => __( 'Cache updated Successfully.', 'checkview' ),
+			)
+		);
 	}
 
 	/**
