@@ -440,7 +440,7 @@ class CheckView {
 				$plugin_logs,
 				'checkview_admin_logs_settings_save'
 			);
-			$this->loader->add_action(
+			$this->loader->add_filter(
 				'admin_footer_text',
 				$plugin_settings,
 				'checkview_add_footer_admin'
