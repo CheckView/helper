@@ -1,6 +1,7 @@
 node_modules
 .vscode
 wp-content
+/wordpress/
 public_html/*
 site/*
 web/*

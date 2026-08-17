@@ -3,7 +3,7 @@ Contributors: checkview, inspry
 Donate link: https://checkview.io/
 Tags: form testing, form monitoring, wordpress testing, woocommerce testing, site monitoring
 Requires at least: 5.0.1
-Tested up to: 7.0
+Tested up to: 7.1
 Requires PHP: 8.0
 License: GPLv2 or later
 License URI: http://www.gnu.org/licenses/gpl-2.0.html
@@ -204,6 +204,13 @@ Support and test configuration are handled through the CheckView platform. Pleas
 3. CheckView general settings.
 
 == Changelog ==
+
+= 2.3.4 =
+* WP 7.1 compatibility: bump "Tested up to" to 7.1.
+* Stop loading admin assets from third-party CDNs: bundle SweetAlert2 and the Poppins webfont locally, and drop the unused Bootstrap stylesheet. Admin pages no longer disclose visitor IPs to Google Fonts or jsDelivr.
+* Fix the WooCommerce checkout payment method's text domain so its label is translatable.
+* Remove a stray xdebug PEAR manifest (`package.xml`) from the plugin package.
+* Correct the PHPCS ruleset, which still carried scaffold placeholders and checked against PHP 5.6.
 
 = 2.3.3 =
 * Formidable: Strengthen test clean up.

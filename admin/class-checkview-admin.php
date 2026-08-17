@@ -22,6 +22,18 @@ use WP_Defender\Component\IP\Global_IP;
 class Checkview_Admin {
 
 	/**
+	 * Version of the bundled SweetAlert2 library.
+	 *
+	 * Used as the asset cache-busting version so the library is only re-fetched
+	 * when the bundled copy in `admin/assets/js/vendor/` is actually upgraded,
+	 * rather than on every plugin release. Keep in sync with that file.
+	 *
+	 * @since 2.3.3
+	 * @var string
+	 */
+	const SWEETALERT2_VERSION = '9.17.4';
+
+	/**
 	 * Plugin identifier.
 	 *
 	 * @since 1.0.0
@@ -149,14 +161,6 @@ class Checkview_Admin {
 		);
 
 		wp_enqueue_style(
-			$this->plugin_name . 'external',
-			'https://cdn.jsdelivr.net/npm/bootstrap@3.3.7/dist/css/bootstrap.min.css',
-			array(),
-			$this->version,
-			'all'
-		);
-
-		wp_enqueue_style(
 			$this->plugin_name . '-swal',
 			CHECKVIEW_ADMIN_ASSETS . 'css/checkview-swal2.css',
 			array(),
@@ -177,17 +181,17 @@ class Checkview_Admin {
 			return;
 		}
 		wp_enqueue_script(
-			$this->plugin_name,
-			CHECKVIEW_ADMIN_ASSETS . 'js/checkview-admin.js',
-			array( 'jquery' ),
-			$this->version,
-			false
+			'checkview-sweetalert2',
+			CHECKVIEW_ADMIN_ASSETS . 'js/vendor/sweetalert2.all.min.js',
+			array(),
+			self::SWEETALERT2_VERSION,
+			true
 		);
 
 		wp_enqueue_script(
-			'checkview-sweetalert2.js',
-			'https://cdn.jsdelivr.net/npm/sweetalert2@9',
-			array( 'jquery' ),
+			$this->plugin_name,
+			CHECKVIEW_ADMIN_ASSETS . 'js/checkview-admin.js',
+			array( 'jquery', 'checkview-sweetalert2' ),
 			$this->version,
 			true
 		);
