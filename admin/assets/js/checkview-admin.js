@@ -36,7 +36,9 @@
                         },
                         success: function( response ) {
     
-                                var tokenObj = JSON.parse( response );
+                                // jQuery hands us a parsed object when the server sends
+                                // application/json, or a raw string otherwise; accept both.
+                                var tokenObj = ( typeof response === 'string' ) ? JSON.parse( response ) : response;
                                  if( !tokenObj.success && tokenObj != '0'){
     
                                     Swal.fire({
