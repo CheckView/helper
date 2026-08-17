@@ -7,6 +7,8 @@
 /vendor
 /scripts
 /docs
+# Stray local WordPress core checkout (gitignored; never part of the plugin)
+/wordpress
 
 # Linting / static analysis config
 .phpcs.xml.dist
@@ -21,7 +23,8 @@ phpmd.xml
 webpack.config.js
 .wp-env.json
 
-# Lockfiles / generated manifests (no runtime role; /vendor is excluded)
+# Lockfiles / generated manifests (no runtime role). Note that Composer's
+# vendor-dir is includes/vendor, which is committed and MUST ship (php-jwt is
+# used at runtime) — the /vendor line above intentionally matches nothing.
 composer.lock
 pnpm-lock.yaml
-package.xml
