@@ -463,17 +463,28 @@ if ( ! function_exists( 'checkview_is_pem_public_key' ) ) {
 	 * page from a CDN. When ext-openssl is present the key is additionally
 	 * parsed, so a well-delimited but corrupt key is rejected too.
 	 *
+	 * The PEM header is required at offset 0 rather than merely present.
+	 * openssl_pkey_get_public() reads from the filesystem when handed a value
+	 * beginning `file://`, so anchoring keeps a body we did not expect from ever
+	 * reaching it as a path.
+	 *
 	 * @since 2.3.4
 	 *
 	 * @param mixed $key Candidate key material.
 	 * @return bool True when the value is a usable public key.
 	 */
 	function checkview_is_pem_public_key( $key ) {
-		if ( ! is_string( $key ) || '' === trim( $key ) ) {
+		if ( ! is_string( $key ) ) {
 			return false;
 		}
 
-		if ( false === strpos( $key, '-----BEGIN PUBLIC KEY-----' ) ) {
+		$key = trim( $key );
+
+		if ( 0 !== strpos( $key, '-----BEGIN PUBLIC KEY-----' ) ) {
+			return false;
+		}
+
+		if ( false === strpos( $key, '-----END PUBLIC KEY-----' ) ) {
 			return false;
 		}
 
@@ -506,6 +517,10 @@ if ( ! function_exists( 'checkview_get_publickey' ) ) {
 	 */
 	function checkview_get_publickey() {
 		$public_key = get_transient( 'checkview_saas_pk' );
+
+		if ( is_string( $public_key ) ) {
+			$public_key = trim( $public_key );
+		}
 
 		if ( checkview_is_pem_public_key( $public_key ) ) {
 			return $public_key;
