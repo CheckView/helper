@@ -9,8 +9,12 @@
 	<!-- Bundled third-party admin JS; non-PHP but excluded explicitly. -->
 	<exclude-pattern>*/admin/assets/js/vendor/*</exclude-pattern>
 	<exclude-pattern>*/node_modules/*</exclude-pattern>
-	<!-- Only a stray WordPress core checkout at the repo root, not .wordpress-org/. -->
-	<exclude-pattern>^wordpress/*</exclude-pattern>
+	<!--
+	  Only a stray WordPress core checkout at the repo root, not .wordpress-org/.
+	  Patterns are regexes matched against the ABSOLUTE path unless
+	  type="relative", so the ^ anchor only works with that attribute set.
+	-->
+	<exclude-pattern type="relative">^wordpress/*</exclude-pattern>
 
 	<!-- How to scan -->
 	<!-- Usage instructions: https://github.com/squizlabs/PHP_CodeSniffer/wiki/Usage -->
