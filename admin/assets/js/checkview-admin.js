@@ -59,7 +59,26 @@
                                     })
                                     $thisButton.removeClass('loading error').addClass('success');
                                 }
-    
+
+                        },
+                        // Non-2xx responses (capability or nonce rejection) never reach
+                        // `success`; without this the button stays stuck in `loading`.
+                        error: function( xhr ) {
+                            var message = 'Cache could not be updated.';
+                            try {
+                                var errObj = JSON.parse( xhr.responseText );
+                                if ( errObj && errObj.message ) {
+                                    message = errObj.message;
+                                }
+                            } catch ( e ) {}
+                            Swal.fire({
+                                title: 'Error',
+                                text: message,
+                                icon: 'warning',
+                                showCancelButton: false,
+                                confirmButtonText: 'Ok',
+                            })
+                            $thisButton.removeClass('loading success').addClass('error');
                         },
                     });
                 } else {

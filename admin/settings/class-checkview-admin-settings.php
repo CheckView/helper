@@ -139,6 +139,19 @@ class Checkview_Admin_Settings {
 	 * @since 1.0.0
 	 */
 	public function checkview_update_cache() {
+		// A nonce proves intent, not authority: gate on capability like the
+		// other settings handlers do, so a lower-role user who obtains a
+		// nonce still cannot flush the caches.
+		if ( ! current_user_can( 'manage_options' ) ) {
+			wp_send_json(
+				array(
+					'success' => false,
+					'message' => esc_html__( 'You do not have permission to do this.', 'checkview' ),
+				),
+				403
+			);
+		}
+
 		check_ajax_referer( 'checkview_reset_cache', '_nonce' );
 
 		$data = checkview_reset_cache( true );
