@@ -139,25 +139,41 @@ class Checkview_Admin_Settings {
 	 * @since 1.0.0
 	 */
 	public function checkview_update_cache() {
+		// A nonce proves intent, not authority: gate on capability like the
+		// other settings handlers do, so a lower-role user who obtains a
+		// nonce still cannot flush the caches.
+		//
+		// Messages use __() rather than esc_html__(): the payload is JSON and
+		// the client renders it as text, so HTML-escaping here would show
+		// literal entities (&#039;) in the dialog for translated strings.
+		if ( ! current_user_can( 'manage_options' ) ) {
+			wp_send_json(
+				array(
+					'success' => false,
+					'message' => __( 'You do not have permission to do this.', 'checkview' ),
+				),
+				403
+			);
+		}
+
 		check_ajax_referer( 'checkview_reset_cache', '_nonce' );
 
 		$data = checkview_reset_cache( true );
 		if ( empty( $data ) || false === $data ) {
-			echo wp_json_encode(
+			wp_send_json(
 				array(
 					'success' => false,
-					'message' => esc_html__( 'Cache Could Not Be Updated.', 'checkview' ),
-				)
-			);
-		} else {
-			echo wp_json_encode(
-				array(
-					'success' => true,
-					'message' => esc_html__( 'Cache updated Successfully.', 'checkview' ),
+					'message' => __( 'Cache Could Not Be Updated.', 'checkview' ),
 				)
 			);
 		}
-		wp_die();
+
+		wp_send_json(
+			array(
+				'success' => true,
+				'message' => __( 'Cache updated Successfully.', 'checkview' ),
+			)
+		);
 	}
 
 	/**
@@ -280,13 +296,29 @@ class Checkview_Admin_Settings {
 	 * @return mixed
 	 */
 	public function checkview_add_footer_admin( $footer_text ) {
-		if ( isset( $_GET['page'] ) && ( 'checkview-options' === $_GET['page'] ) ) {
-			return _e(
-				'Powered by WordPress, Built & Supported by <a href="https://inspry.com" target="_blank">Inspry</a></p>',
-				'checkview'
-			);
-		} else {
+		// Routing check only (which admin page is showing); nothing is
+		// processed from the value, so no nonce applies.
+		$page = isset( $_GET['page'] ) ? sanitize_key( wp_unslash( $_GET['page'] ) ) : '';
+		if ( 'checkview-options' !== $page ) {
 			return $footer_text;
 		}
+
+		// `admin_footer_text` is a filter: core echoes the RETURN value inside
+		// its own <p>. The previous `return _e( ... )` printed early and
+		// returned null, and its trailing </p> closed core's paragraph.
+		return wp_kses(
+			sprintf(
+				/* translators: %s: link to Inspry. */
+				__( 'Powered by WordPress, Built & Supported by %s', 'checkview' ),
+				'<a href="https://inspry.com" target="_blank" rel="noopener">Inspry</a>'
+			),
+			array(
+				'a' => array(
+					'href'   => array(),
+					'target' => array(),
+					'rel'    => array(),
+				),
+			)
+		);
 	}
 }

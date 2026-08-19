@@ -4,15 +4,11 @@
 /.github
 /.cache
 /node_modules
-/tests
-/grunt
 /vendor
-/.revision
-/.circleci
-/.phpunit.cache
-/bin
 /scripts
 /docs
+# Stray local WordPress core checkout (gitignored; never part of the plugin)
+/wordpress
 
 # Linting / static analysis config
 .phpcs.xml.dist
@@ -22,23 +18,13 @@ phpmd.xml
 .distignore
 .gitignore
 .removeable-files
-Gruntfile.js
 
 # Build & tooling config
-tsconfig.json
 webpack.config.js
-.travis.yml
 .wp-env.json
 
-# Lockfiles / generated manifests (no runtime role; /vendor is excluded)
+# Lockfiles / generated manifests (no runtime role). Note that Composer's
+# vendor-dir is includes/vendor, which is committed and MUST ship (php-jwt is
+# used at runtime) — the /vendor line above intentionally matches nothing.
 composer.lock
-package-lock.json
 pnpm-lock.yaml
-yarn.lock
-package.xml
-
-# Test tooling & artifacts (PHPUnit phar, configs, caches, backups)
-*.phar
-phpunit.xml*
-.phpunit.result.cache
-*.bak

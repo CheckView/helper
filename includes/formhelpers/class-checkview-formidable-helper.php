@@ -64,6 +64,9 @@ if ( ! class_exists( 'Checkview_Formidable_Helper' ) ) {
 				2
 			);
 
+			// Accepts 3 args: Formidable passes compact( 'is_child' ) as the
+			// third (FrmEntry::after_entry_created_actions), which the handler
+			// needs to skip repeater/embedded-form child entries.
 			add_action(
 				'frm_after_create_entry',
 				array(
@@ -71,7 +74,7 @@ if ( ! class_exists( 'Checkview_Formidable_Helper' ) ) {
 					'checkview_log_form_test_entry',
 				),
 				99,
-				2
+				3
 			);
 
 			add_filter(
@@ -178,8 +181,67 @@ if ( ! class_exists( 'Checkview_Formidable_Helper' ) ) {
 		 * @param int $form_id Form entry ID.
 		 * @return void
 		 */
-		public function checkview_log_form_test_entry( $entry_id, $form_id ) {
+		public function checkview_log_form_test_entry( $entry_id, $form_id, $args = array() ) {
 			global $wpdb;
+
+			$entry_id = (int) $entry_id;
+			$form_id  = (int) $form_id;
+
+			// Refuse a non-positive entry id before anything else touches the
+			// database. This is not defensive tidiness — the child-entry cleanup
+			// below queries `WHERE parent_item_id = %d`, and Formidable stores 0
+			// in that column for every TOP-LEVEL entry
+			// (FrmMigrate.php:234: `parent_item_id BIGINT(20) default 0`). So an
+			// entry_id of 0 would select the customer's entire entry table and
+			// then delete it.
+			//
+			// Formidable core cannot pass 0 here — the action fires with a real
+			// insert id — but the previous code was a harmless no-op in that case
+			// and the child cleanup made it destructive, so the invariant is now
+			// enforced rather than assumed.
+			if ( $entry_id <= 0 ) {
+				Checkview_Admin_Logs::add( 'ip-logs', 'Formidable submission hook fired with a non-positive entry id [' . $entry_id . ']; refusing to touch the database.' );
+				return;
+			}
+
+			// Child entries: `frm_after_create_entry` also fires for repeater
+			// and embedded-form child entries, passing compact( 'is_child' )
+			// (FrmEntry::after_entry_created_actions). Without this guard a form
+			// with a repeater cloned one cv_entry row per child AND called
+			// complete_checkview_test() on the first of them — tearing the
+			// session down before the parent entry was ever cloned, which
+			// surfaces to the SaaS as submission-not-found.
+			if ( ! empty( $args['is_child'] ) ) {
+				Checkview_Admin_Logs::add( 'ip-logs', 'Skipping Formidable child entry [' . $entry_id . '] (repeater/embedded form); the parent entry is cloned separately.' );
+				return;
+			}
+
+			// Draft entries: Formidable Pro's "Save Draft" creates a real entry
+			// with is_draft=1 (FrmEntry::get_is_draft_value via the
+			// frm_saving_draft post value) and this action fires for it. Cloning
+			// and completing on a draft ends the test session while the visitor
+			// is still partway through a multi-page form.
+			$is_draft = (int) $wpdb->get_var(
+				$wpdb->prepare( 'SELECT is_draft FROM ' . $wpdb->prefix . 'frm_items WHERE id=%d', $entry_id )
+			);
+			if ( 1 === $is_draft ) {
+				Checkview_Admin_Logs::add( 'ip-logs', 'Skipping Formidable draft entry [' . $entry_id . ']; waiting for the final submission.' );
+				return;
+			}
+
+			// Idempotence: guards against this handler running twice for the
+			// same entry within one request (a second helper instance, or a
+			// plugin re-firing the action). A repeat would insert a duplicate
+			// cv_entry row and call complete_checkview_test() again after the
+			// session was already torn down. Mirrors the guard in
+			// Checkview_Fluent_Forms_Helper::checkview_clone_fluentform_entry().
+			static $processed = array();
+			$processed_key    = $entry_id . '_' . $form_id;
+			if ( isset( $processed[ $processed_key ] ) ) {
+				Checkview_Admin_Logs::add( 'ip-logs', 'Formidable entry [' . $entry_id . '] already cloned in this request; skipping duplicate.' );
+				return;
+			}
+			$processed[ $processed_key ] = true;
 
 			Checkview_Admin_Logs::add( 'ip-logs', 'Cloning submission entry [' . $entry_id . ']...' );
 
@@ -217,8 +279,19 @@ if ( ! class_exists( 'Checkview_Formidable_Helper' ) ) {
 				$entry_meta_table = $wpdb->prefix . 'cv_entry_meta';
 				$fields = $this->get_form_fields( $form_id );
 
+				// Previously `return`ed here. That exited the whole method,
+				// skipping BOTH the Formidable entry delete and
+				// complete_checkview_test() below — leaving the test submission
+				// in the customer's database and hanging the test until it timed
+				// out. It also contradicted the comment directly above, which
+				// states that cleanup still runs.
+				//
+				// Fall through with an empty map instead: every row in the meta
+				// loop below is skipped (no matching field definition), and
+				// cleanup proceeds as documented.
 				if ( empty( $fields ) ) {
-					return;
+					Checkview_Admin_Logs::add( 'ip-logs', 'No field definitions found for form [' . $form_id . ']; skipping entry meta clone but continuing cleanup.' );
+					$fields = array();
 				}
 
 				$tablename = $wpdb->prefix . 'frm_item_metas';
@@ -410,13 +483,53 @@ if ( ! class_exists( 'Checkview_Formidable_Helper' ) ) {
 				if ( $count > 0 ) {
 					Checkview_Admin_Logs::add( 'ip-logs', 'Cloned submission entry meta data (inserted ' . $count . ' rows into ' . $entry_meta_table . ').' );
 				} else {
-					if ( count( $form_fields ) > 0 ) {
+					// `! empty( $fields )` keeps this from reporting a database
+					// failure when the real cause was no field definitions —
+					// that case is logged above with its actual reason and would
+					// otherwise print an empty wpdb->last_error.
+					if ( count( $form_fields ) > 0 && ! empty( $fields ) ) {
 						Checkview_Admin_Logs::add( 'ip-logs', 'Failed to clone submission entry meta data. wpdb->last_error=[' . $wpdb->last_error . ']' );
 					}
 				}
 			}
 
-			// Remove test entry form Formidable.
+			// Remove test entry from Formidable.
+			//
+			// Child entries first. Repeater and embedded-form rows are separate
+			// frm_items records linked by parent_item_id, and they are now
+			// skipped by the is_child guard at the top of this method — so
+			// unlike before, nothing else deletes them. Without this they would
+			// accumulate in the customer's tables, one set per test run.
+			//
+			// Scoped strictly to children of the entry just cloned, so
+			// attribution is exact: parent_item_id is set by Formidable when it
+			// creates the child and is never guessed here. Metas are removed
+			// before the parent rows so the id list is still resolvable.
+			$child_ids = $wpdb->get_col(
+				$wpdb->prepare( 'SELECT id FROM ' . $wpdb->prefix . 'frm_items WHERE parent_item_id=%d', $entry_id )
+			);
+
+			if ( ! empty( $child_ids ) ) {
+				$child_ids = array_map( 'intval', $child_ids );
+				// Placeholders are generated from the row count, never from a
+				// value; every id is still bound through prepare(), and the ids
+				// themselves came from the database as integers.
+				// WPDBPREPARE.
+				$placeholders = implode( ',', array_fill( 0, count( $child_ids ), '%d' ) );
+
+				$wpdb->query(
+					$wpdb->prepare(
+						'DELETE FROM ' . $wpdb->prefix . 'frm_item_metas WHERE item_id IN (' . $placeholders . ')',
+						$child_ids
+					)
+				);
+				$wpdb->query(
+					$wpdb->prepare( 'DELETE FROM ' . $wpdb->prefix . 'frm_items WHERE parent_item_id=%d', $entry_id )
+				);
+
+				Checkview_Admin_Logs::add( 'ip-logs', 'Removed ' . count( $child_ids ) . ' Formidable child entr' . ( 1 === count( $child_ids ) ? 'y' : 'ies' ) . ' of entry [' . $entry_id . '].' );
+			}
+
 			$wpdb->query( $wpdb->prepare( 'DELETE FROM ' . $wpdb->prefix . 'frm_item_metas WHERE item_id=%d', $entry_id ) );
 			$wpdb->query( $wpdb->prepare( 'DELETE FROM ' . $wpdb->prefix . 'frm_items WHERE id=%d', $entry_id ) );
 

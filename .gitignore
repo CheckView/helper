@@ -1,6 +1,7 @@
 node_modules
 .vscode
 wp-content
+/wordpress/
 public_html/*
 site/*
 web/*
@@ -9,4 +10,3 @@ scripts/dist
 CLAUDE.md
 *-har.json
 *.phar
-.phpunit.result.cache

@@ -88,14 +88,12 @@ class CheckView {
 	public function __construct() {
 		if ( defined( 'CHECKVIEW_VERSION' ) ) {
 			$this->version = CHECKVIEW_VERSION;
-		} else {
-			$this->version = '2.3.0';
 		}
+
 		$this->plugin_name = 'checkview';
 
 		$this->load_dependencies();
 
-		$this->loader->add_action( 'init', $this, 'load_textdomain' );
 		$this->loader->add_action( 'wp_enqueue_scripts', $this, 'dequeue_scripts', 20 );
 
 		$this->define_admin_hooks();
@@ -410,19 +408,6 @@ class CheckView {
 	}
 
 	/**
-	 * Loads the CheckView text domain.
-	 *
-	 * @since 1.0.0
-	 */
-	public function load_textdomain() {
-		load_plugin_textdomain(
-			'checkview',
-			false,
-			dirname( plugin_basename( __FILE__ ) ) . '/languages/'
-		);
-	}
-
-	/**
 	 * Adds a "Settings" link to admin plugin list page.
 	 *
 	 * @since 1.0.0
@@ -455,7 +440,7 @@ class CheckView {
 				$plugin_logs,
 				'checkview_admin_logs_settings_save'
 			);
-			$this->loader->add_action(
+			$this->loader->add_filter(
 				'admin_footer_text',
 				$plugin_settings,
 				'checkview_add_footer_admin'

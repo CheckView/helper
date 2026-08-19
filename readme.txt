@@ -3,11 +3,11 @@ Contributors: checkview, inspry
 Donate link: https://checkview.io/
 Tags: form testing, form monitoring, wordpress testing, woocommerce testing, site monitoring
 Requires at least: 5.0.1
-Tested up to: 7.0
-Requires PHP: 7.4
-License: GPLv3
-License URI: http://www.gnu.org/licenses/gpl-3.0.html
-Stable tag: 2.3.0
+Tested up to: 7.1
+Requires PHP: 8.0
+License: GPLv2 or later
+License URI: http://www.gnu.org/licenses/gpl-2.0.html
+Stable tag: 2.3.3
 
 [CheckView](https://checkview.io/) automates WordPress form and WooCommerce testing, monitoring key flows to catch failures early before they cost you leads or sales everyday.
 
@@ -204,6 +204,28 @@ Support and test configuration are handled through the CheckView platform. Pleas
 3. CheckView general settings.
 
 == Changelog ==
+
+= 2.3.4 =
+* WP 7.1 compatibility: bump "Tested up to" to 7.1.
+* Stop loading admin assets from third-party CDNs: bundle SweetAlert2 and the Poppins webfont locally, and drop the unused Bootstrap stylesheet. Admin pages no longer disclose visitor IPs to Google Fonts or jsDelivr.
+* Fix the WooCommerce checkout payment method's text domain so its label is translatable.
+* Remove a stray xdebug PEAR manifest (`package.xml`) from the plugin package.
+* Correct the PHPCS ruleset, which still carried scaffold placeholders and checked against PHP 5.6.
+
+= 2.3.3 =
+* Formidable: Strengthen test clean up.
+* Gravity Forms: Stop 500 errors related to argument count when Zero Spam fires certain filters.
+* Improve REST API sub-request handling.
+
+= 2.3.2 =
+* Security: fix an authentication bypass in the REST API request filter. Reported by Usama Arshad.
+
+= 2.3.1 =
+* PHP 8.4 compatibility: upgrade bundled firebase/php-jwt to 7.1.0 and raise the minimum PHP version to 8.0.
+* Correct Elementor watermark capture gating and document proxy IP limitations.
+* Query Elementor submissions by the element id Elementor actually stores, and remove the submission's actions-log rows on cleanup.
+* Prevent Simple Cloudflare Turnstile's Elementor widget from rendering during tests.
+* Reduce the shipped bundle size by removing unused dependencies.
 
 = 2.3.0 =
 * Add Elementor Pro Forms support (forms list, test results, upload field file types, save-to-database action).
