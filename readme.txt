@@ -7,7 +7,7 @@ Tested up to: 7.1
 Requires PHP: 8.0
 License: GPLv2 or later
 License URI: http://www.gnu.org/licenses/gpl-2.0.html
-Stable tag: 2.3.3
+Stable tag: 2.4.0-beta
 
 [CheckView](https://checkview.io/) automates WordPress form and WooCommerce testing, monitoring key flows to catch failures early before they cost you leads or sales everyday.
 
@@ -205,7 +205,7 @@ Support and test configuration are handled through the CheckView platform. Pleas
 
 == Changelog ==
 
-= 2.3.4 =
+= 2.4.0 =
 * WP 7.1 compatibility: bump "Tested up to" to 7.1.
 * Stop loading admin assets from third-party CDNs: bundle SweetAlert2 and the Poppins webfont locally, and drop the unused Bootstrap stylesheet. Admin pages no longer disclose visitor IPs to Google Fonts or jsDelivr.
 * Fix the WooCommerce checkout payment method's text domain so its label is translatable.
