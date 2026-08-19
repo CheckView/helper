@@ -1041,6 +1041,66 @@ if ( ! function_exists( 'checkview_get_cv_session' ) ) {
 	}
 }
 
+if ( ! function_exists( 'checkview_get_form_page_post_types' ) ) {
+	/**
+	 * Post types searched when locating the pages a form is embedded on.
+	 *
+	 * These lookups match on `post_content LIKE '%...%'`, which no index can
+	 * satisfy. Naming the post types at least lets MySQL narrow the scan with
+	 * `type_status_date` instead of reading every row. Stores that keep orders
+	 * in `wp_posts` (HPOS off) or run a REST/debug logger CPT push that table
+	 * into the hundreds of MB, where the unscoped scan exceeds the host's
+	 * gateway timeout and the form list never returns.
+	 *
+	 * @since 1.0.0
+	 *
+	 * @return string[] Post type slugs.
+	 */
+	function checkview_get_form_page_post_types() {
+		$post_types = get_post_types( array( 'public' => true ), 'names' );
+
+		// Reusable blocks are not public, but forms are commonly embedded in them.
+		$post_types['wp_block'] = 'wp_block';
+
+		// Attachments never embed a form and carry no useful permalink here.
+		unset( $post_types['attachment'] );
+
+		/**
+		 * Filters the post types searched for embedded forms.
+		 *
+		 * Lets a site add a non-public post type that genuinely renders forms.
+		 *
+		 * @since 1.0.0
+		 *
+		 * @param string[] $post_types Post type slugs.
+		 */
+		$post_types = apply_filters( 'checkview_form_page_post_types', array_values( $post_types ) );
+
+		$post_types = array_values( array_unique( array_filter( (array) $post_types, 'is_string' ) ) );
+
+		// Never hand back an empty list; `IN ()` is a syntax error.
+		if ( empty( $post_types ) ) {
+			return array( 'post', 'page', 'wp_block' );
+		}
+
+		return $post_types;
+	}
+}
+
+if ( ! function_exists( 'checkview_post_type_placeholders' ) ) {
+	/**
+	 * Builds the `%s, %s, ...` placeholder list for a post type IN clause.
+	 *
+	 * @since 1.0.0
+	 *
+	 * @param string[] $post_types Post type slugs.
+	 * @return string Comma separated placeholders.
+	 */
+	function checkview_post_type_placeholders( $post_types ) {
+		return implode( ', ', array_fill( 0, count( $post_types ), '%s' ) );
+	}
+}
+
 if ( ! function_exists( 'checkview_get_wp_block_pages' ) ) {
 	/**
 	 * Retrieves a list of pages that contain at least one Gutenberg block.
@@ -1052,12 +1112,18 @@ if ( ! function_exists( 'checkview_get_wp_block_pages' ) ) {
 	 */
 	function checkview_get_wp_block_pages( $block_id ) {
 		global $wpdb;
+		$post_types = checkview_get_form_page_post_types();
 		// WPDBPREPARE.
 		return $wpdb->get_results(
 			$wpdb->prepare(
-				"SELECT * FROM {$wpdb->prefix}posts WHERE 1=1 AND (post_content LIKE %s) AND post_status=%s AND post_type NOT IN ('kadence_wootemplate', 'kadence_element', 'revision')",
-				'%wp:block {\"ref\":' . $block_id . '}%',
-				'publish'
+				"SELECT * FROM {$wpdb->prefix}posts WHERE 1=1 AND (post_content LIKE %s) AND post_status=%s AND post_type IN ( " . checkview_post_type_placeholders( $post_types ) . ' )',
+				array_merge(
+					array(
+						'%wp:block {\"ref\":' . $block_id . '}%',
+						'publish',
+					),
+					$post_types
+				)
 			)
 		);
 	}
