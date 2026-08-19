@@ -1232,6 +1232,10 @@ class CheckView_Api {
 		if ( ! is_admin() ) {
 			include_once ABSPATH . 'wp-admin/includes/plugin.php';
 		}
+
+		$post_types        = checkview_get_form_page_post_types();
+		$type_placeholders = checkview_post_type_placeholders( $post_types );
+
 		if ( is_plugin_active( 'gravityforms/gravityforms.php' ) ) {
 			$tablename = $wpdb->prefix . 'gf_form';
 			$results   = $wpdb->get_results( $wpdb->prepare( 'Select * from ' . $tablename . ' where is_active=%d and is_trash=%d order by ID ASC', 1, 0 ) );
@@ -1258,11 +1262,16 @@ class CheckView_Api {
 							OR post_content LIKE %s
 						) 
 						AND post_status = 'publish' 
-						AND post_type NOT IN ('kadence_wootemplate', 'kadence_element', 'revision')",
-							'%wp:gravityforms/form {"formId":"' . $row->id . '"%',
-							'%[gravityform id="' . $row->id . '"%',
-							'%[gravityform id=' . $row->id . '%',
-							'%[gravityform id=' . $row->id . '%'
+						AND post_type IN ( {$type_placeholders} )",
+							array_merge(
+								array(
+									'%wp:gravityforms/form {"formId":"' . $row->id . '"%',
+									'%[gravityform id="' . $row->id . '"%',
+									'%[gravityform id=' . $row->id . '%',
+									'%[gravityform id=' . $row->id . '%',
+								),
+								$post_types
+							)
 						)
 					);
 					if ( $form_pages ) {
@@ -1312,11 +1321,16 @@ class CheckView_Api {
 							OR post_content LIKE %s
 						) 
 						AND post_status = 'publish' 
-						AND post_type NOT IN ('kadence_wootemplate', 'kadence_element', 'revision')",
-							'%wp:fluentfom/guten-block {"formId":"' . $row->id . '"%',
-							'%[fluentform id="' . $row->id . '"%',
-							'%[fluentform id=' . $row->id . '%',
-							'%[fluentform id=' . $row->id . '%'
+						AND post_type IN ( {$type_placeholders} )",
+							array_merge(
+								array(
+									'%wp:fluentfom/guten-block {"formId":"' . $row->id . '"%',
+									'%[fluentform id="' . $row->id . '"%',
+									'%[fluentform id=' . $row->id . '%',
+									'%[fluentform id=' . $row->id . '%',
+								),
+								$post_types
+							)
 						)
 					);
 					foreach ( $form_pages as $form_page ) {
@@ -1364,11 +1378,16 @@ class CheckView_Api {
 							OR post_content LIKE %s
 						) 
 						AND post_status = 'publish' 
-						AND post_type NOT IN ('kadence_wootemplate', 'kadence_element', 'revision')",
-							'%wp:ninja-forms/form {\"formID\":' . $row->id . '%',
-							'%[ninja_form id="' . $row->id . '"]%',
-							'%[ninja_form id=' . $row->id . ']%',
-							'%[ninja_form id=\'' . $row->id . '\']%'
+						AND post_type IN ( {$type_placeholders} )",
+							array_merge(
+								array(
+									'%wp:ninja-forms/form {\"formID\":' . $row->id . '%',
+									'%[ninja_form id="' . $row->id . '"]%',
+									'%[ninja_form id=' . $row->id . ']%',
+									'%[ninja_form id=\'' . $row->id . '\']%',
+								),
+								$post_types
+							)
 						)
 					);
 					if ( $form_pages ) {
@@ -1454,9 +1473,14 @@ class CheckView_Api {
 							OR post_content LIKE %s
 						) 
 						AND post_status = 'publish' 
-						AND post_type NOT IN ('kadence_wootemplate', 'kadence_element', 'revision')",
-							'%[formidable id=\"' . $row->id . '\"%',
-							'%[formidable id=' . $row->id . ']%'
+						AND post_type IN ( {$type_placeholders} )",
+							array_merge(
+								array(
+									'%[formidable id=\"' . $row->id . '\"%',
+									'%[formidable id=' . $row->id . ']%',
+								),
+								$post_types
+							)
 						)
 					);
 					if ( $form_pages ) {
@@ -1509,16 +1533,18 @@ class CheckView_Api {
 						AND (
 							(post_content LIKE %s OR post_content LIKE %s OR post_content LIKE %s OR post_content LIKE %s)
 							AND post_status = %s
-							AND post_type NOT IN (%s, %s, %s)
+							AND post_type IN ( {$type_placeholders} )
 						)",
-							'%wp:contact-form-7/contact-form-selector {"id":"' . $hash . '%',
-							'%[contact-form-7 id="' . $hash . '%',
-							'%[contact-form-7 id=' . $hash . '%',
-							'%[contact-form-7 id=' . $hash . '%',
-							'publish',
-							'kadence_wootemplate',
-							'kadence_element',
-							'revision'
+							array_merge(
+								array(
+									'%wp:contact-form-7/contact-form-selector {"id":"' . $hash . '%',
+									'%[contact-form-7 id="' . $hash . '%',
+									'%[contact-form-7 id=' . $hash . '%',
+									'%[contact-form-7 id=' . $hash . '%',
+									'publish',
+								),
+								$post_types
+							)
 						)
 					);
 					if ( $form_pages ) {
@@ -1569,11 +1595,16 @@ class CheckView_Api {
 							OR post_content LIKE %s
 						) 
 						AND post_status = 'publish' 
-						AND post_type NOT IN ('kadence_wootemplate', 'kadence_element', 'revision')",
-							'%wp:wsf-block/form-add {"form_id":"' . $row->id . '"%',
-							'%[ws_form id="' . $row->id . '"%',
-							'%[ws_form id=' . $row->id . '%',
-							'%[ws_form id=' . $row->id . '%'
+						AND post_type IN ( {$type_placeholders} )",
+							array_merge(
+								array(
+									'%wp:wsf-block/form-add {"form_id":"' . $row->id . '"%',
+									'%[ws_form id="' . $row->id . '"%',
+									'%[ws_form id=' . $row->id . '%',
+									'%[ws_form id=' . $row->id . '%',
+								),
+								$post_types
+							)
 						)
 					);
 					foreach ( $form_pages as $form_page ) {
@@ -1623,16 +1654,18 @@ class CheckView_Api {
 						AND (
 							(post_content LIKE %s OR post_content LIKE %s OR post_content LIKE %s OR post_content LIKE %s)
 							AND post_status = %s
-							AND post_type NOT IN (%s, %s, %s)
+							AND post_type IN ( {$type_placeholders} )
 						)",
-							'%wp:forminator/forms {"id":"' . $row->ID . '%',
-							'%[forminator_form id="' . $row->ID . '%',
-							'%[forminator_form id=' . $row->ID . '%',
-							'%[forminator_form id=' . $row->ID . '%',
-							'publish',
-							'kadence_wootemplate',
-							'kadence_element',
-							'revision'
+							array_merge(
+								array(
+									'%wp:forminator/forms {"id":"' . $row->ID . '%',
+									'%[forminator_form id="' . $row->ID . '%',
+									'%[forminator_form id=' . $row->ID . '%',
+									'%[forminator_form id=' . $row->ID . '%',
+									'publish',
+								),
+								$post_types
+							)
 						)
 					);
 					if ( $form_pages ) {
@@ -1689,11 +1722,16 @@ class CheckView_Api {
 							OR post_content LIKE %s
 						)
 						AND post_status = 'publish'
-						AND post_type NOT IN ('kadence_wootemplate', 'kadence_element', 'revision')",
-							'%wp:everest-forms/form-selector {"formId":"' . $row->ID . '"%',
-							'%wp:everest-forms/form-selector {"formId":' . $row->ID . '%',
-							'%[everest_form id="' . $row->ID . '"%',
-							'%[everest_form id=' . $row->ID . '%'
+						AND post_type IN ( {$type_placeholders} )",
+							array_merge(
+								array(
+									'%wp:everest-forms/form-selector {"formId":"' . $row->ID . '"%',
+									'%wp:everest-forms/form-selector {"formId":' . $row->ID . '%',
+									'%[everest_form id="' . $row->ID . '"%',
+									'%[everest_form id=' . $row->ID . '%',
+								),
+								$post_types
+							)
 						)
 					);
 					if ( $form_pages ) {
