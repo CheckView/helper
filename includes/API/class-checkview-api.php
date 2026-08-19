@@ -1611,9 +1611,11 @@ class CheckView_Api {
 			$results = get_posts( $args );
 			if ( $results ) {
 				foreach ( $results as $row ) {
-					$forms['ForminatorForms'][ $row->ID ] = array(
+					$meta = get_post_meta( $row->ID, 'forminator_form_meta', true );
+					$display_name = $meta['settings']['formName'] ?? $row->post_title;
+					$forms['forminator'][ $row->ID ] = array(
 						'ID'   => $row->ID,
-						'Name' => $row->post_title,
+						'Name' => $display_name,
 					);
 
 					$form_pages = $wpdb->get_results(
