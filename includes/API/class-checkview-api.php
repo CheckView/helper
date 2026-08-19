@@ -1645,7 +1645,7 @@ class CheckView_Api {
 								if ( $wp_block_pages ) {
 									foreach ( $wp_block_pages as $wp_block_page ) {
 										if ( ! empty( checkview_must_ssl_url( get_the_permalink( $wp_block_page->ID ) ) ) ) {
-											$forms['ForminatorForms'][ $row->ID ]['pages'][] = array(
+											$forms['forminator'][ $row->ID ]['pages'][] = array(
 												'ID'  => $wp_block_page->ID,
 												'url' => checkview_must_ssl_url( get_the_permalink( $wp_block_page->ID ) ),
 											);
@@ -1653,7 +1653,7 @@ class CheckView_Api {
 									}
 								}
 							} elseif ( ! empty( checkview_must_ssl_url( get_the_permalink( $form_page->ID ) ) ) ) {
-								$forms['ForminatorForms'][ $row->ID ]['pages'][] = array(
+								$forms['forminator'][ $row->ID ]['pages'][] = array(
 									'ID'  => $form_page->ID,
 									'url' => checkview_must_ssl_url( get_the_permalink( $form_page->ID ) ),
 								);
