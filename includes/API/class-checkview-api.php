@@ -1209,6 +1209,7 @@ class CheckView_Api {
 	public function checkview_get_available_forms_list() {
 		global $wpdb;
 		$forms_list = get_transient( 'checkview_forms_list_transient' );
+		$is_local = checkview_is_local_environment();
 		if ( null !== $this->jwt_error ) {
 			Checkview_Admin_Logs::add( 'api-logs', $this->jwt_error );
 			return new WP_Error(
@@ -1219,7 +1220,7 @@ class CheckView_Api {
 		// Temporarily suppress errors.
 		$previous_error_reporting = error_reporting( 0 );
 
-		if ( '' !== $forms_list && null !== $forms_list && false !== $forms_list ) {
+		if ( '' !== $forms_list && null !== $forms_list && false !== $forms_list && ! $is_local ) {
 			return new WP_REST_Response(
 				array(
 					'status'        => 200,
@@ -1780,7 +1781,7 @@ class CheckView_Api {
 		}
 
 		if ( is_array( $forms ) ) {
-			if ( ! empty( $forms ) ) {
+			if ( ! empty( $forms ) && ! $is_local ) {
 				set_transient( 'checkview_forms_list_transient', $forms, 12 * HOUR_IN_SECONDS );
 			}
 
