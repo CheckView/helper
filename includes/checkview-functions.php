@@ -1087,6 +1087,51 @@ if ( ! function_exists( 'checkview_get_form_page_post_types' ) ) {
 	}
 }
 
+if ( ! function_exists( 'checkview_gform_has_active_notification' ) ) {
+	/**
+	 * Whether a Gravity Forms form has at least one active notification.
+	 *
+	 * A form with no active notification can never satisfy an
+	 * `assert_email_received` step, so reporting this lets the SaaS say so up
+	 * front instead of waiting out the email timeout.
+	 *
+	 * Reads through GFAPI rather than the `gf_form_meta` table so the shape of
+	 * the stored notification blob stays Gravity Forms' business.
+	 *
+	 * @since 1.0.0
+	 *
+	 * @param int $form_id Gravity Forms form ID.
+	 * @return bool|null True/false when known, null when it cannot be determined.
+	 */
+	function checkview_gform_has_active_notification( $form_id ) {
+		if ( ! class_exists( 'GFAPI' ) || ! method_exists( 'GFAPI', 'get_form' ) ) {
+			return null;
+		}
+
+		$form = GFAPI::get_form( $form_id );
+		if ( ! is_array( $form ) || ! array_key_exists( 'notifications', $form ) ) {
+			return null;
+		}
+
+		if ( empty( $form['notifications'] ) || ! is_array( $form['notifications'] ) ) {
+			return false;
+		}
+
+		foreach ( $form['notifications'] as $notification ) {
+			if ( ! is_array( $notification ) ) {
+				continue;
+			}
+			// GF omits isActive on notifications created before the toggle
+			// existed; those are active.
+			if ( ! array_key_exists( 'isActive', $notification ) || $notification['isActive'] ) {
+				return true;
+			}
+		}
+
+		return false;
+	}
+}
+
 if ( ! function_exists( 'checkview_post_type_placeholders' ) ) {
 	/**
 	 * Builds the `%s, %s, ...` placeholder list for a post type IN clause.

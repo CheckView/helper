@@ -1250,6 +1250,10 @@ class CheckView_Api {
 					foreach ( $addons as $addon ) {
 						$forms['GravityForms'][ $row->id ]['addons'][] = $addon->addon_slug;
 					}
+					$has_notification = checkview_gform_has_active_notification( $row->id );
+					if ( null !== $has_notification ) {
+						$forms['GravityForms'][ $row->id ]['has_email_notification'] = $has_notification;
+					}
 					// WPDBPREPARE.
 					$form_pages = $wpdb->get_results(
 						$wpdb->prepare(
