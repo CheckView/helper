@@ -1763,24 +1763,54 @@ class CheckView_Api {
 			 * Elementor forms are not stored in a dedicated table or CPT; each
 			 * form is a widget embedded in a page's `_elementor_data` post meta
 			 * (JSON element tree). Find published posts whose Elementor data
-			 * contains a form widget, or a `global` widget that may resolve to
-			 * one, then walk the tree to collect each form. The form id is the
-			 * page element's id, which matches the rendered hidden `form_id`
-			 * input. Library templates themselves are never pages, so they stay
-			 * excluded; a Global Widget's form surfaces through the pages that
-			 * reference it (see checkview_get_elementor_global_widget_form()).
+			 * contains a form widget, then walk the tree to collect each form.
+			 * The form id is the page element's id, which matches the rendered
+			 * hidden `form_id` input.
+			 *
+			 * A form saved as a Global Widget lives in an elementor_library post
+			 * and sits on pages as `{"widgetType":"global","templateID":N}`.
+			 * Library posts are never pages, so they stay excluded; instead,
+			 * pages are also matched on the ids of library templates that hold
+			 * a form, and checkview_get_elementor_global_widget_form() resolves
+			 * the reference. Matching on every `global` node would not do: a
+			 * header or button saved as global is on most pages of a site, and
+			 * this query loads each matched page's whole element tree.
 			 */
+			$patterns = array( '%"widgetType":"form"%' );
+
+			$form_template_ids = $wpdb->get_col(
+				$wpdb->prepare(
+					"SELECT p.ID FROM {$wpdb->prefix}posts p
+					INNER JOIN {$wpdb->prefix}postmeta pm ON pm.post_id = p.ID
+					WHERE pm.meta_key = %s
+					AND pm.meta_value LIKE %s
+					AND p.post_status = 'publish'
+					AND p.post_type = 'elementor_library'",
+					'_elementor_data',
+					'%"widgetType":"form"%'
+				)
+			);
+			foreach ( (array) $form_template_ids as $form_template_id ) {
+				$form_template_id = (int) $form_template_id;
+				if ( $form_template_id <= 0 ) {
+					continue;
+				}
+				// Elementor writes templateID as a JSON number; some exports carry a string.
+				$patterns[] = '%"templateID":' . $form_template_id . '%';
+				$patterns[] = '%"templateID":"' . $form_template_id . '"%';
+			}
+
+			$like_clauses = implode( ' OR ', array_fill( 0, count( $patterns ), 'pm.meta_value LIKE %s' ) );
+
 			$elementor_pages = $wpdb->get_results(
 				$wpdb->prepare(
 					"SELECT p.ID, pm.meta_value FROM {$wpdb->prefix}posts p
 					INNER JOIN {$wpdb->prefix}postmeta pm ON pm.post_id = p.ID
 					WHERE pm.meta_key = %s
-					AND ( pm.meta_value LIKE %s OR pm.meta_value LIKE %s )
+					AND ( {$like_clauses} )
 					AND p.post_status = 'publish'
 					AND p.post_type NOT IN ('kadence_wootemplate', 'revision', 'elementor_library')",
-					'_elementor_data',
-					'%"widgetType":"form"%',
-					'%"widgetType":"global"%'
+					array_merge( array( '_elementor_data' ), $patterns )
 				)
 			);
 			if ( $elementor_pages ) {

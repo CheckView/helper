@@ -1205,7 +1205,8 @@ if ( ! function_exists( 'checkview_get_elementor_global_widget_form' ) ) {
 	 *
 	 * @param array $element A `global` widget node from a page's element tree.
 	 * @return array|null Form node keyed to the host page, or null when the
-	 *                    template is missing, trashed, or contains no form.
+	 *                    template is missing, trashed, not a library post, or
+	 *                    contains no form.
 	 */
 	function checkview_get_elementor_global_widget_form( $element ) {
 		static $template_forms = array();
@@ -1222,8 +1223,7 @@ if ( ! function_exists( 'checkview_get_elementor_global_widget_form' ) ) {
 		if ( ! array_key_exists( $template_id, $template_forms ) ) {
 			$template_forms[ $template_id ] = null;
 
-			$status = get_post_status( $template_id );
-			if ( $status && 'trash' !== $status ) {
+			if ( 'elementor_library' === get_post_type( $template_id ) && 'trash' !== get_post_status( $template_id ) ) {
 				$data = get_post_meta( $template_id, '_elementor_data', true );
 				if ( is_string( $data ) && '' !== $data ) {
 					$data = json_decode( $data, true );
