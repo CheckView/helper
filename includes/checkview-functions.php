@@ -1139,6 +1139,12 @@ if ( ! function_exists( 'checkview_get_elementor_form_widgets' ) ) {
 	 * value Elementor renders as the hidden `form_id` input and that
 	 * `Form_Record::get_form_settings( 'id' )` returns during submission).
 	 *
+	 * A form saved as a Global Widget lives in an `elementor_library` post and
+	 * each page holds only a `global` widget node pointing at it via
+	 * `templateID`. Those references are resolved so the form is reported on
+	 * every page that renders it; see checkview_get_elementor_global_widget_form()
+	 * for which id the resolved node carries.
+	 *
 	 * @since 1.0.0
 	 *
 	 * @param array $elements Decoded Elementor element tree (or a subtree).
@@ -1156,8 +1162,15 @@ if ( ! function_exists( 'checkview_get_elementor_form_widgets' ) ) {
 				continue;
 			}
 
-			if ( isset( $element['widgetType'] ) && 'form' === $element['widgetType'] ) {
+			$widget_type = isset( $element['widgetType'] ) ? $element['widgetType'] : '';
+
+			if ( 'form' === $widget_type ) {
 				$found[] = $element;
+			} elseif ( 'global' === $widget_type ) {
+				$global_form = checkview_get_elementor_global_widget_form( $element );
+				if ( null !== $global_form ) {
+					$found[] = $global_form;
+				}
 			}
 
 			if ( ! empty( $element['elements'] ) && is_array( $element['elements'] ) ) {
@@ -1169,6 +1182,69 @@ if ( ! function_exists( 'checkview_get_elementor_form_widgets' ) ) {
 		}
 
 		return $found;
+	}
+}
+
+if ( ! function_exists( 'checkview_get_elementor_global_widget_form' ) ) {
+	/**
+	 * Resolves a `global` widget node to the form widget it renders.
+	 *
+	 * Elementor Pro renders a Global Widget by instantiating the referenced
+	 * template's widget under the *page* element's id: that id is what lands
+	 * on the wrapper's `data-id` and in the hidden `form_id` input, and it is
+	 * what the browser posts on submit (Ajax_Handler finds the posted id in the
+	 * host page, then follows `templateID` for the form settings). The SaaS
+	 * locates the form on the page by that same id, so the returned node keeps
+	 * the page element's `id` and takes its settings (form name, fields) from
+	 * the template. Each page placing the Global Widget yields its own form id.
+	 *
+	 * Templates are decoded once per request; a template that references
+	 * itself through hand-edited meta resolves to null instead of recursing.
+	 *
+	 * @since 1.0.0
+	 *
+	 * @param array $element A `global` widget node from a page's element tree.
+	 * @return array|null Form node keyed to the host page, or null when the
+	 *                    template is missing, trashed, or contains no form.
+	 */
+	function checkview_get_elementor_global_widget_form( $element ) {
+		static $template_forms = array();
+
+		if ( empty( $element['id'] ) || empty( $element['templateID'] ) ) {
+			return null;
+		}
+
+		$template_id = (int) $element['templateID'];
+		if ( $template_id <= 0 ) {
+			return null;
+		}
+
+		if ( ! array_key_exists( $template_id, $template_forms ) ) {
+			$template_forms[ $template_id ] = null;
+
+			$status = get_post_status( $template_id );
+			if ( $status && 'trash' !== $status ) {
+				$data = get_post_meta( $template_id, '_elementor_data', true );
+				if ( is_string( $data ) && '' !== $data ) {
+					$data = json_decode( $data, true );
+				}
+
+				$template_widgets = checkview_get_elementor_form_widgets( $data );
+				if ( ! empty( $template_widgets ) ) {
+					$template_forms[ $template_id ] = $template_widgets[0];
+				}
+			}
+		}
+
+		if ( null === $template_forms[ $template_id ] ) {
+			return null;
+		}
+
+		$form               = $template_forms[ $template_id ];
+		$form['id']         = $element['id'];
+		$form['templateID'] = $template_id;
+
+		return $form;
 	}
 }
 

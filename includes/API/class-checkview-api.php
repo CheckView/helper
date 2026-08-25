@@ -1763,21 +1763,24 @@ class CheckView_Api {
 			 * Elementor forms are not stored in a dedicated table or CPT; each
 			 * form is a widget embedded in a page's `_elementor_data` post meta
 			 * (JSON element tree). Find published posts whose Elementor data
-			 * contains a form widget, then walk the tree to collect each form.
-			 * The form id is the widget element id, which matches both the
-			 * rendered hidden `form_id` input and the submission hook's
-			 * get_form_settings( 'id' ) used by Checkview_Elementor_Helper.
+			 * contains a form widget, or a `global` widget that may resolve to
+			 * one, then walk the tree to collect each form. The form id is the
+			 * page element's id, which matches the rendered hidden `form_id`
+			 * input. Library templates themselves are never pages, so they stay
+			 * excluded; a Global Widget's form surfaces through the pages that
+			 * reference it (see checkview_get_elementor_global_widget_form()).
 			 */
 			$elementor_pages = $wpdb->get_results(
 				$wpdb->prepare(
 					"SELECT p.ID, pm.meta_value FROM {$wpdb->prefix}posts p
 					INNER JOIN {$wpdb->prefix}postmeta pm ON pm.post_id = p.ID
 					WHERE pm.meta_key = %s
-					AND pm.meta_value LIKE %s
+					AND ( pm.meta_value LIKE %s OR pm.meta_value LIKE %s )
 					AND p.post_status = 'publish'
 					AND p.post_type NOT IN ('kadence_wootemplate', 'revision', 'elementor_library')",
 					'_elementor_data',
-					'%"widgetType":"form"%'
+					'%"widgetType":"form"%',
+					'%"widgetType":"global"%'
 				)
 			);
 			if ( $elementor_pages ) {
