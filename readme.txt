@@ -206,6 +206,7 @@ Support and test configuration are handled through the CheckView platform. Pleas
 == Changelog ==
 
 = 2.3.4 =
+* Elementor: Detect forms placed through a Global Widget and list them against the pages that render them.
 * WP 7.1 compatibility: bump "Tested up to" to 7.1.
 * Stop loading admin assets from third-party CDNs: bundle SweetAlert2 and the Poppins webfont locally, and drop the unused Bootstrap stylesheet. Admin pages no longer disclose visitor IPs to Google Fonts or jsDelivr.
 * Fix the WooCommerce checkout payment method's text domain so its label is translatable.
