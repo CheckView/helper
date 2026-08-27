@@ -231,6 +231,38 @@ if ( ! class_exists( 'Checkview_Forminator_Helper' ) ) {
 			// Elementor helpers.
 			add_filter( 'hcap_activate', '__return_false' );
 
+			// CleanTalk Spam Protect.
+			//
+			// `forminator_spam_protection` => __return_false does NOT stop
+			// CleanTalk: it registers with add_action (Integrations.php:44-62),
+			// so on a filter its return value is discarded, and it also sits at
+			// priority 1 on wp_ajax[_nopriv]_forminator_submit_form_custom-forms
+			// ahead of Forminator's own save_entry at 10
+			// (abstract-class-front-action.php:126-127), where it terminates the
+			// request via doBlock() before Forminator ever handles it.
+			//
+			// The `$cleantalk_executed` sentinel does work here, contrary to an
+			// earlier reading of this code. It is consulted one call deeper than
+			// the integration class: apbct_base_call() short-circuits on it and
+			// returns `array( 'ct_result' => new CleantalkResponse() )`
+			// (inc/cleantalk-common.php:110-124). That default response has
+			// `allow = 1` (CleantalkResponse.php:154), and checkSpam() only calls
+			// doBlock() when `allow == 0` (Integrations.php:190). So the check
+			// short-circuits to "allowed" on every Forminator hook at once, with
+			// no coupling to CleanTalk's hook list or class names.
+			//
+			// Same two lines the GF helper already uses. CAVEAT, as noted there:
+			// this is an INTERNAL global, not a public API, so re-verify on
+			// CleanTalk updates. Harmless when CleanTalk is not installed.
+			//
+			// Complementary, not redundant: checkview_init_current_test() already
+			// calls checkview_whitelist_api_ip() when CleanTalk is active
+			// (admin/class-checkview-admin.php:336-338), but that is a REMOTE
+			// allowlist call that early-returns without a configured service id
+			// and API key. This sentinel is local and unconditional.
+			global $cleantalk_executed;
+			$cleantalk_executed = true;
+
 			// Disbale form action.
 			add_filter(
 				'forminator_is_addons_feature_enabled',
