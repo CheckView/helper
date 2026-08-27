@@ -1209,6 +1209,7 @@ class CheckView_Api {
 	public function checkview_get_available_forms_list() {
 		global $wpdb;
 		$forms_list = get_transient( 'checkview_forms_list_transient' );
+		$is_local = checkview_is_local_environment();
 		if ( null !== $this->jwt_error ) {
 			Checkview_Admin_Logs::add( 'api-logs', $this->jwt_error );
 			return new WP_Error(
@@ -1219,7 +1220,7 @@ class CheckView_Api {
 		// Temporarily suppress errors.
 		$previous_error_reporting = error_reporting( 0 );
 
-		if ( '' !== $forms_list && null !== $forms_list && false !== $forms_list ) {
+		if ( '' !== $forms_list && null !== $forms_list && false !== $forms_list && ! $is_local ) {
 			return new WP_REST_Response(
 				array(
 					'status'        => 200,
@@ -1642,9 +1643,11 @@ class CheckView_Api {
 			$results = get_posts( $args );
 			if ( $results ) {
 				foreach ( $results as $row ) {
-					$forms['ForminatorForms'][ $row->ID ] = array(
+					$meta = get_post_meta( $row->ID, 'forminator_form_meta', true );
+					$display_name = $meta['settings']['formName'] ?? $row->post_title;
+					$forms['forminator'][ $row->ID ] = array(
 						'ID'   => $row->ID,
-						'Name' => $row->post_title,
+						'Name' => $display_name,
 					);
 
 					$form_pages = $wpdb->get_results(
@@ -1676,7 +1679,7 @@ class CheckView_Api {
 								if ( $wp_block_pages ) {
 									foreach ( $wp_block_pages as $wp_block_page ) {
 										if ( ! empty( checkview_must_ssl_url( get_the_permalink( $wp_block_page->ID ) ) ) ) {
-											$forms['ForminatorForms'][ $row->ID ]['pages'][] = array(
+											$forms['forminator'][ $row->ID ]['pages'][] = array(
 												'ID'  => $wp_block_page->ID,
 												'url' => checkview_must_ssl_url( get_the_permalink( $wp_block_page->ID ) ),
 											);
@@ -1684,7 +1687,7 @@ class CheckView_Api {
 									}
 								}
 							} elseif ( ! empty( checkview_must_ssl_url( get_the_permalink( $form_page->ID ) ) ) ) {
-								$forms['ForminatorForms'][ $row->ID ]['pages'][] = array(
+								$forms['forminator'][ $row->ID ]['pages'][] = array(
 									'ID'  => $form_page->ID,
 									'url' => checkview_must_ssl_url( get_the_permalink( $form_page->ID ) ),
 								);
@@ -1816,7 +1819,7 @@ class CheckView_Api {
 		}
 
 		if ( is_array( $forms ) ) {
-			if ( ! empty( $forms ) ) {
+			if ( ! empty( $forms ) && ! $is_local ) {
 				set_transient( 'checkview_forms_list_transient', $forms, 12 * HOUR_IN_SECONDS );
 			}
 

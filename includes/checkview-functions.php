@@ -857,6 +857,21 @@ if ( ! function_exists( 'checkview_add_to_cleantalk' ) ) {
 	}
 }
 
+if ( ! function_exists( 'checkview_is_local_environment' ) ) {
+	/**
+	 * Determine if environment is a local development environment.
+	 *
+	 * Decision is made based on WP_ENVIRONMENT_TYPE constant.
+	 *
+	 * @since 2.4.0
+	 *
+	 * @return bool
+	 */
+	function checkview_is_local_environment(): bool {
+		return defined( 'WP_ENVIRONMENT_TYPE' ) && WP_ENVIRONMENT_TYPE === 'local';
+	}
+}
+
 if ( ! function_exists( 'checkview_must_ssl_url' ) ) {
 	/**
 	 * Replaces `http:` with `https:`.
@@ -867,6 +882,9 @@ if ( ! function_exists( 'checkview_must_ssl_url' ) ) {
 	 * @return string SSL version of `$url`.
 	 */
 	function checkview_must_ssl_url( $url ) {
+		if ( checkview_is_local_environment() ) {
+			return $url;
+		}
 
 		$url = str_replace( 'http:', 'https:', $url );
 		return $url;
