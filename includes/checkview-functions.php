@@ -329,11 +329,15 @@ if ( ! function_exists( 'complete_checkview_test' ) ) {
 		cv_delete_option( 'disable_actions_' . $checkview_test_id );
 		cv_delete_option( 'disable_email_receipt_' . $checkview_test_id );
 		cv_delete_option( 'disable_webhooks_' . $checkview_test_id );
+		cv_delete_option( 'allow_original_recipients_' . $checkview_test_id );
+		cv_delete_option( 'allow_original_recipients_set_at_' . $checkview_test_id );
 
 		// Legacy cleanup: remove global options from before per-test scoping.
 		cv_delete_option( 'disable_actions' );
 		cv_delete_option( 'disable_email_receipt' );
 		cv_delete_option( 'disable_webhooks' );
+		cv_delete_option( 'allow_original_recipients' );
+		cv_delete_option( 'allow_original_recipients_set_at' );
 
 		// Legacy cleanup: remove orphaned captcha backup keys from old code.
 		cv_delete_option( 'checkview_wpforms_turnstile-site-key' );
@@ -1811,5 +1815,267 @@ if ( ! function_exists( 'checkview_truncate_meta_key' ) ) {
 		return function_exists( 'mb_substr' )
 			? mb_substr( $key, 0, 255, 'UTF-8' )
 			: substr( $key, 0, 255 );
+	}
+}
+if ( ! function_exists( 'cv_should_allow_original_recipients' ) ) {
+	/**
+	 * Determines whether append-mode is active for the current request.
+	 *
+	 * Reads the per-test `allow_original_recipients_<test_id>` option (set during
+	 * test-init when the SaaS sends `?allow_original_recipients=true`) and checks
+	 * the companion `_set_at_<test_id>` timestamp.
+	 *
+	 * Keyed by test id, not site-scoped: the flag decides whether a customer's
+	 * real recipients receive test email, so two concurrent tests must not be able
+	 * to read each other's setting.
+	 *
+	 * Returns false on stale (>45min), missing, or future-dated timestamps to
+	 * fail safe. The 45-minute window protects orphan flags BETWEEN tests
+	 * (Cloud Run hard-caps a single test at 1200s/20min, so this window cannot
+	 * be hit during a single test). Test-init reset is the deterministic
+	 * cleanup path; this watchdog is the stale-flag rejection path.
+	 *
+	 * @return boolean True if append-mode should fire, false otherwise.
+	 */
+	function cv_should_allow_original_recipients() {
+		// Keyed by test id so two concurrent tests cannot read each other's
+		// setting. Without a resolvable test id there is nothing to authorise
+		// append-mode against, so fail closed.
+		$cv_test_id = function_exists( 'get_checkview_test_id' ) ? get_checkview_test_id() : '';
+		if ( empty( $cv_test_id ) ) {
+			return false;
+		}
+
+		$flag = get_option( 'allow_original_recipients_' . $cv_test_id, false );
+		if ( ! $flag ) {
+			return false;
+		}
+		$set_at = (int) get_option( 'allow_original_recipients_set_at_' . $cv_test_id, 0 );
+		if ( $set_at <= 0 || $set_at > time() || ( time() - $set_at ) > 2700 ) {
+			return false;
+		}
+		return true;
+	}
+}
+
+if ( ! function_exists( 'cv_sanitize_crlf' ) ) {
+	/**
+	 * Strips CR and LF characters from a string to prevent email header
+	 * injection.
+	 *
+	 * Defensive sanitizer applied to recipient and Reply-To values that flow
+	 * through CheckView's append-mode paths into wp_mail. If a customer's
+	 * form-configured recipient or Reply-To value contains embedded CRLF
+	 * (whether by misconfiguration or a malicious form submission), an
+	 * attacker could inject additional headers (e.g., a hidden Bcc) that
+	 * route mail to external addresses. By stripping CRLF before we
+	 * concatenate, we prevent this regardless of how `wp_mail` itself
+	 * handles the value downstream.
+	 *
+	 * Returns non-string values unchanged (arrays, null, etc.).
+	 *
+	 * @param mixed $value Value to sanitize.
+	 * @return mixed Sanitized value (string with CRLF removed, or input as-is).
+	 */
+	function cv_sanitize_crlf( $value ) {
+		if ( ! is_string( $value ) ) {
+			return $value;
+		}
+		// CRLF stripping blocks RFC 5322 header injection. Null byte stripping
+		// is defense-in-depth — legacy C-level mail extensions might treat \0
+		// as a string terminator, truncating subsequent headers.
+		return str_replace( array( "\r\n", "\r", "\n", "\0" ), '', $value );
+	}
+}
+
+if ( ! function_exists( 'cv_recipients_contain_test_email' ) ) {
+	/**
+	 * Checks whether TEST_EMAIL is already present in a recipient list,
+	 * using proper email-address parsing rather than naive substring match.
+	 *
+	 * Splits on commas (or semicolons), extracts the bare email address from
+	 * each entry (handles "Name <addr>" RFC 2822 format and surrounding
+	 * whitespace), and compares case-insensitively against TEST_EMAIL.
+	 *
+	 * Avoids the substring-collision false positive where TEST_EMAIL might
+	 * appear within an unrelated address (e.g., `nottest_id@test-mail.checkview.io`
+	 * incorrectly matching `test_id@test-mail.checkview.io`).
+	 *
+	 * @param array|string $recipients Recipients (array of strings, or comma-/semi-separated string).
+	 *
+	 * @return bool True if any entry's email matches TEST_EMAIL, false otherwise.
+	 */
+	function cv_recipients_contain_test_email( $recipients ) {
+		if ( ! defined( 'TEST_EMAIL' ) ) {
+			return false;
+		}
+
+		if ( is_array( $recipients ) ) {
+			$entries = $recipients;
+		} else {
+			$entries = preg_split( '/[,;]/', (string) $recipients );
+		}
+
+		$test_email_lower = strtolower( TEST_EMAIL );
+
+		foreach ( $entries as $entry ) {
+			if ( ! is_string( $entry ) ) {
+				continue;
+			}
+			$bare = strtolower( trim( $entry ) );
+
+			// Extract email from "Name <addr>" RFC 2822 format. Anchor to the
+			// LAST `<...>` so display names containing brackets (e.g.,
+			// `<John> <john@x.com>`) resolve to the actual address, not the
+			// display-name fragment.
+			if ( preg_match( '/<([^<>]+)>\s*$/', $bare, $matches ) ) {
+				$bare = trim( $matches[1] );
+			}
+
+			if ( $bare === $test_email_lower ) {
+				return true;
+			}
+		}
+
+		return false;
+	}
+}
+
+if ( ! function_exists( 'cv_append_test_email_string' ) ) {
+	/**
+	 * Appends TEST_EMAIL to a comma-separated recipient string with dedup.
+	 *
+	 * Matches the existing replace-mode behavior's data shape: returns a string
+	 * of comma-separated addresses. Skips append if TEST_EMAIL is already
+	 * present (defensive against double-firing filter chains and customer
+	 * misconfiguration).
+	 *
+	 * @param string $recipients Existing comma-separated recipients (may be empty).
+	 *
+	 * @return string Recipients with TEST_EMAIL appended (or unchanged if dedup hit).
+	 */
+	function cv_append_test_email_string( $recipients ) {
+		if ( ! defined( 'TEST_EMAIL' ) ) {
+			return $recipients;
+		}
+		if ( empty( $recipients ) ) {
+			return TEST_EMAIL;
+		}
+		if ( cv_recipients_contain_test_email( $recipients ) ) {
+			return cv_sanitize_crlf( $recipients );
+		}
+		// Strip CRLF from existing recipient string before concatenation to
+		// prevent header injection if the customer's form data contains
+		// embedded line breaks.
+		$sanitized = cv_sanitize_crlf( $recipients );
+		return rtrim( $sanitized, ", \t" ) . ',' . TEST_EMAIL;
+	}
+}
+
+if ( ! function_exists( 'cv_append_test_email_array' ) ) {
+	/**
+	 * Appends TEST_EMAIL to a recipient array with dedup.
+	 *
+	 * @param mixed $recipients Existing recipients (array or scalar — coerced to array).
+	 *
+	 * @return array Recipients with TEST_EMAIL appended (or unchanged if dedup hit).
+	 */
+	function cv_append_test_email_array( $recipients ) {
+		if ( ! defined( 'TEST_EMAIL' ) ) {
+			return is_array( $recipients ) ? $recipients : (array) $recipients;
+		}
+		$list = is_array( $recipients ) ? $recipients : (array) $recipients;
+		// Sanitize each entry — if a customer's form data contains embedded
+		// CRLF in a single recipient entry, downstream wp_mail conversion
+		// could inject headers when the array is joined into a comma string.
+		$list = array_map( 'cv_sanitize_crlf', $list );
+		if ( cv_recipients_contain_test_email( $list ) ) {
+			return $list;
+		}
+		$list[] = TEST_EMAIL;
+		return $list;
+	}
+}
+
+if ( ! function_exists( 'cv_inject_reply_to_header' ) ) {
+	/**
+	 * Injects `Reply-To: TEST_EMAIL` into a headers structure when append-mode
+	 * is active. Appends to existing Reply-To rather than replacing.
+	 *
+	 * Defends against MTA variance: when the customer's mail server splits
+	 * SMTP delivery per RCPT TO, Postmark may not see TEST_EMAIL in the To
+	 * header. Reply-To injection ensures Postmark's webhook payload always
+	 * carries the test_id-bearing address, which the test-runner's regex
+	 * fallback chain extracts.
+	 *
+	 * Handles both array (e.g. WC, Forminator, Fluent Forms) and string
+	 * (e.g. CRLF-joined) header shapes per the calling helper's data model.
+	 *
+	 * @param mixed $headers Existing headers (array or CRLF-string).
+	 *
+	 * @return mixed Headers with Reply-To injected, in the same shape as input.
+	 */
+	function cv_inject_reply_to_header( $headers ) {
+		if ( ! cv_should_allow_original_recipients() ) {
+			return $headers;
+		}
+		if ( ! defined( 'TEST_EMAIL' ) ) {
+			return $headers;
+		}
+
+		// Defensive: some plugins may pass header objects. We only know how
+		// to mutate arrays or strings — anything else passes through.
+		if ( ! is_array( $headers ) && ! is_string( $headers ) && ! is_null( $headers ) ) {
+			return $headers;
+		}
+
+		$is_array = is_array( $headers );
+
+		// Split on any line-ending variant (\r\n, \n, \r) to be MTA-agnostic.
+		// Some forms emit \n-only headers; bare \r is rare but defensive.
+		$list = $is_array
+			? $headers
+			: ( empty( $headers ) ? array() : preg_split( '/\r\n|\r|\n/', $headers ) );
+
+		$existing_index = null;
+		foreach ( $list as $index => $header ) {
+			// Tolerant Reply-To detector: matches `Reply-To:` and `Reply-To :`
+			// (optional whitespace before colon). Case-insensitive.
+			if ( is_string( $header ) && preg_match( '/^\s*Reply-To\s*:/i', $header ) ) {
+				$existing_index = $index;
+				break;
+			}
+		}
+
+		$test_email_lower = strtolower( TEST_EMAIL );
+
+		if ( null === $existing_index ) {
+			$list[] = 'Reply-To: ' . TEST_EMAIL;
+		} else {
+			$existing = $list[ $existing_index ];
+
+			// Sanitize CRLF unconditionally — neutralize any header injection
+			// in the existing value before we touch it, regardless of whether
+			// dedup hits or we append. Consistent with the other helpers
+			// (cv_append_test_email_string/array always sanitize).
+			$sanitized = cv_sanitize_crlf( $existing );
+			$list[ $existing_index ] = $sanitized;
+
+			// Extract addresses already in this Reply-To and check via the
+			// shared parser to avoid substring false positives.
+			$value = trim( substr( $sanitized, strpos( $sanitized, ':' ) + 1 ) );
+
+			if ( '' === $value ) {
+				// Valueless Reply-To. Elementor Pro emits a bare `Reply-To:`
+				// unconditionally when the form maps no reply-to field, and
+				// appending to it would yield a malformed `Reply-To:, addr`.
+				// Replace the whole header rather than append to nothing.
+				$list[ $existing_index ] = 'Reply-To: ' . TEST_EMAIL;
+			} elseif ( ! cv_recipients_contain_test_email( $value ) ) {
+				$list[ $existing_index ] = rtrim( $sanitized, ", \t" ) . ', ' . TEST_EMAIL;
+			}
+		}
+
+		return $is_array ? $list : implode( "\r\n", $list );
 	}
 }

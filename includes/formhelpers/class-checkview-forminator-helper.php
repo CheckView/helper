@@ -281,6 +281,15 @@ if ( ! class_exists( 'Checkview_Forminator_Helper' ) ) {
 		 * @return string/ARRAY Email.
 		 */
 		public function checkview_inject_email( $email ) {
+			// New: append-mode branch — deliver to BOTH real recipient and test inbox.
+			if ( cv_should_allow_original_recipients() ) {
+				$email = is_array( $email )
+					? cv_append_test_email_array( $email )
+					: cv_append_test_email_string( $email );
+				Checkview_Admin_Logs::add( 'ip-logs', 'Append-mode submission recipient email address: ' . wp_json_encode( $email ) );
+				return $email;
+			}
+
 			$cv_test_id = get_checkview_test_id();
 			if ( ! $cv_test_id || 'true' != get_option( 'disable_email_receipt_' . $cv_test_id, false ) ) {
 				$email   = array();
@@ -301,6 +310,14 @@ if ( ! class_exists( 'Checkview_Forminator_Helper' ) ) {
 		 * @return array
 		 */
 		public function checkview_remove_email_header( array $headers ): array {
+			// Append-mode: preserve original CC/BCC so customer's full recipient
+			// list receives the email. Inject Reply-To for MTA-variance defense.
+			if ( cv_should_allow_original_recipients() ) {
+				$headers = cv_inject_reply_to_header( $headers );
+				Checkview_Admin_Logs::add( 'ip-logs', 'Append-mode submission email headers (CC/BCC preserved): ' . wp_json_encode( $headers ) );
+				return $headers;
+			}
+
 			// Ensure headers are an array.
 			if ( ! is_array( $headers ) ) {
 				$headers = explode( "\r\n", $headers );
@@ -314,6 +331,7 @@ if ( ! class_exists( 'Checkview_Forminator_Helper' ) ) {
 			);
 
 			$array_values = array_values( $filtered_headers );
+
 			Checkview_Admin_Logs::add( 'ip-logs', 'Submission email headers: ' . wp_json_encode( $array_values ) );
 			return $array_values;
 		}

@@ -515,6 +515,11 @@ class Checkview_Admin {
 		$disable_actions = isset( $_REQUEST['disable_actions'] )
 			? sanitize_text_field( wp_unslash( $_REQUEST['disable_actions'] ) )
 			: '';
+		$allow_original_recipients = isset( $_REQUEST['allow_original_recipients'] )
+			? sanitize_text_field( wp_unslash( $_REQUEST['allow_original_recipients'] ) )
+			: '';
+		$referrer_url = sanitize_url( wp_get_raw_referer(), array( 'http', 'https' ) );
+
 		// If not Ajax submission and found test_id.
 		if ( isset( $_SERVER['REQUEST_URI'] ) && strpos( sanitize_url( wp_unslash( $_SERVER['REQUEST_URI'] ) ), 'admin-ajax.php' ) === false && '' !== $cv_test_id ) {
 			// Create session for later use when form submit VIA AJAX.
@@ -527,6 +532,16 @@ class Checkview_Admin {
 			Checkview_Admin_Logs::add( 'ip-logs', 'Test ID format failed to validate, exiting.' );
 
 			return;
+		}
+
+		// Legacy cleanup: the append-mode flag used to be site-scoped, which let
+		// two concurrent tests read each other's setting. It is now keyed by test
+		// id like every other per-test flag, so any unscoped leftovers from a
+		// build running the old shape are removed here. Gated on the UUID having
+		// validated above so unauthenticated requests cannot trigger it.
+		if ( ! empty( $cv_test_id ) ) {
+			delete_option( 'allow_original_recipients' );
+			delete_option( 'allow_original_recipients_set_at' );
 		}
 
 		if ( $cv_test_id && '' !== $cv_test_id ) {
@@ -612,6 +627,15 @@ class Checkview_Admin {
 
 		if ( 'true' === $disable_actions ) {
 			cv_update_option( 'disable_actions_' . $cv_test_id, 'true', false );
+		}
+
+		// `_set_at` is set ONCE per test-init — do NOT re-set it from form
+		// helpers, that would extend the staleness window the watchdog enforces.
+		// Not autoloaded: a timed-out test never reaches complete_checkview_test()
+		// and so orphans both keys permanently.
+		if ( 'true' === $allow_original_recipients && ! empty( $cv_test_id ) ) {
+			cv_update_option( 'allow_original_recipients_' . $cv_test_id, 'true', false );
+			cv_update_option( 'allow_original_recipients_set_at_' . $cv_test_id, (string) time(), false );
 		}
 
 		delete_transient( 'checkview_forms_test_transient' );
