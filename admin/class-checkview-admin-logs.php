@@ -23,12 +23,33 @@
 class Checkview_Admin_Logs {
 
 	/**
+	 * Base name of the logs folder, kept as the prefix of the current one.
+	 *
+	 * @var string
+	 */
+	const LEGACY_FOLDER_NAME = 'checkview-logs';
+
+	/**
+	 * Option holding this site's random logs folder suffix.
+	 *
+	 * @var string
+	 */
+	const DIR_KEY_OPTION = 'checkview_logs_dir_key';
+
+	/**
 	 * Handles/file names for log files.
 	 *
 	 * @var array
 	 * @access private
 	 */
 	private static $_handles;
+
+	/**
+	 * Cached logs folder path, resolved once per request.
+	 *
+	 * @var string|null
+	 */
+	private static $resolved_folder = null;
 
 	/**
 	 * Constructor.
@@ -113,17 +134,120 @@ class Checkview_Admin_Logs {
 
 	/**
 	 * Gets the path of the logs folder.
-	 * 
+	 *
 	 * Returns the path of the logs folder, which, by default, is located within
 	 * the WordPress Uploads directory.
+	 *
+	 * The folder name carries a per-site random suffix. It used to be the fixed
+	 * `checkview-logs`, guessable from outside and protected only by an
+	 * `.htaccess` carrying `deny from all`. That works on Apache and LiteSpeed
+	 * but nginx ignores `.htaccess` entirely, leaving the log files publicly
+	 * readable at a predictable URL — confirmed in the field on a customer site
+	 * in August 2026. The `.htaccess` is still written as defence in depth; the
+	 * unguessable name is what protects sites where it is inert.
 	 *
 	 * @return string
 	 */
 	public static function get_logs_folder() {
 
-		$path = apply_filters( 'checkview_get_logs_folder', self::get_uploads_folder() . '/checkview-logs/' );
+		if ( null === self::$resolved_folder ) {
+			$base = trailingslashit( self::get_uploads_folder() );
+			$path = $base . self::LEGACY_FOLDER_NAME . '-' . self::get_dir_key() . '/';
 
-		return $path;
+			self::maybe_migrate_legacy_folder( $base, $path );
+
+			self::$resolved_folder = $path;
+		}
+
+		return apply_filters( 'checkview_get_logs_folder', self::$resolved_folder );
+	}
+
+	/**
+	 * Gets, creating if needed, this site's random logs folder suffix.
+	 *
+	 * @return string 16 hex characters.
+	 */
+	private static function get_dir_key() {
+
+		$key = get_option( self::DIR_KEY_OPTION, '' );
+
+		if ( is_string( $key ) && preg_match( '/^[a-f0-9]{16}$/', $key ) ) {
+			return $key;
+		}
+
+		try {
+			$key = bin2hex( random_bytes( 8 ) );
+		} catch ( Throwable $e ) {
+			// random_bytes throws when no CSPRNG is available. The name only
+			// needs to be unguessable from outside, not cryptographic.
+			$key = substr( md5( uniqid( (string) wp_rand(), true ) ), 0, 16 );
+		}
+
+		// Not autoloaded: read once per request, and only on requests that log.
+		update_option( self::DIR_KEY_OPTION, $key, false );
+
+		return $key;
+	}
+
+	/**
+	 * Moves logs out of the old, publicly guessable folder.
+	 *
+	 * @param string $base       Uploads folder, trailing slashed.
+	 * @param string $new_folder Destination folder, trailing slashed.
+	 * @return void
+	 */
+	private static function maybe_migrate_legacy_folder( $base, $new_folder ) {
+
+		$legacy = $base . self::LEGACY_FOLDER_NAME . '/';
+
+		if ( $legacy === $new_folder || ! is_dir( $legacy ) ) {
+			return;
+		}
+
+		if ( ! is_dir( $new_folder )
+			&& @rename( untrailingslashit( $legacy ), untrailingslashit( $new_folder ) ) ) {
+
+			self::repoint_stored_log_path( $legacy, $new_folder );
+
+			return;
+		}
+
+		// Either the destination already exists or the rename was refused
+		// (restrictive permissions, open handles, cross-device). Leaving the
+		// old folder in place would defeat the purpose, since that is the path
+		// being served publicly. These are our own logs, pruned after 7 days,
+		// so nothing depends on them.
+		foreach ( array( '*.log', '.htaccess', 'index.html' ) as $pattern ) {
+			foreach ( (array) glob( $legacy . $pattern ) as $file ) {
+				@unlink( $file );
+			}
+		}
+
+		@rmdir( untrailingslashit( $legacy ) );
+	}
+
+	/**
+	 * Rewrites the admin log viewer's saved file path after a migration.
+	 *
+	 * @param string $legacy     Old folder, trailing slashed.
+	 * @param string $new_folder New folder, trailing slashed.
+	 * @return void
+	 */
+	private static function repoint_stored_log_path( $legacy, $new_folder ) {
+
+		$options = get_option( 'checkview_log_options', array() );
+
+		if ( empty( $options['checkview_log_select'] ) || ! is_string( $options['checkview_log_select'] ) ) {
+			return;
+		}
+
+		if ( 0 !== strpos( $options['checkview_log_select'], $legacy ) ) {
+			return;
+		}
+
+		$options['checkview_log_select'] = $new_folder . substr( $options['checkview_log_select'], strlen( $legacy ) );
+
+		update_option( 'checkview_log_options', $options );
 	}
 
 	/**
