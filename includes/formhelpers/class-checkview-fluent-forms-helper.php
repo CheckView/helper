@@ -138,6 +138,33 @@ if ( ! class_exists( 'Checkview_Fluent_Forms_Helper' ) ) {
 			// Bypass hCaptcha.
 			add_filter( 'hcap_activate', '__return_false' );
 
+			// WP Armour — Honeypot Anti Spam.
+			//
+			// Unlike every other anti-spam integration this helper handles, WP
+			// Armour's Fluent Forms callback cannot be neutralised by any filter:
+			// on a spam verdict it calls wp_send_json_error() and wp_die()
+			// (honeypot/includes/integration/wpa_fluentform.php:6-14), terminating
+			// the request. There is no return value to override, so unhooking is
+			// the only remedy.
+			//
+			// It is also registered OUTSIDE WP Armour's `! is_admin()` gate
+			// (wp-armour.php:30), so unlike its Gravity Forms and Formidable
+			// integrations it fires on admin-ajax — which is exactly where Fluent
+			// Forms submits.
+			//
+			// Its check fails closed: wpa_check_is_spam()
+			// (honeypot/includes/wpa_functions.php:136-153) treats a submission as
+			// spam UNLESS it carries WP Armour's JS-injected fields.
+			//
+			// Registered on `init` at PHP_INT_MAX because WP Armour includes its
+			// integrations from an `init` callback at the default priority
+			// (wp-armour.php:17-32), the same priority this helper is loaded at.
+			add_action(
+				'init',
+				array( $this, 'checkview_unhook_wp_armour' ),
+				PHP_INT_MAX
+			);
+
 			// Bypass Akismet.
 			add_filter(
 				'akismet_get_api_key',
@@ -195,6 +222,40 @@ if ( ! class_exists( 'Checkview_Fluent_Forms_Helper' ) ) {
 				array($this, 'static_ids'),
 				99
 			);
+		}
+
+		/**
+		 * Removes WP Armour's Fluent Forms submission callback for this request.
+		 *
+		 * Both hook spellings are attempted. WP Armour currently registers the
+		 * slash-style `fluentform/before_insert_submission` and leaves the legacy
+		 * underscore spelling commented out, but Fluent renamed these hooks at
+		 * 4.3.22 and WP Armour has shipped both, so removing either is cheap
+		 * insurance.
+		 *
+		 * Degrades to a logged no-op.
+		 *
+		 * @since 2.3.0
+		 *
+		 * @return void
+		 */
+		public function checkview_unhook_wp_armour() {
+			$removed = 0;
+
+			foreach ( array( 'fluentform/before_insert_submission', 'fluentform_before_insert_submission' ) as $hook ) {
+				if ( remove_action( $hook, 'wpa_fluent_form_extra_validation', 10 ) ) {
+					++$removed;
+				}
+			}
+
+			if ( $removed > 0 ) {
+				Checkview_Admin_Logs::add( 'ip-logs', 'Unhooked WP Armour from [' . $removed . '] Fluent Forms submission hook(s) for this CheckView test.' );
+				return;
+			}
+
+			if ( function_exists( 'wpa_fluent_form_extra_validation' ) ) {
+				Checkview_Admin_Logs::add( 'ip-logs', 'WP Armour detected but its Fluent Forms callback was not removable (priority changed or renamed?) — submissions may still be terminated as spam.' );
+			}
 		}
 
 		/**
