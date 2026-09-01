@@ -118,7 +118,6 @@ if ( ! function_exists( 'checkview_validate_jwt_token' ) ) {
 	 */
 	function checkview_validate_jwt_token( $token ) {
 
-		$key = checkview_get_publickey();
 		// Ensure the header is present.
 		if ( ! $token ) {
 			Checkview_Admin_Logs::add( 'api-logs', 'Authorization header not found.' );
@@ -141,6 +140,18 @@ if ( ! function_exists( 'checkview_validate_jwt_token' ) ) {
 
 		// Remove "Bearer " prefix.
 		$token = substr( $token, 7 );
+
+		// Fetched only once the request is known to carry a bearer token, so an
+		// unauthenticated request can never trigger an outbound HTTP call.
+		$key = checkview_get_publickey();
+		if ( ! $key ) {
+			Checkview_Admin_Logs::add( 'api-logs', 'Public key unavailable, refusing to validate token.' );
+			return new WP_Error(
+				'invalid_auth_header',
+				'There was a technical error while processing your request.',
+				array( 'status' => 401 )
+			);
+		}
 
 		// Attempt decoding.
 		try {
@@ -443,6 +454,49 @@ if ( ! function_exists( 'cv_is_suppressible_test_order' ) ) {
 	}
 }
 
+if ( ! function_exists( 'checkview_is_pem_public_key' ) ) {
+	/**
+	 * Determines whether a string is a usable PEM-encoded public key.
+	 *
+	 * Guards the SaaS public key against the shapes a failed fetch actually
+	 * produces: an empty body, a JSON error envelope, or an HTML error/challenge
+	 * page from a CDN. When ext-openssl is present the key is additionally
+	 * parsed, so a well-delimited but corrupt key is rejected too.
+	 *
+	 * The PEM header is required at offset 0 rather than merely present.
+	 * openssl_pkey_get_public() reads from the filesystem when handed a value
+	 * beginning `file://`, so anchoring keeps a body we did not expect from ever
+	 * reaching it as a path.
+	 *
+	 * @since 2.3.4
+	 *
+	 * @param mixed $key Candidate key material.
+	 * @return bool True when the value is a usable public key.
+	 */
+	function checkview_is_pem_public_key( $key ) {
+		if ( ! is_string( $key ) ) {
+			return false;
+		}
+
+		$key = trim( $key );
+
+		if ( 0 !== strpos( $key, '-----BEGIN PUBLIC KEY-----' ) ) {
+			return false;
+		}
+
+		if ( false === strpos( $key, '-----END PUBLIC KEY-----' ) ) {
+			return false;
+		}
+
+		// Verify openssl can actually load it, when the extension is available.
+		if ( function_exists( 'openssl_pkey_get_public' ) ) {
+			return false !== openssl_pkey_get_public( $key );
+		}
+
+		return true;
+	}
+}
+
 if ( ! function_exists( 'checkview_get_publickey' ) ) {
 	/**
 	 * Gets the SaaS' public key.
@@ -450,23 +504,66 @@ if ( ! function_exists( 'checkview_get_publickey' ) ) {
 	 * Firstly, retrieve the public key from cache. If no cached key is found,
 	 * request the public key from the SaaS.
 	 *
+	 * Only a usable PEM public key is ever cached or returned. A transport
+	 * error, a non-200 response, or a body that is not a public key returns an
+	 * empty string and caches nothing, so callers fail closed instead of holding
+	 * an error page in the key cache for twelve hours. Failures are negatively
+	 * cached for a minute so a SaaS outage cannot turn every signed request into
+	 * a fresh outbound HTTP call.
+	 *
 	 * @since 1.0.0
 	 *
-	 * @return array
+	 * @return string PEM-encoded public key, or an empty string when unavailable.
 	 */
 	function checkview_get_publickey() {
 		$public_key = get_transient( 'checkview_saas_pk' );
-		if ( null === $public_key || '' === $public_key || empty( $public_key ) ) {
-			$response   = wp_safe_remote_get(
-				'https://app.checkview.io/api/helper/public_key',
-				array(
-					'method'  => 'GET',
-					'timeout' => 500,
-				)
-			);
-			$public_key = $response['body'];
-			set_transient( 'checkview_saas_pk', $public_key, 12 * HOUR_IN_SECONDS );
+
+		if ( is_string( $public_key ) ) {
+			$public_key = trim( $public_key );
 		}
+
+		if ( checkview_is_pem_public_key( $public_key ) ) {
+			return $public_key;
+		}
+
+		// Drop anything an earlier version cached before the response was validated.
+		if ( false !== $public_key ) {
+			delete_transient( 'checkview_saas_pk' );
+		}
+
+		if ( get_transient( 'checkview_saas_pk_failed' ) ) {
+			return '';
+		}
+
+		$response = wp_safe_remote_get(
+			'https://app.checkview.io/api/helper/public_key',
+			array(
+				'method'  => 'GET',
+				'timeout' => 15,
+			)
+		);
+
+		if ( is_wp_error( $response ) ) {
+			Checkview_Admin_Logs::add( 'api-logs', 'Public key request failed: ' . $response->get_error_message() );
+			set_transient( 'checkview_saas_pk_failed', 1, MINUTE_IN_SECONDS );
+			return '';
+		}
+
+		$response_code = (int) wp_remote_retrieve_response_code( $response );
+		if ( 200 !== $response_code ) {
+			Checkview_Admin_Logs::add( 'api-logs', 'Public key request returned HTTP [' . $response_code . '].' );
+			set_transient( 'checkview_saas_pk_failed', 1, MINUTE_IN_SECONDS );
+			return '';
+		}
+
+		$public_key = trim( wp_remote_retrieve_body( $response ) );
+		if ( ! checkview_is_pem_public_key( $public_key ) ) {
+			Checkview_Admin_Logs::add( 'api-logs', 'Public key response was not a usable PEM public key.' );
+			set_transient( 'checkview_saas_pk_failed', 1, MINUTE_IN_SECONDS );
+			return '';
+		}
+
+		set_transient( 'checkview_saas_pk', $public_key, 12 * HOUR_IN_SECONDS );
 		return $public_key;
 	}
 }
@@ -1199,6 +1296,7 @@ if ( ! function_exists( 'checkview_reset_cache' ) ) {
 	 */
 	function checkview_reset_cache( $sync ) {
 		delete_transient( 'checkview_saas_pk' );
+		delete_transient( 'checkview_saas_pk_failed' );
 		delete_transient( 'checkview_saas_ip_address' );
 		delete_transient( 'checkview_forms_list_transient' );
 		delete_transient( 'checkview_forms_test_transient' );
