@@ -207,10 +207,11 @@ Support and test configuration are handled through the CheckView platform. Pleas
 
 = 2.4.0 =
 * WP 7.1 compatibility: bump "Tested up to" to 7.1.
-* Stop loading admin assets from third-party CDNs: bundle SweetAlert2 and the Poppins webfont locally, and drop the unused Bootstrap stylesheet. Admin pages no longer disclose visitor IPs to Google Fonts or jsDelivr.
+* Stop loading admin assets from third-party CDNs: bundle SweetAlert2 and the Poppins webfont locally, and drop the unused Bootstrap stylesheet.
 * Fix the WooCommerce checkout payment method's text domain so its label is translatable.
-* Remove a stray xdebug PEAR manifest (`package.xml`) from the plugin package.
 * Correct the PHPCS ruleset, which still carried scaffold placeholders and checked against PHP 5.6.
+* Form detection performance and accuracy improvements.
+* Local development improvements.
 
 = 2.3.3 =
 * Formidable: Strengthen test clean up.
