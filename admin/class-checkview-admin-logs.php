@@ -247,6 +247,19 @@ class Checkview_Admin_Logs {
 	 * @param string $message Log to write.
 	 */
 	public static function add( $handle, $message ) {
+		/**
+		 * Filters whether log lines are written at all.
+		 *
+		 * Returning false silences the logs on sites that cannot spare the
+		 * disk, without having to disable the plugin.
+		 *
+		 * @param bool   $enabled Whether to write the line. Default true.
+		 * @param string $handle  File handle being written to.
+		 */
+		if ( ! apply_filters( 'checkview_logging_enabled', true, $handle ) ) {
+			return;
+		}
+
 		// Collapse C0 controls (CR/LF/NUL/etc.) and Unicode line/paragraph
 		// terminators so callers can't forge log lines. strtr is byte-safe
 		// — preg_replace with /u returns NULL on invalid UTF-8, which would
@@ -322,5 +335,54 @@ class Checkview_Admin_Logs {
 		}
 
 		do_action( 'checkview_log_clear', $handle );
+	}
+
+	/**
+	 * Deletes log files older than the retention window.
+	 *
+	 * Nothing pruned these before, so a long-lived site accumulates one file
+	 * per handle per day indefinitely — Woo checkout sites reach 15 MB a day.
+	 *
+	 * The date is read from the filename rather than the file's mtime: a
+	 * touched or restored file would otherwise survive forever.
+	 *
+	 * @return void
+	 */
+	public static function purge_expired_logs() {
+		/**
+		 * Filters how many days of logs to keep.
+		 *
+		 * Zero or less disables pruning.
+		 *
+		 * @param int $days Days of logs to retain. Default 30.
+		 */
+		$days = (int) apply_filters( 'checkview_log_retention_days', 30 );
+
+		if ( $days < 1 ) {
+			return;
+		}
+
+		$files = glob( self::get_logs_folder() . '*-log-*.log' );
+
+		if ( empty( $files ) ) {
+			return;
+		}
+
+		// add() names files with gmdate(), so the dates are UTC.
+		$cutoff = time() - ( $days * DAY_IN_SECONDS );
+
+		foreach ( $files as $file ) {
+			if ( ! preg_match( '/-log-(\d{4}-\d{2}-\d{2})\.log$/', basename( $file ), $matches ) ) {
+				continue;
+			}
+
+			$logged_on = strtotime( $matches[1] . ' 00:00:00 UTC' );
+
+			if ( false !== $logged_on && $logged_on < $cutoff ) {
+				@unlink( $file );
+			}
+		}
+
+		do_action( 'checkview_logs_purged', $days );
 	}
 }
