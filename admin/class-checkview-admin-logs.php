@@ -362,27 +362,38 @@ class Checkview_Admin_Logs {
 			return;
 		}
 
-		$files = glob( self::get_logs_folder() . '*-log-*.log' );
+		// get_logs_folder() is filtered, and the rest of this class assumes
+		// the filter returns a trailing slash. This method deletes rather
+		// than writes, so it does not rely on that: without the slash the
+		// glob below would reach sibling paths.
+		$folder = trailingslashit( self::get_logs_folder() );
+
+		if ( ! is_dir( $folder ) ) {
+			return;
+		}
+
+		$files = glob( $folder . '*-log-*.log' );
 
 		if ( empty( $files ) ) {
 			return;
 		}
 
-		// add() names files with gmdate(), so the dates are UTC.
-		$cutoff = time() - ( $days * DAY_IN_SECONDS );
+		// add() names files with gmdate(), so comparing the ISO date out of
+		// the filename needs no timezone or DST reasoning, and — unlike
+		// mtime — a touched or restored file still ages out.
+		$oldest_kept = gmdate( 'Y-m-d', time() - ( $days * DAY_IN_SECONDS ) );
+		$purged      = 0;
 
 		foreach ( $files as $file ) {
 			if ( ! preg_match( '/-log-(\d{4}-\d{2}-\d{2})\.log$/', basename( $file ), $matches ) ) {
 				continue;
 			}
 
-			$logged_on = strtotime( $matches[1] . ' 00:00:00 UTC' );
-
-			if ( false !== $logged_on && $logged_on < $cutoff ) {
-				@unlink( $file );
+			if ( $matches[1] < $oldest_kept && @unlink( $file ) ) {
+				++$purged;
 			}
 		}
 
-		do_action( 'checkview_logs_purged', $days );
+		do_action( 'checkview_logs_purged', $purged, $days );
 	}
 }
