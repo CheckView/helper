@@ -206,6 +206,7 @@ Support and test configuration are handled through the CheckView platform. Pleas
 == Changelog ==
 
 = 2.4.1-beta =
+* Elementor: Detect forms placed through a Global Widget and list them against the pages that render them.
 
 = 2.4.0 =
 * WP 7.1 compatibility: bump "Tested up to" to 7.1.
