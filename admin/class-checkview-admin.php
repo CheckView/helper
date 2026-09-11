@@ -81,6 +81,16 @@ class Checkview_Admin {
 			array( $this, 'checkview_delete_expired_nonces' )
 		);
 
+		add_action(
+			'wp',
+			array( $this, 'checkview_schedule_logs_cleanup' )
+		);
+
+		add_action(
+			'checkview_logs_cleanup_cron',
+			array( 'Checkview_Admin_Logs', 'purge_expired_logs' )
+		);
+
 		add_filter(
 			'all_plugins',
 			array( $this, 'checkview_hide_me' )
@@ -143,6 +153,17 @@ class Checkview_Admin {
 	public function checkview_schedule_nonce_cleanup() {
 		if ( ! wp_next_scheduled( 'checkview_nonce_cleanup_cron' ) ) {
 			wp_schedule_event( time(), 'hourly', 'checkview_nonce_cleanup_cron' );
+		}
+	}
+
+	/**
+	 * Schedules log clean-up on a daily basis.
+	 *
+	 * @return void
+	 */
+	public function checkview_schedule_logs_cleanup() {
+		if ( ! wp_next_scheduled( 'checkview_logs_cleanup_cron' ) ) {
+			wp_schedule_event( time(), 'daily', 'checkview_logs_cleanup_cron' );
 		}
 	}
 	/**
