@@ -276,6 +276,13 @@ class Checkview_Admin_Logs {
 		$prefix = trailingslashit( self::get_uploads_folder() ) . self::LEGACY_FOLDER_NAME;
 		$done   = true;
 
+		// System cron often runs WP-CLI as root. A rename keeps ownership, but
+		// creating the folder here would leave it root-owned and unwritable
+		// by the web user. Let a web request create it first.
+		if ( defined( 'WP_CLI' ) && WP_CLI && ! is_dir( $target ) ) {
+			return false;
+		}
+
 		foreach ( (array) glob( $prefix . '*', GLOB_ONLYDIR ) as $dir ) {
 			if ( ! is_string( $dir ) || is_link( $dir ) ) {
 				continue;
@@ -324,8 +331,9 @@ class Checkview_Admin_Logs {
 				continue;
 			}
 
+			// Not ours to move. The leftover check below keeps the folder and
+			// its .htaccess in place because of it.
 			if ( is_link( $file ) ) {
-				++$remaining;
 				continue;
 			}
 

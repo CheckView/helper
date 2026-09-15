@@ -187,13 +187,17 @@ add_action( 'plugins_loaded', 'checkview_maybe_invalidate_opcache', 1 );
 /**
  * Moves the helper's logs out of their old, guessable folder.
  *
- * Runs until it succeeds once per plugin version, the same way the OPcache
- * invalidation above catches auto-updates that never fire
- * register_activation_hook. Keyed on its own option because that hook has
- * already brought checkview_version up to date by the time this runs. Hooked
- * on init rather than plugins_loaded so a theme's checkview_get_logs_folder
- * filter is already registered. The daily logs cron runs the same routine,
- * which covers a rollback to an older version and back to this one.
+ * One attempt per plugin version, the same way the OPcache invalidation
+ * above catches auto-updates that never fire register_activation_hook.
+ * Keyed on its own option because that hook has already brought
+ * checkview_version up to date by the time this runs. Hooked on init rather
+ * than plugins_loaded so a theme's checkview_get_logs_folder filter is
+ * already registered.
+ *
+ * Stamped whether or not the attempt succeeded: this runs on every request,
+ * so a folder that cannot be moved must not be retried, and reported, per
+ * page view. The daily logs cron retries instead, which also covers a
+ * rollback to an older version and back to this one.
  *
  * @since 2.4.1
  *
@@ -208,9 +212,9 @@ function checkview_maybe_bootstrap_logs_folder() {
 		require_once CHECKVIEW_ADMIN_DIR . 'class-checkview-admin-logs.php';
 	}
 
-	if ( Checkview_Admin_Logs::bootstrap_folder() ) {
-		update_option( 'checkview_logs_folder_version', CHECKVIEW_VERSION, true );
-	}
+	Checkview_Admin_Logs::bootstrap_folder();
+
+	update_option( 'checkview_logs_folder_version', CHECKVIEW_VERSION, true );
 }
 add_action( 'init', 'checkview_maybe_bootstrap_logs_folder', 1 );
 

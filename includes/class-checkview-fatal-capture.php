@@ -187,13 +187,13 @@ if ( ! class_exists( 'Checkview_Fatal_Capture' ) ) {
 		 */
 		private static function redact( $text ) {
 			$patterns = array(
-				'/\b([sr]k|pk)_(live|test)_[A-Za-z0-9]+/'                              => '$1_$2_[redacted]',
-				'/\bAKIA[0-9A-Z]{16}\b/'                                                => 'AKIA[redacted]',
-				'/(Bearer\s+)[A-Za-z0-9._~+\/-]+=*/i'                                   => '$1[redacted]',
+				'/\b([sr]k|pk)_(live|test)_[A-Za-z0-9]+/' => '$1_$2_[redacted]',
+				'/\bAKIA[0-9A-Z]{16}\b/'                  => 'AKIA[redacted]',
+				'/(Bearer\s+)[A-Za-z0-9._~+\/-]+=*/i'     => '$1[redacted]',
 				'/((?:password|passwd|pwd|secret|token|api[_-]?key)\s*[=:]\s*)[^\s,;)]+/i' => '$1[redacted]',
-				"/for user '[^']*'@'[^']*'/"                                            => "for user '[redacted]'@'[redacted]'",
-				'/\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b/'                  => '[email]',
-				'/\b[A-Fa-f0-9]{32,}\b/'                                                => '[hex]',
+				"/for user '[^']*'@'[^']*'/"              => "for user '[redacted]'@'[redacted]'",
+				'/\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b/' => '[email]',
+				'/\b[A-Fa-f0-9]{32,}\b/'                  => '[hex]',
 			);
 
 			$redacted = preg_replace( array_keys( $patterns ), array_values( $patterns ), $text );
