@@ -32,31 +32,27 @@ class Checkview_Admin_Logs {
 
 	/**
 	 * Base name of the logs folder, kept as the prefix of the current one.
-	 *
-	 * @var string
 	 */
 	const LEGACY_FOLDER_NAME = 'checkview-logs';
 
 	/**
 	 * Option holding this site's random logs folder suffix.
-	 *
-	 * @var string
 	 */
 	const DIR_KEY_OPTION = 'checkview_logs_dir_key';
 
 	/**
-	 * Resolved logs folder per blog, cached for the request.
+	 * Logs folder suffix per blog, resolved once per request.
 	 *
 	 * @var array<int,string>
 	 */
-	private static $resolved_folder = array();
+	private static $dir_key = array();
 
 	/**
-	 * Whether the folder key in use for this request is stored in the database.
+	 * Per blog, whether the suffix in use is stored in the database.
 	 *
-	 * @var bool
+	 * @var array<int,bool>
 	 */
-	private static $key_persisted = false;
+	private static $key_persisted = array();
 
 	/**
 	 * Constructor.
@@ -141,91 +137,91 @@ class Checkview_Admin_Logs {
 
 	/**
 	 * Gets the path of the logs folder.
-	 * 
-	 * Returns the path of the logs folder, which, by default, is located within
-	 * the WordPress Uploads directory.
 	 *
-	 * The folder name carries a per-site random suffix. It used to be the
-	 * fixed `checkview-logs`, guessable from outside and protected only by an
-	 * `.htaccess`, which Apache and LiteSpeed honour and nginx ignores. On an
-	 * nginx host that left the log files readable at a predictable URL. The
-	 * `.htaccess` is still written as a second layer; the unguessable name is
-	 * what protects sites where it is inert.
+	 * Inside the WordPress uploads directory, under a per-site random name.
+	 * The old fixed name was protected only by an .htaccess, which nginx
+	 * ignores.
 	 *
 	 * @return string
 	 */
 	public static function get_logs_folder() {
 
-		$blog_id = get_current_blog_id();
+		$path = trailingslashit( self::get_uploads_folder() ) . self::LEGACY_FOLDER_NAME . '-' . self::get_dir_key() . '/';
 
-		if ( ! isset( self::$resolved_folder[ $blog_id ] ) ) {
-			self::$resolved_folder[ $blog_id ] = trailingslashit( self::get_uploads_folder() )
-				. self::LEGACY_FOLDER_NAME . '-' . self::get_dir_key() . '/';
-		}
-
-		return apply_filters( 'checkview_get_logs_folder', self::$resolved_folder[ $blog_id ] );
+		return apply_filters( 'checkview_get_logs_folder', $path );
 	}
 
 	/**
 	 * Gets this site's logs folder suffix, storing one on first use.
 	 *
-	 * Creation goes through INSERT IGNORE rather than add_option(). WordPress
-	 * implements add_option() as INSERT ... ON DUPLICATE KEY UPDATE, so two
-	 * requests racing on first use would both report success and the last
-	 * writer's key would win, stranding whatever the other request had already
-	 * written or migrated under its own key. INSERT IGNORE is the mutex core
-	 * itself uses in WP_Upgrader::create_lock(): exactly one caller inserts,
-	 * and every caller then reads back the row that won.
+	 * Uses INSERT IGNORE, the mutex core uses in WP_Upgrader::create_lock().
+	 * add_option() is INSERT ... ON DUPLICATE KEY UPDATE, so two requests
+	 * racing on first use would both succeed and the last writer's key would
+	 * strand the other's folder.
+	 *
+	 * @since 2.4.1
 	 *
 	 * @return string 16 hex characters.
 	 */
 	public static function get_dir_key() {
 
-		$key = get_option( self::DIR_KEY_OPTION );
+		$blog_id = get_current_blog_id();
 
-		if ( self::is_valid_dir_key( $key ) ) {
-			self::$key_persisted = true;
-
-			return $key;
+		if ( isset( self::$dir_key[ $blog_id ] ) ) {
+			return self::$dir_key[ $blog_id ];
 		}
 
-		global $wpdb;
+		$key = get_option( self::DIR_KEY_OPTION );
 
-		$candidate = self::generate_dir_key();
+		if ( ! self::is_valid_dir_key( $key ) ) {
+			global $wpdb;
 
-		if ( false === $key ) {
-			$wpdb->query(
-				$wpdb->prepare(
-					"INSERT IGNORE INTO {$wpdb->options} (option_name, option_value, autoload) VALUES (%s, %s, 'yes')",
-					self::DIR_KEY_OPTION,
-					$candidate
-				)
-			);
+			$candidate = self::generate_dir_key();
+
+			if ( false === $key ) {
+				$wpdb->query(
+					$wpdb->prepare(
+						"INSERT IGNORE INTO {$wpdb->options} (option_name, option_value, autoload) VALUES (%s, %s, 'yes')",
+						self::DIR_KEY_OPTION,
+						$candidate
+					)
+				);
+			} else {
+				// Edited by hand. Compare-and-swap so racing repairs converge.
+				$wpdb->query(
+					$wpdb->prepare(
+						"UPDATE {$wpdb->options} SET option_value = %s WHERE option_name = %s AND option_value = %s",
+						$candidate,
+						self::DIR_KEY_OPTION,
+						maybe_serialize( $key )
+					)
+				);
+			}
+
+			// Raw writes bypass add_option()'s cache upkeep.
+			wp_cache_delete( self::DIR_KEY_OPTION, 'options' );
+			wp_cache_delete( 'notoptions', 'options' );
+			wp_cache_delete( 'alloptions', 'options' );
+
+			$key = get_option( self::DIR_KEY_OPTION );
+		}
+
+		if ( self::is_valid_dir_key( $key ) ) {
+			self::$key_persisted[ $blog_id ] = true;
 		} else {
-			// A stored value that fails validation was edited by hand. Repair it.
-			update_option( self::DIR_KEY_OPTION, $candidate, true );
+			// The database refused the write. Derive a stable, unguessable
+			// name from secrets that live in wp-config.php rather than the
+			// database, so logging keeps working through the outage without
+			// minting a fresh folder per request.
+			self::$key_persisted[ $blog_id ] = false;
+
+			$secret = ( defined( 'AUTH_KEY' ) ? AUTH_KEY : '' ) . ( defined( 'DB_PASSWORD' ) ? DB_PASSWORD : '' ) . ABSPATH;
+			$key    = substr( hash_hmac( 'sha256', self::LEGACY_FOLDER_NAME . $blog_id, $secret ), 0, 16 );
 		}
 
-		// Bypassing add_option() means bypassing its cache upkeep: the miss
-		// above is cached in notoptions and the autoloaded set is now stale.
-		wp_cache_delete( self::DIR_KEY_OPTION, 'options' );
-		wp_cache_delete( 'notoptions', 'options' );
-		wp_cache_delete( 'alloptions', 'options' );
+		self::$dir_key[ $blog_id ] = $key;
 
-		$key = get_option( self::DIR_KEY_OPTION );
-
-		if ( self::is_valid_dir_key( $key ) ) {
-			self::$key_persisted = true;
-
-			return $key;
-		}
-
-		// The database refused the write. Derive a stable, unguessable name
-		// from the site's salts so logging keeps working through the outage
-		// without minting a fresh folder on every request.
-		self::$key_persisted = false;
-
-		return substr( hash_hmac( 'sha256', self::LEGACY_FOLDER_NAME, wp_salt( 'auth' ) ), 0, 16 );
+		return $key;
 	}
 
 	/**
@@ -235,7 +231,7 @@ class Checkview_Admin_Logs {
 	 * @return bool
 	 */
 	private static function is_valid_dir_key( $key ) {
-		return is_string( $key ) && 1 === preg_match( '/^[a-f0-9]{16}$/', $key );
+		return is_string( $key ) && 1 === preg_match( '/^[a-f0-9]{16}\z/', $key );
 	}
 
 	/**
@@ -247,130 +243,209 @@ class Checkview_Admin_Logs {
 		try {
 			return bin2hex( random_bytes( 8 ) );
 		} catch ( Throwable $e ) {
-			// No CSPRNG available. The name only needs to be unguessable from
-			// outside, not cryptographic.
 			return substr( md5( uniqid( (string) wp_rand(), true ) ), 0, 16 );
 		}
 	}
 
 	/**
-	 * Moves logs out of the old, publicly guessable folder.
+	 * Moves logs out of any folder that is not the current one.
 	 *
-	 * Runs from the once-per-version upgrade hook in checkview.php, so
-	 * get_logs_folder() stays a plain read. Safe to repeat: a pass with nothing
-	 * left to move is a no-op.
+	 * Sources are the old fixed-name folder and any suffixed folder whose key
+	 * is no longer the stored one: a fallback name used during a database
+	 * outage, or a key that was replaced. Never deletes a log file. Runs from
+	 * the once-per-version init hook and from the daily logs cron.
 	 *
-	 * Never deletes a log file. Where the new folder already exists (a
-	 * downgrade wrote to the old folder, then the site upgraded again) each
-	 * file is moved across on its own and a same-day clash is appended, so
-	 * logs written during the rollback survive and stay readable through
-	 * get-logs.
+	 * @since 2.4.1
 	 *
-	 * @return void
+	 * @return bool True when nothing of ours remains outside the current
+	 *              folder, so the caller can stop retrying.
 	 */
 	public static function bootstrap_folder() {
 
-		$key = self::get_dir_key();
+		self::get_dir_key();
 
-		if ( ! self::$key_persisted ) {
+		$blog_id = get_current_blog_id();
+
+		if ( empty( self::$key_persisted[ $blog_id ] ) ) {
 			// Moving history under a fallback name would strand it once the
 			// database is back and a real key gets stored.
-			return;
+			return false;
 		}
 
-		$base   = trailingslashit( self::get_uploads_folder() );
-		$legacy = $base . self::LEGACY_FOLDER_NAME . '/';
-		$target = $base . self::LEGACY_FOLDER_NAME . '-' . $key . '/';
+		$target = trailingslashit( self::get_logs_folder() );
+		$prefix = trailingslashit( self::get_uploads_folder() ) . self::LEGACY_FOLDER_NAME;
+		$done   = true;
 
-		if ( ! is_dir( $legacy ) || is_link( untrailingslashit( $legacy ) ) ) {
-			return;
+		foreach ( (array) glob( $prefix . '*', GLOB_ONLYDIR ) as $dir ) {
+			if ( ! is_string( $dir ) || is_link( $dir ) ) {
+				continue;
+			}
+
+			$source = trailingslashit( $dir );
+
+			if ( $source === $target || 1 !== preg_match( '#/' . self::LEGACY_FOLDER_NAME . '(-[a-f0-9]{16})?/$#', $source ) ) {
+				continue;
+			}
+
+			// realpath() is only answerable while the folder still exists, and
+			// the admin viewer stores realpath()ed selections.
+			$source_real = realpath( $dir );
+
+			if ( ! is_dir( $target ) && @rename( $dir, untrailingslashit( $target ) ) ) {
+				self::create_logs_folder();
+				self::repoint_stored_log_path( $source, $source_real, $target );
+				continue;
+			}
+
+			$done = self::merge_folder( $source, $target ) && $done;
+			self::repoint_stored_log_path( $source, $source_real, $target );
 		}
 
-		// A site that pins the folder to the old path through the filter has
-		// chosen it. Leave it alone.
-		if ( untrailingslashit( self::get_logs_folder() ) === untrailingslashit( $legacy ) ) {
-			return;
-		}
-
-		// The admin viewer stores realpath()ed selections, and realpath() is
-		// only answerable while the old folder still exists.
-		$legacy_real = realpath( untrailingslashit( $legacy ) );
-
-		if ( ! is_dir( $target ) && @rename( untrailingslashit( $legacy ), untrailingslashit( $target ) ) ) {
-			self::repoint_stored_log_path( $legacy, $legacy_real, $target );
-
-			return;
-		}
-
-		self::merge_legacy_files( $legacy, $target );
-		self::repoint_stored_log_path( $legacy, $legacy_real, $target );
+		return $done;
 	}
 
 	/**
-	 * Moves each log file from the old folder into the new one.
+	 * Moves each log file from one folder into the current one.
 	 *
-	 * @param string $legacy Old folder, trailing slashed.
-	 * @param string $target New folder, trailing slashed.
-	 * @return void
+	 * @param string $source Old folder, trailing slashed.
+	 * @param string $target Current folder, trailing slashed.
+	 * @return bool True when every log file left the source.
 	 */
-	private static function merge_legacy_files( $legacy, $target ) {
+	private static function merge_folder( $source, $target ) {
 
-		wp_mkdir_p( $target );
+		if ( ! is_dir( $target ) ) {
+			self::create_logs_folder();
+		}
 
 		$remaining = 0;
 
-		foreach ( (array) glob( $legacy . '*.log' ) as $file ) {
-			if ( ! is_string( $file ) || is_link( $file ) ) {
+		foreach ( (array) glob( $source . '*.log' ) as $file ) {
+			if ( ! is_string( $file ) ) {
+				continue;
+			}
+
+			if ( is_link( $file ) ) {
+				++$remaining;
 				continue;
 			}
 
 			$destination = $target . basename( $file );
 
-			if ( ! file_exists( $destination ) ) {
-				if ( ! @rename( $file, $destination ) ) {
-					++$remaining;
-				}
+			if ( ! file_exists( $destination ) && @rename( $file, $destination ) ) {
 				continue;
 			}
 
-			// Same day-file on both sides. Append, and drop the copy only once
-			// every byte is confirmed on the other side.
-			$contents = @file_get_contents( $file );
-
-			if ( false === $contents ) {
-				++$remaining;
-				continue;
-			}
-
-			$written = @file_put_contents( $destination, $contents, FILE_APPEND | LOCK_EX );
-
-			if ( strlen( $contents ) !== $written || ! @unlink( $file ) ) {
+			// Same day-file on both sides, or a rename the filesystem refused:
+			// copy the bytes across, verify them, and only then drop the copy.
+			if ( ! self::append_file( $file, $destination ) || ! @unlink( $file ) ) {
 				++$remaining;
 			}
 		}
 
 		if ( $remaining > 0 ) {
-			self::add( 'ip-logs', sprintf( 'Could not move %d log file(s) out of %s; check permissions.', $remaining, $legacy ) );
+			self::add( 'ip-logs', sprintf( 'Could not move %d log file(s) out of %s; check permissions.', $remaining, $source ) );
 
-			return;
+			return false;
 		}
 
-		foreach ( array( '.htaccess', 'index.html' ) as $stub ) {
-			@unlink( $legacy . $stub );
+		// Only remove the folder's own protection once nothing but that
+		// protection is left. A foreign file (a rotated .log.gz, a host
+		// marker) keeps the folder, and its .htaccess, in place.
+		$entries = @scandir( untrailingslashit( $source ) );
+
+		if ( false === $entries ) {
+			return true;
 		}
 
-		@rmdir( untrailingslashit( $legacy ) );
+		$leftover = array_diff( $entries, array( '.', '..', '.htaccess', 'index.html' ) );
+
+		if ( ! empty( $leftover ) ) {
+			self::add( 'ip-logs', sprintf( 'Left %s in place: it holds %d file(s) that are not CheckView logs.', $source, count( $leftover ) ) );
+
+			return true;
+		}
+
+		@unlink( $source . '.htaccess' );
+		@unlink( $source . 'index.html' );
+		@rmdir( untrailingslashit( $source ) );
+
+		return true;
+	}
+
+	/**
+	 * Appends one file to another, verifying the byte count.
+	 *
+	 * Streamed, so a 15 MB day-file is not read into memory. A short write is
+	 * truncated back off the destination so a retry does not duplicate it.
+	 *
+	 * @param string $file        Source path.
+	 * @param string $destination Destination path, created if missing.
+	 * @return bool
+	 */
+	private static function append_file( $file, $destination ) {
+
+		$expected = @filesize( $file );
+		$in       = @fopen( $file, 'rb' );
+		$out      = $in ? @fopen( $destination, 'ab' ) : false;
+
+		if ( false === $expected || ! $in || ! $out ) {
+			if ( $in ) {
+				fclose( $in );
+			}
+
+			return false;
+		}
+
+		@flock( $out, LOCK_EX );
+
+		$stat  = fstat( $out );
+		$start = isset( $stat['size'] ) ? (int) $stat['size'] : 0;
+		$ok    = true;
+
+		while ( ! feof( $in ) ) {
+			$chunk = fread( $in, 65536 );
+
+			if ( false === $chunk ) {
+				$ok = false;
+				break;
+			}
+
+			if ( '' === $chunk ) {
+				break;
+			}
+
+			if ( fwrite( $out, $chunk ) !== strlen( $chunk ) ) {
+				$ok = false;
+				break;
+			}
+		}
+
+		if ( $ok ) {
+			fflush( $out );
+			$stat = fstat( $out );
+			$ok   = isset( $stat['size'] ) && ( (int) $stat['size'] - $start ) === (int) $expected;
+		}
+
+		if ( ! $ok ) {
+			@ftruncate( $out, $start );
+		}
+
+		@flock( $out, LOCK_UN );
+		fclose( $out );
+		fclose( $in );
+
+		return $ok;
 	}
 
 	/**
 	 * Rewrites the admin log viewer's saved file path after a move.
 	 *
-	 * @param string       $legacy      Old folder, trailing slashed.
-	 * @param string|false $legacy_real realpath() of the old folder, taken before the move.
+	 * @param string       $source      Old folder, trailing slashed.
+	 * @param string|false $source_real realpath() of the old folder, taken before the move.
 	 * @param string       $target      New folder, trailing slashed.
 	 * @return void
 	 */
-	private static function repoint_stored_log_path( $legacy, $legacy_real, $target ) {
+	private static function repoint_stored_log_path( $source, $source_real, $target ) {
 
 		$options = get_option( 'checkview_log_options', array() );
 
@@ -379,10 +454,10 @@ class Checkview_Admin_Logs {
 		}
 
 		$stored   = wp_normalize_path( $options['checkview_log_select'] );
-		$prefixes = array( wp_normalize_path( $legacy ) );
+		$prefixes = array( wp_normalize_path( $source ) );
 
-		if ( $legacy_real ) {
-			$prefixes[] = trailingslashit( wp_normalize_path( $legacy_real ) );
+		if ( $source_real ) {
+			$prefixes[] = trailingslashit( wp_normalize_path( $source_real ) );
 		}
 
 		foreach ( $prefixes as $prefix ) {
@@ -396,49 +471,33 @@ class Checkview_Admin_Logs {
 	}
 
 	/**
-	 * Creates the logs folder.
+	 * Creates the logs folder with its protection files.
 	 *
 	 * @return void
 	 */
 	public static function create_logs_folder() {
 
-		// Creates the Folder.
-		wp_mkdir_p( self::get_logs_folder() );
+		$folder = self::get_logs_folder();
 
-		// Creates htaccess.
-		$htaccess = self::get_logs_folder() . '.htaccess';
+		wp_mkdir_p( $folder );
 
-		if ( ! file_exists( $htaccess ) ) {
+		// Apache 2.4 syntax first; `deny from all` only works there with
+		// mod_access_compat. Rewritten when a folder still carries the
+		// one-line form. The path is left out of the error_log lines because
+		// the folder name is now a secret.
+		$rules    = "<IfModule mod_authz_core.c>\n\tRequire all denied\n</IfModule>\n<IfModule !mod_authz_core.c>\n\tDeny from all\n</IfModule>\n";
+		$htaccess = $folder . '.htaccess';
 
-			$fp = @fopen( $htaccess, 'w' );
-
-			if ( ! $fp ) {
-				error_log( 'CheckView: Could not create logs htaccess file: ' . $htaccess );
-			} else {
-				// Apache 2.4 syntax first; `deny from all` only works there
-				// with mod_access_compat loaded.
-				@fputs( $fp, "<IfModule mod_authz_core.c>\n\tRequire all denied\n</IfModule>\n<IfModule !mod_authz_core.c>\n\tDeny from all\n</IfModule>\n" );
-
-				@fclose( $fp );
+		if ( ! file_exists( $htaccess ) || false === strpos( (string) @file_get_contents( $htaccess ), 'Require all denied' ) ) {
+			if ( false === @file_put_contents( $htaccess, $rules, LOCK_EX ) ) {
+				error_log( 'CheckView: Could not write the .htaccess file in the logs folder.' );
 			}
-
 		}
 
-		// Creates index.
-		$index = self::get_logs_folder() . 'index.html';
+		$index = $folder . 'index.html';
 
-		if ( ! file_exists( $index ) ) {
-
-			$fp = @fopen( $index, 'w' );
-
-			if ( ! $fp ) {
-				error_log( 'CheckView: Could not create logs index.html file: ' . $index );
-			} else {
-				@fputs( $fp, '' );
-
-				@fclose( $fp );
-			}
-
+		if ( ! file_exists( $index ) && false === @file_put_contents( $index, '' ) ) {
+			error_log( 'CheckView: Could not write the index.html file in the logs folder.' );
 		}
 	}
 

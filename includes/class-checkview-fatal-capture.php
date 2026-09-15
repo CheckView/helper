@@ -16,44 +16,23 @@ if ( ! class_exists( 'Checkview_Fatal_Capture' ) ) {
 	/**
 	 * Records PHP fatal errors raised during a CheckView test.
 	 *
-	 * A fatal on a form page turns a test into an opaque "HTTP 500", and
-	 * recovering the underlying error has meant asking the customer for
-	 * server logs. That routinely fails: hosts write PHP errors where the
-	 * customer cannot reach them, and the fatal does not always land in
-	 * debug.log even with WP_DEBUG_LOG on. This records it into the plugin's
-	 * own log, which the SaaS already reads over the signed
-	 * /checkview/v1/get-logs endpoint.
+	 * Writes the fatal into the plugin's own `fatal-logs` channel, which the
+	 * SaaS already reads over the signed get-logs endpoint, so a failing test
+	 * can be diagnosed without server log access. Armed only from
+	 * checkview_before_init_current_test, i.e. only on requests that passed
+	 * Checkview::is_bot().
 	 *
-	 * Armed only on requests Checkview::is_bot() has verified, so it costs
-	 * ordinary visitors nothing and cannot be reached without a valid request
-	 * signature.
-	 *
-	 * Two paths, in order of preference:
-	 *
-	 * 1. The wp_php_error_args filter. Core's fatal handler calls
-	 *    error_get_last() first thing and hands that array to the filter, so
-	 *    what arrives here is the original fatal even though core's own work
-	 *    in between (loading translations, recovery mode, building the error
-	 *    page) can raise warnings that overwrite error_get_last(). Core only
-	 *    reaches the filter when headers have not been sent, which is the
-	 *    fatal-before-output case that matters most.
-	 * 2. A shutdown function, for fatals raised after output began, where
-	 *    core skips the template and the filter never fires. This reads
-	 *    error_get_last() itself, so a warning from core's handler can mask
-	 *    the fatal on this path.
-	 *
-	 * error_get_last() is populated regardless of error_reporting,
-	 * display_errors and log_errors, which is why this works on sites with
-	 * debugging switched entirely off. Core's critical-error page relies on
-	 * the same mechanism, and core's handler does not exit, so the shutdown
-	 * function registered here still runs after it.
+	 * Two paths. Core's fatal handler runs first and its own work can raise
+	 * warnings that overwrite error_get_last(), so the primary path takes the
+	 * error core already read from the wp_php_error_args filter. That filter
+	 * only fires when no output has been sent yet; a shutdown function covers
+	 * fatals raised after output began, and that path can be masked.
 	 *
 	 * Known blind spots:
 	 * - Fatals before checkview_before_init_current_test fires on
 	 *   plugins_loaded: another plugin's file scope, mu-plugins, wp-config.
-	 * - Out of memory. Core's handler runs first under the exhausted limit
-	 *   and can fail before either path here runs.
-	 * - Segfaults and killed workers, where no shutdown code runs at all.
+	 * - Out of memory: core's handler runs first under the exhausted limit.
+	 * - Segfaults and killed workers, where no shutdown code runs.
 	 * - A php-error.php drop-in or wp_php_error_args filter that exits.
 	 * - 500s produced by the web server, a WAF or a proxy rather than PHP.
 	 *
@@ -65,21 +44,12 @@ if ( ! class_exists( 'Checkview_Fatal_Capture' ) ) {
 
 		/**
 		 * Log channel these errors are written to.
-		 *
-		 * Lands beside ip-logs and api-logs, so the get-logs endpoint returns
-		 * it and the daily purge ages it out with the rest.
-		 *
-		 * @var string
 		 */
 		const LOG_HANDLE = 'fatal-logs';
 
 		/**
-		 * Longest error message recorded, in bytes.
-		 *
-		 * An uncaught Error's message carries its whole stack trace, which is
-		 * the useful part, but a deep trace can run to hundreds of kilobytes.
-		 *
-		 * @var int
+		 * Longest error message recorded, in bytes. Traces can run to hundreds
+		 * of kilobytes.
 		 */
 		const MAX_MESSAGE_LENGTH = 8192;
 
@@ -98,10 +68,16 @@ if ( ! class_exists( 'Checkview_Fatal_Capture' ) ) {
 		private static $recorded = false;
 
 		/**
+		 * Whether PHP accepted the request to drop argument values from traces.
+		 *
+		 * @var bool
+		 */
+		private static $args_stripped = false;
+
+		/**
 		 * Arms both capture paths.
 		 *
-		 * Hooked to checkview_before_init_current_test, which fires only after
-		 * Checkview::is_bot() has verified the request signature.
+		 * @since 2.4.1
 		 *
 		 * @return void
 		 */
@@ -112,12 +88,12 @@ if ( ! class_exists( 'Checkview_Fatal_Capture' ) ) {
 
 			self::$armed = true;
 
-			// Stack traces keep their frames but lose argument values. PHP's
-			// engine default for this is off (only php.ini-production turns
-			// it on) and the default parameter length is 15 characters, long
-			// enough to carry a whole API key into a log we then read
-			// off-site.
-			ini_set( 'zend.exception_ignore_args', '1' );
+			// Traces keep their frames but lose argument values. The engine
+			// default is off unless a php.ini turns it on, and the default
+			// parameter length of 15 characters fits a whole API key.
+			if ( function_exists( 'ini_set' ) ) {
+				self::$args_stripped = false !== ini_set( 'zend.exception_ignore_args', '1' );
+			}
 
 			add_filter( 'wp_php_error_args', array( __CLASS__, 'record_from_core' ), 10, 2 );
 
@@ -126,6 +102,8 @@ if ( ! class_exists( 'Checkview_Fatal_Capture' ) ) {
 
 		/**
 		 * Records the fatal core is about to render, then hands its args back.
+		 *
+		 * @since 2.4.1
 		 *
 		 * @param array $args  Arguments core will pass to wp_die().
 		 * @param array $error The error, as core read it from error_get_last().
@@ -139,6 +117,8 @@ if ( ! class_exists( 'Checkview_Fatal_Capture' ) ) {
 
 		/**
 		 * Fallback for fatals raised after output began.
+		 *
+		 * @since 2.4.1
 		 *
 		 * @return void
 		 */
@@ -154,26 +134,27 @@ if ( ! class_exists( 'Checkview_Fatal_Capture' ) ) {
 		 * @return void
 		 */
 		private static function record( $error, $via ) {
-			if ( self::$recorded || ! self::is_fatal( $error ) ) {
+			if ( self::$recorded || ! self::is_fatal( $error ) || ! class_exists( 'Checkview_Admin_Logs' ) ) {
 				return;
 			}
 
 			self::$recorded = true;
 
-			if ( ! class_exists( 'Checkview_Admin_Logs' ) ) {
-				return;
-			}
-
 			$message = isset( $error['message'] ) ? (string) $error['message'] : 'unknown error';
 
 			if ( strlen( $message ) > self::MAX_MESSAGE_LENGTH ) {
-				$message = substr( $message, 0, self::MAX_MESSAGE_LENGTH ) . ' [truncated]';
+				$message = ( function_exists( 'mb_strcut' ) ? mb_strcut( $message, 0, self::MAX_MESSAGE_LENGTH ) : substr( $message, 0, self::MAX_MESSAGE_LENGTH ) ) . ' [truncated]';
+			}
+
+			$message = self::redact( $message );
+
+			if ( ! self::$args_stripped ) {
+				$message .= ' [trace argument values not stripped: ini_set unavailable]';
 			}
 
 			// Whatever raised the fatal may have left the database unusable,
-			// and a Throwable from the logger or from a checkview_log_add
-			// listener must not become a second error on top of the first.
-			// A second fatal is not catchable; nothing can be done about that.
+			// and a Throwable from the logger or a checkview_log_add listener
+			// must not become a second error on top of the first.
 			try {
 				Checkview_Admin_Logs::add(
 					self::LOG_HANDLE,
@@ -190,6 +171,34 @@ if ( ! class_exists( 'Checkview_Fatal_Capture' ) ) {
 			} catch ( Throwable $e ) {
 				return;
 			}
+		}
+
+		/**
+		 * Masks common secret and personal-data shapes in an error message.
+		 *
+		 * The trace already has its argument values dropped; this covers the
+		 * message line, which integrations routinely build from credentials
+		 * ("Invalid API Key provided: sk_live_...", "Access denied for user
+		 * 'x'@'host'"). A pattern list is not a guarantee, so the readme says
+		 * the message text leaves the site.
+		 *
+		 * @param string $text Error message.
+		 * @return string
+		 */
+		private static function redact( $text ) {
+			$patterns = array(
+				'/\b([sr]k|pk)_(live|test)_[A-Za-z0-9]+/'                              => '$1_$2_[redacted]',
+				'/\bAKIA[0-9A-Z]{16}\b/'                                                => 'AKIA[redacted]',
+				'/(Bearer\s+)[A-Za-z0-9._~+\/-]+=*/i'                                   => '$1[redacted]',
+				'/((?:password|passwd|pwd|secret|token|api[_-]?key)\s*[=:]\s*)[^\s,;)]+/i' => '$1[redacted]',
+				"/for user '[^']*'@'[^']*'/"                                            => "for user '[redacted]'@'[redacted]'",
+				'/\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b/'                  => '[email]',
+				'/\b[A-Fa-f0-9]{32,}\b/'                                                => '[hex]',
+			);
+
+			$redacted = preg_replace( array_keys( $patterns ), array_values( $patterns ), $text );
+
+			return null === $redacted ? $text : $redacted;
 		}
 
 		/**
@@ -217,9 +226,6 @@ if ( ! class_exists( 'Checkview_Fatal_Capture' ) ) {
 		/**
 		 * The test this request belongs to, for the log line.
 		 *
-		 * CV_TEST_ID is defined on init; a fatal before that falls back to the
-		 * request's own test id.
-		 *
 		 * @return string
 		 */
 		private static function test_id() {
@@ -239,19 +245,23 @@ if ( ! class_exists( 'Checkview_Fatal_Capture' ) ) {
 		}
 
 		/**
-		 * Best-effort URL of the current request, for the log line.
+		 * Host and path of the current request, for the log line.
+		 *
+		 * The query string is dropped: a GET form submission carries the
+		 * submitted values in it, and the test id is logged separately.
 		 *
 		 * @return string
 		 */
 		private static function current_url() {
 			$host = isset( $_SERVER['HTTP_HOST'] ) ? sanitize_text_field( wp_unslash( $_SERVER['HTTP_HOST'] ) ) : '';
 			$uri  = isset( $_SERVER['REQUEST_URI'] ) ? sanitize_text_field( wp_unslash( $_SERVER['REQUEST_URI'] ) ) : '';
+			$path = strtok( $uri, '?' );
 
-			if ( '' === $host && '' === $uri ) {
+			if ( '' === $host && ( false === $path || '' === $path ) ) {
 				return 'unknown url';
 			}
 
-			return substr( $host . $uri, 0, 500 );
+			return substr( $host . ( false === $path ? '' : $path ), 0, 500 );
 		}
 	}
 

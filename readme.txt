@@ -208,7 +208,7 @@ Support and test configuration are handled through the CheckView platform. Pleas
 = 2.4.1-beta =
 * Elementor: Detect forms placed through a Global Widget and list them against the pages that render them.
 * Logs: Clean up old logs (default: 30 day retention).
-* Logs: Record PHP fatal errors raised during a CheckView test to a `fatal-logs` channel, readable through the existing get-logs endpoint, so a failing test no longer needs server log access to diagnose.
+* Logs: Record PHP fatal errors raised during a CheckView test to a `fatal-logs` channel, readable through the existing get-logs endpoint, so a failing test no longer needs server log access to diagnose. The error message, file, line and stack trace are sent to CheckView with argument values dropped and common credential shapes masked.
 * Logs: Move the logs folder to a per-site unguessable name. The old fixed name relied on `.htaccess`, which nginx ignores; existing logs are carried across.
 
 = 2.4.0 =
