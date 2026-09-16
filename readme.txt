@@ -7,7 +7,7 @@ Tested up to: 7.1
 Requires PHP: 8.0
 License: GPLv2 or later
 License URI: http://www.gnu.org/licenses/gpl-2.0.html
-Stable tag: 2.4.1-beta
+Stable tag: 2.4.1
 
 [CheckView](https://checkview.io/) automates WordPress form and WooCommerce testing, monitoring key flows to catch failures early before they cost you leads or sales everyday.
 
@@ -205,7 +205,7 @@ Support and test configuration are handled through the CheckView platform. Pleas
 
 == Changelog ==
 
-= 2.4.1-beta =
+= 2.4.1 =
 * Elementor: Detect forms placed through a Global Widget and list them against the pages that render them.
 * Logs: Clean up old logs (default: 30 day retention).
 
