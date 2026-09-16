@@ -86,6 +86,14 @@ class Checkview_Admin {
 			array( $this, 'checkview_schedule_logs_cleanup' )
 		);
 
+		// Before the purge, so a folder left behind by a rollback to an older
+		// version is merged back rather than aged out in place.
+		add_action(
+			'checkview_logs_cleanup_cron',
+			array( 'Checkview_Admin_Logs', 'bootstrap_folder' ),
+			9
+		);
+
 		add_action(
 			'checkview_logs_cleanup_cron',
 			array( 'Checkview_Admin_Logs', 'purge_expired_logs' )
