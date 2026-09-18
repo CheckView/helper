@@ -263,7 +263,13 @@ if ( ! class_exists( 'Checkview_Forminator_Helper' ) ) {
 			global $cleantalk_executed;
 			$cleantalk_executed = true;
 
-			// Disbale form action.
+			// Disable form actions.
+			//
+			// This filter alone does NOT stop add-ons on a test submission.
+			// Forminator consults it only when it boots the add-on subsystem
+			// (forminator.php:142, inside its constructor, before this file is
+			// loaded) and on admin pages. Kept for the boot-order case; the
+			// submit path is covered by checkview_hide_addon_feeds() below.
 			add_filter(
 				'forminator_is_addons_feature_enabled',
 				array(
@@ -273,6 +279,22 @@ if ( ! class_exists( 'Checkview_Forminator_Helper' ) ) {
 				99,
 				1
 			);
+			// This class is loaded from checkview_init_current_test() at init @ 10,
+			// so an init hook added here would never fire. Forminator registers
+			// its add-ons at include time (init_addons() in its constructor), so
+			// the filters can be attached now; the action is the fallback should
+			// that ever move later.
+			if ( did_action( 'forminator_addons_loaded' ) ) {
+				$this->checkview_hide_addon_feeds();
+			} else {
+				add_action(
+					'forminator_addons_loaded',
+					array(
+						$this,
+						'checkview_hide_addon_feeds',
+					)
+				);
+			}
 		}
 		/**
 		 * Sets our email for test submissions.
@@ -697,6 +719,64 @@ if ( ! class_exists( 'Checkview_Forminator_Helper' ) ) {
 				return false;
 			}
 			return $enabled;
+		}
+
+		/**
+		 * Hooks every registered add-on's form settings so feeds can be hidden
+		 * from the submit path during a test.
+		 *
+		 * attach_addons_on_form_submit() (front-action.php) resolves connected
+		 * add-ons from each form's settings meta through
+		 * Forminator_Integration_Settings::get_settings_values(), which applies
+		 * `forminator_addon_{slug}_get_form_settings_values`. An empty array
+		 * there reads as "not connected", so Mailchimp, webhooks and the rest
+		 * never see the submission. One filter per slug covers every account of
+		 * a multi-global add-on: the meta key carries the account id, the
+		 * filter name does not.
+		 */
+		public function checkview_hide_addon_feeds() {
+			if ( ! function_exists( 'forminator_get_registered_addons' ) ) {
+				return;
+			}
+			foreach ( array_keys( forminator_get_registered_addons() ) as $slug ) {
+				add_filter(
+					'forminator_addon_' . $slug . '_get_form_settings_values',
+					array(
+						$this,
+						'checkview_empty_addon_feed',
+					),
+					99,
+					2
+				);
+			}
+		}
+
+		/**
+		 * Returns no feed settings while a test with disable_actions or
+		 * disable_webhooks runs.
+		 *
+		 * Either flag suppresses, matching cv_is_suppressible_test_order(): the
+		 * SaaS sends both query params from one toggle. The
+		 * cv_suppression_kill_switch option turns this off along with every
+		 * other suppression gate.
+		 *
+		 * @param array $values Add-on settings for the form.
+		 * @param int   $module_id Form id.
+		 * @return array
+		 */
+		public function checkview_empty_addon_feed( $values, $module_id ) {
+			if ( get_option( 'cv_suppression_kill_switch' ) === 'true' ) {
+				return $values;
+			}
+			$cv_test_id = get_checkview_test_id();
+			if ( ! $cv_test_id ) {
+				return $values;
+			}
+			if ( get_option( 'disable_actions_' . $cv_test_id ) === 'true'
+				|| get_option( 'disable_webhooks_' . $cv_test_id ) === 'true' ) {
+				return array();
+			}
+			return $values;
 		}
 	}
 
