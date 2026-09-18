@@ -578,6 +578,8 @@ if ( ! class_exists( 'Checkview_Forminator_Helper' ) ) {
 						$field_value = $raw_choice_values[ $meta_key ];
 					}
 
+					$raw_value = $field_value;
+
 					// Flatten to a string. load_meta() already ran
 					// maybe_unserialize() (class-form-entry-model.php:342), so
 					// multi-value and composite fields arrive as arrays — but
@@ -617,6 +619,52 @@ if ( ! class_exists( 'Checkview_Forminator_Helper' ) ) {
 
 					if ( $wpdb->insert( $entry_meta_table, $entry_metadata ) ) {
 						++$count;
+					}
+
+					// Composite fields (name, address, date dropdowns/inputs, time)
+					// persist as one array keyed by subfield, e.g.
+					// ['first-name' => ..., 'last-name' => ...]. The joined row above
+					// is what older flows assert against, but it lets a value that
+					// landed in the wrong subfield pass the SaaS containment check.
+					// Also write one row per subfield, keyed the way Forminator names
+					// the inputs (`<element_id>-<subfield>`, get_subfield_id() in
+					// abstracts/abstract-class-field.php), so the generator can assert
+					// each subfield on its own. Multi-value lists (checkbox,
+					// multiselect) are integer-keyed and get no extra rows.
+					if ( is_array( $raw_value ) ) {
+						foreach ( $raw_value as $subfield => $leaf ) {
+							if ( ! is_string( $subfield ) || '' === $subfield ) {
+								continue;
+							}
+							if ( is_array( $leaf ) ) {
+								$leaf_parts = array();
+								array_walk_recursive(
+									$leaf,
+									function ( $part ) use ( &$leaf_parts ) {
+										if ( is_scalar( $part ) || null === $part ) {
+											$leaf_parts[] = (string) $part;
+										}
+									}
+								);
+								$leaf = implode( ', ', $leaf_parts );
+							} elseif ( ! is_scalar( $leaf ) ) {
+								$leaf = null === $leaf ? '' : maybe_serialize( $leaf );
+							}
+
+							$inserted = $wpdb->insert(
+								$entry_meta_table,
+								array(
+									'uid'        => $checkview_test_id,
+									'form_id'    => $form_id,
+									'entry_id'   => $entry_id,
+									'meta_key'   => checkview_truncate_meta_key( $meta_key . '-' . $subfield ),
+									'meta_value' => (string) $leaf,
+								)
+							);
+							if ( $inserted ) {
+								++$count;
+							}
+						}
 					}
 				}
 
