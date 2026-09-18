@@ -752,15 +752,28 @@ if ( ! class_exists( 'Checkview_Forminator_Helper' ) ) {
 		}
 
 		/**
-		 * Returns no feed settings while a test with disable_actions runs.
+		 * Returns no feed settings while a test with disable_actions or
+		 * disable_webhooks runs.
+		 *
+		 * Either flag suppresses, matching cv_is_suppressible_test_order(): the
+		 * SaaS sends both query params from one toggle. The
+		 * cv_suppression_kill_switch option turns this off along with every
+		 * other suppression gate.
 		 *
 		 * @param array $values Add-on settings for the form.
 		 * @param int   $module_id Form id.
 		 * @return array
 		 */
 		public function checkview_empty_addon_feed( $values, $module_id ) {
+			if ( get_option( 'cv_suppression_kill_switch' ) === 'true' ) {
+				return $values;
+			}
 			$cv_test_id = get_checkview_test_id();
-			if ( $cv_test_id && 'true' == get_option( 'disable_actions_' . $cv_test_id, false ) ) {
+			if ( ! $cv_test_id ) {
+				return $values;
+			}
+			if ( get_option( 'disable_actions_' . $cv_test_id ) === 'true'
+				|| get_option( 'disable_webhooks_' . $cv_test_id ) === 'true' ) {
 				return array();
 			}
 			return $values;
