@@ -452,6 +452,60 @@ class Checkview_Admin_Logs {
 	}
 
 	/**
+	 * Reads the tail of a log file with bounded memory.
+	 *
+	 * get-logs used to file_get_contents() every file whole, so one noisy day
+	 * (Woo checkout sites reach 15 MB a day) pulled tens of MB into memory and
+	 * shipped it, only for the SaaS client to trim to the last few thousand
+	 * lines on arrival. This seeks the trailing bytes instead, so the read is
+	 * capped no matter how large the file grew inside the retention window.
+	 *
+	 * @since 1.6.0
+	 *
+	 * @param string  $file      Absolute path to the log file.
+	 * @param integer $max_lines Return at most this many trailing lines.
+	 * @param integer $max_bytes Read at most this many trailing bytes.
+	 * @return string
+	 */
+	public static function tail_file( $file, $max_lines = 5000, $max_bytes = 2097152 ) {
+
+		$size = @filesize( $file );
+
+		if ( false === $size || 0 === $size ) {
+			return '';
+		}
+
+		$handle = @fopen( $file, 'rb' );
+
+		if ( ! $handle ) {
+			return '';
+		}
+
+		// Read only the trailing window so a multi-MB day cannot be pulled in
+		// whole; drop the partial line the offset lands inside.
+		if ( $size > $max_bytes ) {
+			fseek( $handle, $size - $max_bytes );
+			fgets( $handle );
+		}
+
+		$data = stream_get_contents( $handle );
+
+		fclose( $handle );
+
+		if ( false === $data || '' === $data ) {
+			return '';
+		}
+
+		$lines = explode( "\n", $data );
+
+		if ( count( $lines ) > $max_lines ) {
+			$lines = array_slice( $lines, -$max_lines );
+		}
+
+		return implode( "\n", $lines );
+	}
+
+	/**
 	 * Tests opening a log file.
 	 *
 	 * @since 0.0.1

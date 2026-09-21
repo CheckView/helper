@@ -2262,36 +2262,16 @@ class CheckView_Api {
 	 * @return WP_REST_Response|WP_Error
 	 */
 	public function checkview_saas_get_helper_logs() {
-		// Get all plugins.
-		if ( ! function_exists( 'get_plugins' ) ) {
-			require_once ABSPATH . 'wp-admin/includes/plugin.php';
-		}
-		// Define the threshold timestamp (7 days ago).
-		$threshold_time = strtotime( '-7 days' );
-
-		$wp_filesystem_direct = new WP_Filesystem_Direct( array() );
-		$pad_spaces           = 45;
-		$checkview_options    = get_option( 'checkview_log_options', array() );
-
+		// The daily cleanup cron (purge_expired_logs) bounds how many files
+		// live here, so this endpoint no longer prunes or age-filters; it is a
+		// pure read. tail_file() caps each read so a noisy day cannot push the
+		// response toward the memory cliff site-info used to hit.
 		$logs_list = glob( Checkview_Admin_Logs::get_logs_folder() . '*.log' );
-		$logs      = array();
-		foreach ( $logs_list as $file ) {
-			$contents = $file && file_exists( $file ) ? $wp_filesystem_direct->get_contents( $file ) : '--';
-			if ( preg_match( '/\/([^\/]+)\.log$/', $file, $matche ) ) {
-				// Extract the date from the filename (e.g., log-YYYY-MM-DD.log).
-				if ( preg_match( '/log-(\d{4}-\d{2}-\d{2})\.log$/', $file, $matches ) ) {
-					$file_date = strtotime( $matches[1] );
 
-					// If the file's date is older than 7 days, delete the file.
-					if ( $file_date < $threshold_time ) {
-						unlink( $file );
-					} else {
-						$file          = $matche[1]; // Return the captured group.
-						$logs[ $file ] = $contents;
-					}
-				} else {
-					unlink( $file );
-				}
+		$logs = array();
+		foreach ( (array) $logs_list as $file ) {
+			if ( preg_match( '/\/([^\/]+)\.log$/', $file, $matche ) ) {
+				$logs[ $matche[1] ] = Checkview_Admin_Logs::tail_file( $file );
 			}
 		}
 		// Combine all data.
