@@ -36,23 +36,11 @@ class Checkview_Admin_Logs {
 	const LEGACY_FOLDER_NAME = 'checkview-logs';
 
 	/**
-	 * Option holding this site's random logs folder suffix.
-	 */
-	const DIR_KEY_OPTION = 'checkview_logs_dir_key';
-
-	/**
 	 * Logs folder suffix per blog, resolved once per request.
 	 *
 	 * @var array<int,string>
 	 */
 	private static $dir_key = array();
-
-	/**
-	 * Per blog, whether the suffix in use is stored in the database.
-	 *
-	 * @var array<int,bool>
-	 */
-	private static $key_persisted = array();
 
 	/**
 	 * Constructor.
@@ -138,9 +126,9 @@ class Checkview_Admin_Logs {
 	/**
 	 * Gets the path of the logs folder.
 	 *
-	 * Inside the WordPress uploads directory, under a per-site random name.
-	 * The old fixed name was protected only by an .htaccess, which nginx
-	 * ignores.
+	 * Inside the WordPress uploads directory, under a per-site unguessable
+	 * name. The old fixed name was protected only by an .htaccess, which
+	 * nginx ignores.
 	 *
 	 * @return string
 	 */
@@ -152,12 +140,12 @@ class Checkview_Admin_Logs {
 	}
 
 	/**
-	 * Gets this site's logs folder suffix, storing one on first use.
+	 * Gets this site's logs folder suffix.
 	 *
-	 * Uses INSERT IGNORE, the mutex core uses in WP_Upgrader::create_lock().
-	 * add_option() is INSERT ... ON DUPLICATE KEY UPDATE, so two requests
-	 * racing on first use would both succeed and the last writer's key would
-	 * strand the other's folder.
+	 * Derived from the auth salt rather than stored: first use needs no
+	 * database write, so nothing can race on it, and the name holds through
+	 * a database outage. Rotating the salts renames the folder; the daily
+	 * cron's bootstrap_folder() pass carries the logs across.
 	 *
 	 * @since 2.4.1
 	 *
@@ -167,93 +155,21 @@ class Checkview_Admin_Logs {
 
 		$blog_id = get_current_blog_id();
 
-		if ( isset( self::$dir_key[ $blog_id ] ) ) {
-			return self::$dir_key[ $blog_id ];
+		if ( ! isset( self::$dir_key[ $blog_id ] ) ) {
+			self::$dir_key[ $blog_id ] = substr( hash_hmac( 'sha256', self::LEGACY_FOLDER_NAME . $blog_id, wp_salt( 'auth' ) ), 0, 16 );
 		}
 
-		$key = get_option( self::DIR_KEY_OPTION );
-
-		if ( ! self::is_valid_dir_key( $key ) ) {
-			global $wpdb;
-
-			$candidate = self::generate_dir_key();
-
-			if ( false === $key ) {
-				$wpdb->query(
-					$wpdb->prepare(
-						"INSERT IGNORE INTO {$wpdb->options} (option_name, option_value, autoload) VALUES (%s, %s, 'yes')",
-						self::DIR_KEY_OPTION,
-						$candidate
-					)
-				);
-			} else {
-				// Edited by hand. Compare-and-swap so racing repairs converge.
-				$wpdb->query(
-					$wpdb->prepare(
-						"UPDATE {$wpdb->options} SET option_value = %s WHERE option_name = %s AND option_value = %s",
-						$candidate,
-						self::DIR_KEY_OPTION,
-						maybe_serialize( $key )
-					)
-				);
-			}
-
-			// Raw writes bypass add_option()'s cache upkeep.
-			wp_cache_delete( self::DIR_KEY_OPTION, 'options' );
-			wp_cache_delete( 'notoptions', 'options' );
-			wp_cache_delete( 'alloptions', 'options' );
-
-			$key = get_option( self::DIR_KEY_OPTION );
-		}
-
-		if ( self::is_valid_dir_key( $key ) ) {
-			self::$key_persisted[ $blog_id ] = true;
-		} else {
-			// The database refused the write. Derive a stable, unguessable
-			// name from secrets that live in wp-config.php rather than the
-			// database, so logging keeps working through the outage without
-			// minting a fresh folder per request.
-			self::$key_persisted[ $blog_id ] = false;
-
-			$secret = ( defined( 'AUTH_KEY' ) ? AUTH_KEY : '' ) . ( defined( 'DB_PASSWORD' ) ? DB_PASSWORD : '' ) . ABSPATH;
-			$key    = substr( hash_hmac( 'sha256', self::LEGACY_FOLDER_NAME . $blog_id, $secret ), 0, 16 );
-		}
-
-		self::$dir_key[ $blog_id ] = $key;
-
-		return $key;
-	}
-
-	/**
-	 * Whether a value is a well-formed logs folder suffix.
-	 *
-	 * @param mixed $key Candidate value.
-	 * @return bool
-	 */
-	private static function is_valid_dir_key( $key ) {
-		return is_string( $key ) && 1 === preg_match( '/^[a-f0-9]{16}\z/', $key );
-	}
-
-	/**
-	 * Generates a new logs folder suffix.
-	 *
-	 * @return string 16 hex characters.
-	 */
-	private static function generate_dir_key() {
-		try {
-			return bin2hex( random_bytes( 8 ) );
-		} catch ( Throwable $e ) {
-			return substr( md5( uniqid( (string) wp_rand(), true ) ), 0, 16 );
-		}
+		return self::$dir_key[ $blog_id ];
 	}
 
 	/**
 	 * Moves logs out of any folder that is not the current one.
 	 *
 	 * Sources are the old fixed-name folder and any suffixed folder whose key
-	 * is no longer the stored one: a fallback name used during a database
-	 * outage, or a key that was replaced. Never deletes a log file. Runs from
-	 * the once-per-version init hook and from the daily logs cron.
+	 * is no longer the current one: a pre-release build stored a random key
+	 * in the options table, and rotating the salts changes the derived one.
+	 * Never deletes a log file. Runs from the once-per-version init hook and
+	 * from the daily logs cron.
 	 *
 	 * @since 2.4.1
 	 *
@@ -261,16 +177,6 @@ class Checkview_Admin_Logs {
 	 *              folder, so the caller can stop retrying.
 	 */
 	public static function bootstrap_folder() {
-
-		self::get_dir_key();
-
-		$blog_id = get_current_blog_id();
-
-		if ( empty( self::$key_persisted[ $blog_id ] ) ) {
-			// Moving history under a fallback name would strand it once the
-			// database is back and a real key gets stored.
-			return false;
-		}
 
 		$target = trailingslashit( self::get_logs_folder() );
 		$prefix = trailingslashit( self::get_uploads_folder() ) . self::LEGACY_FOLDER_NAME;
