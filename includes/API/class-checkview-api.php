@@ -2151,26 +2151,16 @@ class CheckView_Api {
 		$core_info            = array(
 			'version' => $wp_version,
 		);
-		$wp_filesystem_direct = new WP_Filesystem_Direct( array() );
-		$pad_spaces           = 45;
-		$checkview_options    = get_option( 'checkview_log_options', array() );
-
-		$logs_list = glob( Checkview_Admin_Logs::get_logs_folder() . '*.log' );
-		$logs      = array();
-		foreach ( $logs_list as $file ) {
-			$contents = $file && file_exists( $file ) ? $wp_filesystem_direct->get_contents( $file ) : '--';
-			if ( preg_match( '/\/([^\/]+)\.log$/', $file, $matches ) ) {
-				$file = $matches[1]; // Return the captured group.
-			}
-			$logs[ $file ] = $contents;
-		}
-		// Combine all data.
+		// Deliberately does NOT return log contents. This endpoint used to embed
+		// every log file in full, which is unbounded: a site with 39MB of logs
+		// exhausted a 512MB memory limit inside wp_json_encode() and the request
+		// died with a fatal, taking site-info down with it. Nothing consumes the
+		// logs from here either, and /checkview/v1/get-logs already serves them.
 		$response = array(
 			'plugins'  => $plugin_list,
 			'themes'   => $theme_list,
 			'core'     => $core_info,
 			'ajax_url' => admin_url( 'admin-ajax.php' ),
-			'logs'     => $logs,
 		);
 
 		if ( $response ) {
