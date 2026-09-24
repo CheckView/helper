@@ -7,7 +7,7 @@ Tested up to: 7.1
 Requires PHP: 8.0
 License: GPLv2 or later
 License URI: http://www.gnu.org/licenses/gpl-2.0.html
-Stable tag: 2.4.1
+Stable tag: 2.4.2
 
 [CheckView](https://checkview.io/) automates WordPress form and WooCommerce testing, monitoring key flows to catch failures early before they cost you leads or sales everyday.
 
@@ -205,11 +205,17 @@ Support and test configuration are handled through the CheckView platform. Pleas
 
 == Changelog ==
 
+= 2.4.2 =
+* Logs: Save any PHP fatal error that happens during a test, so a failed test can be looked into without server log access. Credentials are hidden before the error is sent.
+* Logs: Give each site its own hard-to-guess logs folder, since the old shared name was not protected on every server. Existing logs are moved over for you.
+* Logs: Keep the site-info request from returning log contents, which could use up too much memory and crash on sites with big logs. Logs are still available on their own.
+* Logs: Read only the recent part of each log file, so one busy day cannot make the response huge.
+* Forminator: Save each part of a multi-part field (name, address, date, time) on its own, so every part can be checked separately.
+* Forminator: Skip add-on actions (Mailchimp, webhooks and the rest) on test submissions, following the test's suppression settings.
+
 = 2.4.1 =
 * Elementor: Detect forms placed through a Global Widget and list them against the pages that render them.
 * Logs: Clean up old logs (default: 30 day retention).
-* Logs: Record PHP fatal errors raised during a CheckView test to a `fatal-logs` channel, readable through the existing get-logs endpoint, so a failing test no longer needs server log access to diagnose. The error message, file, line and stack trace are sent to CheckView with argument values dropped and common credential shapes masked.
-* Logs: Move the logs folder to a per-site unguessable name. The old fixed name relied on `.htaccess`, which nginx ignores; existing logs are carried across.
 
 = 2.4.0 =
 * WP 7.1 compatibility: bump "Tested up to" to 7.1.
