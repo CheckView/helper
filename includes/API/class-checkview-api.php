@@ -2274,25 +2274,16 @@ class CheckView_Api {
 				$logs[ $matche[1] ] = Checkview_Admin_Logs::tail_file( $file );
 			}
 		}
-		// Combine all data.
-		$response = array(
-			'logs' => $logs,
+
+		return new WP_REST_Response(
+			array(
+				'status'        => 200,
+				'response'      => esc_html__( 'Successfully retrieved the site info.', 'checkview' ),
+				'body_response' => array(
+					'logs' => $logs,
+				),
+			),
 		);
-		if ( $response ) {
-			return new WP_REST_Response(
-				array(
-					'status'        => 200,
-					'response'      => esc_html__( 'Successfully retrieved the site info.', 'checkview' ),
-					'body_response' => $response,
-				)
-			);
-		} else {
-			Checkview_Admin_Logs::add( 'api-logs', sanitize_text_field( 'Failed to retrieve the site info.' ) );
-			return new WP_Error(
-				400,
-				esc_html__( 'An error occurred while processing your request.', 'checkview' ),
-			);
-		}
 	}
 
 	/**
