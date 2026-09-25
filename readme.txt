@@ -21,7 +21,7 @@ Built specifically for WordPress and WooCommerce, CheckView helps site owners, d
 
 == Works Well With ==
 
-CheckView works well with popular WordPress form and eCommerce plugins including Contact Form 7, WPForms, Gravity Forms, Fluent Forms, Ninja Forms, Formidable Forms, WS Form, and WooCommerce. 
+CheckView works well with popular WordPress form and eCommerce plugins including Contact Form 7, WPForms, Gravity Forms, Fluent Forms, Ninja Forms, Formidable Forms, Forminator, WS Form, and WooCommerce.
 
 == Important == 
 
@@ -122,7 +122,7 @@ Yes. A [CheckView](https://checkview.io/) account is required to enable automate
 
 = Which form plugins does CheckView support? =
 
-CheckView supports automated testing for many popular WordPress form plugins, including WS Form, WPForms, Ninja Forms, Gravity Forms, Formidable Forms, Contact Form 7, and Fluent Forms.
+CheckView supports automated testing for many popular WordPress form plugins, including WS Form, WPForms, Ninja Forms, Gravity Forms, Formidable Forms, Forminator, Contact Form 7, and Fluent Forms.
 
 = If my preferred form plugin is not listed, can I still use CheckView? =
 
