@@ -132,6 +132,30 @@ if ( ! class_exists( 'Checkview_WSF_Helper' ) ) {
 		 * @return bool
 		 */
 		public function checkview_inject_email( $to, $form, $submit, $action ) {
+			// New: append-mode branch — deliver to BOTH real recipient and test inbox.
+			// WS Forms uses RFC 2822 format strings (e.g. `"CheckView" <addr>`).
+			// Use the shared dedup parser to handle the format correctly and
+			// avoid substring false positives.
+			if ( cv_should_allow_original_recipients() ) {
+				$test_addr = '"CheckView" <' . TEST_EMAIL . '>';
+				// Sanitize before any concat to prevent header injection from
+				// customer-provided recipient strings.
+				if ( is_array( $to ) ) {
+					$to = array_map( 'cv_sanitize_crlf', $to );
+				} else {
+					$to = cv_sanitize_crlf( (string) $to );
+				}
+				if ( ! cv_recipients_contain_test_email( $to ) ) {
+					if ( is_array( $to ) ) {
+						$to[] = $test_addr;
+					} else {
+						$to = empty( $to ) ? $test_addr : rtrim( $to, ", \t" ) . ', ' . $test_addr;
+					}
+				}
+				Checkview_Admin_Logs::add( 'ip-logs', 'Append-mode submission recipient email address: ' . wp_json_encode( $to ) );
+				return $to;
+			}
+
 			$cv_test_id = get_checkview_test_id();
 			if ( ! $cv_test_id || 'true' != get_option( 'disable_email_receipt_' . $cv_test_id, false ) ) {
 				$to = array(
@@ -156,10 +180,17 @@ if ( ! class_exists( 'Checkview_WSF_Helper' ) ) {
 		 * @return array
 		 */
 		public function checkview_remove_email_header( $headers, $form, $submit_parse, $config ) {
+			// Append-mode: preserve original CC/BCC so customer's full recipient
+			// list receives the email. Inject Reply-To for MTA-variance defense.
+			if ( cv_should_allow_original_recipients() ) {
+				$headers = cv_inject_reply_to_header( $headers );
+				Checkview_Admin_Logs::add( 'ip-logs', 'Append-mode submission email headers (CC/BCC preserved): ' . wp_json_encode( $headers ) );
+				return $headers;
+			}
+
 			$cv_test_id = get_checkview_test_id();
 			if ( $cv_test_id && 'true' == get_option( 'disable_email_receipt_' . $cv_test_id, false ) ) {
 				return $headers;
-
 			}
 			// Ensure headers are an array.
 			if ( ! is_array( $headers ) ) {
@@ -175,6 +206,7 @@ if ( ! class_exists( 'Checkview_WSF_Helper' ) ) {
 			);
 
 			$array_values = array_values( $filtered_headers );
+
 			Checkview_Admin_Logs::add( 'ip-logs', 'Submission email headers: ' . wp_json_encode( $array_values ) );
 			return $array_values;
 		}

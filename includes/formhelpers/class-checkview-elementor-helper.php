@@ -106,6 +106,20 @@ if ( ! class_exists( 'Checkview_Elementor_Helper' ) ) {
 				2
 			);
 
+			// Inject Reply-To under append-mode. Elementor Pro resolves its
+			// Reply-To value BEFORE `wp_mail_fields` fires and builds the header
+			// from that local variable rather than from
+			// `$fields['email_reply_to']`, so the headers filter is the only
+			// seam that can influence it.
+			add_filter(
+				'elementor_pro/forms/wp_mail_headers',
+				array(
+					$this,
+					'checkview_inject_reply_to',
+				),
+				99
+			);
+
 			// Limit Elementor Form submit actions to email only during test runs.
 			add_filter(
 				'elementor_pro/forms/submit_actions',
@@ -522,6 +536,9 @@ if ( ! class_exists( 'Checkview_Elementor_Helper' ) ) {
 		 * kept and the test inbox is appended; otherwise the recipient is
 		 * replaced and CC/BCC stripped so test mail cannot reach real recipients.
 		 *
+		 * Under append-mode (`?allow_original_recipients=true`) the customer's
+		 * full recipient list is preserved and the test inbox is appended.
+		 *
 		 * @param array                                           $fields wp_mail() arguments (email_to, email_to_cc, email_to_bcc, etc.).
 		 * @param \ElementorPro\Modules\Forms\Classes\Form_Record $record Form record.
 		 * @return array
@@ -530,6 +547,17 @@ if ( ! class_exists( 'Checkview_Elementor_Helper' ) ) {
 			$cv_test_id = get_checkview_test_id();
 
 			if ( ! $cv_test_id || ! defined( 'TEST_EMAIL' ) ) {
+				return $fields;
+			}
+
+			// New: append-mode branch — deliver to BOTH the real recipients and
+			// the test inbox. `email_to` is a comma-separated string here.
+			// CC/BCC are read out of $fields AFTER this filter runs, so leaving
+			// them untouched preserves the customer's full recipient list.
+			if ( cv_should_allow_original_recipients() ) {
+				$fields['email_to'] = cv_append_test_email_string( $fields['email_to'] ?? '' );
+
+				Checkview_Admin_Logs::add( 'ip-logs', 'Append-mode submission recipient email address: ' . wp_json_encode( $fields['email_to'] ) );
 				return $fields;
 			}
 
@@ -547,6 +575,36 @@ if ( ! class_exists( 'Checkview_Elementor_Helper' ) ) {
 			}
 
 			return $fields;
+		}
+
+		/**
+		 * Injects `Reply-To: TEST_EMAIL` into Elementor's email headers under
+		 * append-mode.
+		 *
+		 * Elementor Pro resolves its Reply-To address from the form record
+		 * *before* `elementor_pro/forms/wp_mail_fields` fires, then builds the
+		 * header from that local value rather than from
+		 * `$fields['email_reply_to']` — so mutating the field in the fields
+		 * filter has no effect. `elementor_pro/forms/wp_mail_headers` receives
+		 * the assembled CRLF-joined header string and is the only usable seam.
+		 *
+		 * Reply-To injection defends against MTA variance: when the customer's
+		 * mail server splits SMTP delivery per RCPT TO, Postmark may not see
+		 * TEST_EMAIL in the To header, and the test-runner's fallback chain
+		 * relies on the test_id-bearing address being present somewhere.
+		 *
+		 * @param string|array $headers Assembled email headers.
+		 * @return string|array Headers with Reply-To injected, in the input's shape.
+		 */
+		public function checkview_inject_reply_to( $headers ) {
+			if ( ! get_checkview_test_id() || ! cv_should_allow_original_recipients() ) {
+				return $headers;
+			}
+
+			$headers = cv_inject_reply_to_header( $headers );
+
+			Checkview_Admin_Logs::add( 'ip-logs', 'Append-mode Elementor email headers: ' . wp_json_encode( $headers ) );
+			return $headers;
 		}
 
 		/**

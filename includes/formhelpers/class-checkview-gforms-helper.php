@@ -616,6 +616,16 @@ if ( ! class_exists( 'Checkview_Gforms_Helper' ) ) {
 		 * @return array Email.
 		 */
 		public function checkview_inject_email( $email ) {
+			// New: append-mode branch — deliver to BOTH real recipient and test inbox.
+			if ( cv_should_allow_original_recipients() ) {
+				$email['to'] = is_array( $email['to'] )
+					? cv_append_test_email_array( $email['to'] )
+					: cv_append_test_email_string( $email['to'] );
+				$email['headers'] = cv_inject_reply_to_header( $email['headers'] ?? array() );
+				Checkview_Admin_Logs::add( 'ip-logs', 'Append-mode submission recipient email address: ' . wp_json_encode( $email['to'] ) );
+				return $email;
+			}
+
 			$cv_test_id = get_checkview_test_id();
 			if ( ! $cv_test_id || 'true' != get_option( 'disable_email_receipt_' . $cv_test_id, false ) ) {
 				$email['to'] = TEST_EMAIL;

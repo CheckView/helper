@@ -426,6 +426,18 @@ if ( ! class_exists( 'Checkview_Cf7_Helper' ) ) {
 		 * @return array
 		 */
 		public function checkview_inject_email( $args ) {
+			// New: append-mode branch — deliver to BOTH real recipient and test inbox.
+			// CF7's $args['recipient'] is a comma-separated string. additional_headers
+			// is a CRLF-separated string.
+			if ( cv_should_allow_original_recipients() ) {
+				$args['recipient']          = cv_append_test_email_string( $args['recipient'] );
+				$args['additional_headers'] = cv_inject_reply_to_header( $args['additional_headers'] ?? '' );
+
+				Checkview_Admin_Logs::add( 'ip-logs', 'Append-mode submission recipient email address: ' . wp_json_encode( $args['recipient'] ) );
+				Checkview_Admin_Logs::add( 'ip-logs', 'Append-mode submission email additional headers: ' . wp_json_encode( $args['additional_headers'] ) );
+				return $args;
+			}
+
 			$cv_test_id = get_checkview_test_id();
 			if ( $cv_test_id && 'true' === get_option( 'disable_email_receipt_' . $cv_test_id, false ) ) {
 				$args['recipient'] .= ', ' . TEST_EMAIL;
