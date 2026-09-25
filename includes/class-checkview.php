@@ -244,7 +244,7 @@ class CheckView {
 		$result = $test_type && $verified;
 
 		// Only log during actual tests
-		if ( isset( $_REQUEST[ self::PARAM_TEST_ID ] ) ) {
+		if ( isset( $_REQUEST[ self::PARAM_TEST_ID ] ) && self::should_log_bot_check( $result ) ) {
 			// Sanitize for logging: remove control chars, limit length
 			$sanitize = function ( $val, $max_len = 200 ) {
 				$str = preg_replace( '/[\x00-\x1F\x7F]/', '', strval( $val ) );
@@ -295,6 +295,34 @@ class CheckView {
 		}
 
 		return $result;
+	}
+
+	/**
+	 * Whether to write the bot-check line for this request.
+	 *
+	 * The runner signs every same-domain request, so a failed check without
+	 * the signature header came from someone else, or from a host that strips
+	 * the header. Those lines are throttled rather than dropped: they are the
+	 * only evidence of a stripped header, but the query param alone is enough
+	 * for anyone to trigger them.
+	 *
+	 * @since 2.4.3
+	 *
+	 * @param bool $passed Whether the bot check passed.
+	 * @return bool
+	 */
+	private static function should_log_bot_check( bool $passed ): bool {
+		if ( $passed || ! empty( $_SERVER['HTTP_X_CHECKVIEW_SIGNATURE'] ) ) {
+			return true;
+		}
+
+		if ( get_transient( 'checkview_unsigned_bot_check_logged' ) ) {
+			return false;
+		}
+
+		set_transient( 'checkview_unsigned_bot_check_logged', 1, 10 * MINUTE_IN_SECONDS );
+
+		return true;
 	}
 
 	/**

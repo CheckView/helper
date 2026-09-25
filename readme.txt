@@ -207,6 +207,7 @@ Support and test configuration are handled through the CheckView platform. Pleas
 
 = 2.4.3 =
 * Stop changing PHP's error reporting level on REST requests. It applied to every REST request on the site, not only CheckView's, and turned deprecation notices on (and warnings off) in the site's PHP error log.
+* Logs: Stop writing a "bot check" log line for every request that carries a CheckView test ID but no request signature. Anyone could trigger those by adding the parameter to a URL. One such line is still kept every 10 minutes, so a host that strips the signature header still leaves a trace.
 
 = 2.4.2 =
 * Logs: Save any PHP fatal error that happens during a test, so a failed test can be looked into without server log access. Credentials are hidden before the error is sent.
