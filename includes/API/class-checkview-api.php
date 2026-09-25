@@ -32,10 +32,10 @@ class CheckView_Api {
 	 * @since 1.0.0
 	 */
 	public function checkview_register_rest_route() {
-		if ( defined( 'REST_REQUEST' ) && REST_REQUEST ) {
-			// Suppress errors for REST API requests.
+		// Keep printed notices out of our JSON responses. Only our own routes;
+		// rest_api_init fires for every REST request on the site.
+		if ( Checkview_Admin::is_checkview_rest_request() ) {
 			ini_set( 'display_errors', '0' );
-			error_reporting( E_ALL & ~E_NOTICE & ~E_WARNING );
 		}
 		register_rest_route(
 			'checkview/v1',
