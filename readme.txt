@@ -205,6 +205,9 @@ Support and test configuration are handled through the CheckView platform. Pleas
 
 == Changelog ==
 
+= 2.4.3 =
+* Stop changing PHP's error reporting level on REST requests. It applied to every REST request on the site, not only CheckView's, and turned deprecation notices on (and warnings off) in the site's PHP error log.
+
 = 2.4.2 =
 * Logs: Save any PHP fatal error that happens during a test, so a failed test can be looked into without server log access. Credentials are hidden before the error is sent.
 * Logs: Give each site its own hard-to-guess logs folder, since the old shared name was not protected on every server. Existing logs are moved over for you.
