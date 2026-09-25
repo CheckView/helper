@@ -145,6 +145,41 @@ if ( ! class_exists( 'Checkview_Cf7_Helper' ) ) {
 				-PHP_INT_MAX,
 				0
 			);
+
+			// WP Armour is not covered by the spam bypasses above: it invalidates
+			// the submission itself rather than flagging it as spam, so
+			// `wpcf7_spam` and `wpcf7_skip_spam_check` never see it.
+			//
+			// On `init` at PHP_INT_MAX because WP Armour includes its
+			// integrations from an `init` callback at the default priority
+			// (wp-armour.php:17-24), the same priority this helper loads at.
+			add_action(
+				'init',
+				array( $this, 'checkview_unhook_wp_armour' ),
+				PHP_INT_MAX
+			);
+		}
+
+		/**
+		 * Removes WP Armour's Contact Form 7 validation callback for this request.
+		 *
+		 * Degrades to a logged no-op — nothing removed and no such function means
+		 * the plugin is absent; the function present but not removable means it
+		 * changed priority or was renamed, which is worth surfacing.
+		 *
+		 * @since 2.3.0
+		 *
+		 * @return void
+		 */
+		public function checkview_unhook_wp_armour() {
+			if ( remove_filter( 'wpcf7_validate', 'wpa_contactform7_extra_validation', 10 ) ) {
+				Checkview_Admin_Logs::add( 'ip-logs', 'Unhooked WP Armour from wpcf7_validate for this CheckView test.' );
+				return;
+			}
+
+			if ( function_exists( 'wpa_contactform7_extra_validation' ) ) {
+				Checkview_Admin_Logs::add( 'ip-logs', 'WP Armour detected but its wpcf7_validate callback was not removable (priority changed or renamed?) — CF7 submissions may still be rejected as spam.' );
+			}
 		}
 
 		/**
