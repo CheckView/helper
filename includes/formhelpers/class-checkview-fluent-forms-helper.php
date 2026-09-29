@@ -172,9 +172,8 @@ if ( ! class_exists( 'Checkview_Fluent_Forms_Helper' ) ) {
 				999
 			);
 
-			// Fluent Forms refuses a sixth submission from one IP inside 30
-			// seconds with a 429. Test runs share an egress IP, so several
-			// flows on one site reach that within a single schedule tick.
+			// Fluent Forms answers 429 to a sixth submission from one IP inside
+			// 30 seconds, counted across every form on the site.
 			add_filter(
 				'fluentform/prevent_malicious_attacks',
 				'__return_false',
