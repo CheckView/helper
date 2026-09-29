@@ -11,16 +11,14 @@
  * Plugin Name:       CheckView
  * Plugin URI:        https://checkview.io
  * Description:       CheckView is the #1 fully automated solution to test your WordPress forms and detect form problems fast.  Automatically test your WordPress forms to ensure you never miss a lead again.
- * Version:           2.3.0
+ * Version:           2.4.3
  * Author:            CheckView
  * Author URI:        https://checkview.io/
  * License:           GPL-2.0+
  * License URI:       http://www.gnu.org/licenses/gpl-2.0.txt
- * Text Domain:       checkview
- * Requires PHP:      7.4
+ * Requires PHP:      8.0
  * WC requires at least: 7.0
  * WC tested up to: 8.3
- * Domain Path:       /languages
  */
 
 // If this file is called directly, abort.
@@ -36,11 +34,12 @@ if ( ! defined( 'WPINC' ) ) {
  *
  * @link https://semver.org
  */
-define( 'CHECKVIEW_VERSION', '2.3.0' );
+define( 'CHECKVIEW_VERSION', '2.4.3' );
 
 if ( ! defined( 'CHECKVIEW_BASE_DIR' ) ) {
 	define( 'CHECKVIEW_BASE_DIR', plugin_basename( __FILE__ ) );
 }
+
 if ( ! defined( 'CHECKVIEW_PLUGIN_DIR' ) ) {
 	define( 'CHECKVIEW_PLUGIN_DIR', trailingslashit( plugin_dir_path( __FILE__ ) ) );
 }
@@ -68,6 +67,7 @@ if ( ! defined( 'CHECKVIEW_PUBLIC_ASSETS' ) ) {
 if ( ! defined( 'CHECKVIEW_EMAIL' ) ) {
 	define( 'CHECKVIEW_EMAIL', 'verify@test-mail.checkview.io' );
 }
+
 if ( ! defined( 'CHECKVIEW_URI' ) ) {
 	define( 'CHECKVIEW_URI', trailingslashit( plugin_dir_url( __FILE__ ) ) );
 }
@@ -183,6 +183,40 @@ function checkview_maybe_invalidate_opcache() {
 	}
 }
 add_action( 'plugins_loaded', 'checkview_maybe_invalidate_opcache', 1 );
+
+/**
+ * Moves the helper's logs out of their old, guessable folder.
+ *
+ * One attempt per plugin version, the same way the OPcache invalidation
+ * above catches auto-updates that never fire register_activation_hook.
+ * Keyed on its own option because that hook has already brought
+ * checkview_version up to date by the time this runs. Hooked on init rather
+ * than plugins_loaded so a theme's checkview_get_logs_folder filter is
+ * already registered.
+ *
+ * Stamped whether or not the attempt succeeded: this runs on every request,
+ * so a folder that cannot be moved must not be retried, and reported, per
+ * page view. The daily logs cron retries instead, which also covers a
+ * rollback to an older version and back to this one.
+ *
+ * @since 2.4.1
+ *
+ * @return void
+ */
+function checkview_maybe_bootstrap_logs_folder() {
+	if ( get_option( 'checkview_logs_folder_version' ) === CHECKVIEW_VERSION ) {
+		return;
+	}
+
+	if ( ! class_exists( 'Checkview_Admin_Logs' ) ) {
+		require_once CHECKVIEW_ADMIN_DIR . 'class-checkview-admin-logs.php';
+	}
+
+	Checkview_Admin_Logs::bootstrap_folder();
+
+	update_option( 'checkview_logs_folder_version', CHECKVIEW_VERSION, true );
+}
+add_action( 'init', 'checkview_maybe_bootstrap_logs_folder', 1 );
 
 /**
  * Declares compatibility with WooCommerce high-performance order storage.

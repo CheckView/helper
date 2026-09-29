@@ -88,14 +88,12 @@ class CheckView {
 	public function __construct() {
 		if ( defined( 'CHECKVIEW_VERSION' ) ) {
 			$this->version = CHECKVIEW_VERSION;
-		} else {
-			$this->version = '2.3.0';
 		}
+
 		$this->plugin_name = 'checkview';
 
 		$this->load_dependencies();
 
-		$this->loader->add_action( 'init', $this, 'load_textdomain' );
 		$this->loader->add_action( 'wp_enqueue_scripts', $this, 'dequeue_scripts', 20 );
 
 		$this->define_admin_hooks();
@@ -218,7 +216,7 @@ class CheckView {
 	public static function is_bot(): bool {
 		$visitor_ip  = checkview_get_visitor_ip();
 		$cv_bot_ip   = checkview_get_api_ip();
-		$is_local    = defined( 'WP_ENVIRONMENT_TYPE' ) && WP_ENVIRONMENT_TYPE === 'local';
+		$is_local    = checkview_is_local_environment();
 		$ip_verified = $is_local || ( is_array( $cv_bot_ip ) && in_array( $visitor_ip, $cv_bot_ip ) );
 
 		// Unforgeable per-request signal: the CheckView test runner attaches a
@@ -246,7 +244,7 @@ class CheckView {
 		$result = $test_type && $verified;
 
 		// Only log during actual tests
-		if ( isset( $_REQUEST[ self::PARAM_TEST_ID ] ) ) {
+		if ( isset( $_REQUEST[ self::PARAM_TEST_ID ] ) && self::should_log_bot_check( $result ) ) {
 			// Sanitize for logging: remove control chars, limit length
 			$sanitize = function ( $val, $max_len = 200 ) {
 				$str = preg_replace( '/[\x00-\x1F\x7F]/', '', strval( $val ) );
@@ -297,6 +295,34 @@ class CheckView {
 		}
 
 		return $result;
+	}
+
+	/**
+	 * Whether to write the bot-check line for this request.
+	 *
+	 * The runner signs every same-domain request, so a failed check without
+	 * the signature header came from someone else, or from a host that strips
+	 * the header. Those lines are throttled rather than dropped: they are the
+	 * only evidence of a stripped header, but the query param alone is enough
+	 * for anyone to trigger them.
+	 *
+	 * @since 2.4.3
+	 *
+	 * @param bool $passed Whether the bot check passed.
+	 * @return bool
+	 */
+	private static function should_log_bot_check( bool $passed ): bool {
+		if ( $passed || ! empty( $_SERVER['HTTP_X_CHECKVIEW_SIGNATURE'] ) ) {
+			return true;
+		}
+
+		if ( get_transient( 'checkview_unsigned_bot_check_logged' ) ) {
+			return false;
+		}
+
+		set_transient( 'checkview_unsigned_bot_check_logged', 1, 10 * MINUTE_IN_SECONDS );
+
+		return true;
 	}
 
 	/**
@@ -368,6 +394,7 @@ class CheckView {
 		require_once plugin_dir_path( __DIR__ ) . 'includes/class-checkview-loader.php';
 		require_once plugin_dir_path( __DIR__ ) . 'admin/class-checkview-admin.php';
 		require_once plugin_dir_path( __DIR__ ) . 'admin/class-checkview-admin-logs.php';
+		require_once plugin_dir_path( __DIR__ ) . 'includes/class-checkview-fatal-capture.php';
 		require_once plugin_dir_path( __DIR__ ) . 'admin/settings/class-checkview-admin-settings.php';
 
 		$this->loader = new Checkview_Loader();
@@ -410,19 +437,6 @@ class CheckView {
 	}
 
 	/**
-	 * Loads the CheckView text domain.
-	 *
-	 * @since 1.0.0
-	 */
-	public function load_textdomain() {
-		load_plugin_textdomain(
-			'checkview',
-			false,
-			dirname( plugin_basename( __FILE__ ) ) . '/languages/'
-		);
-	}
-
-	/**
 	 * Adds a "Settings" link to admin plugin list page.
 	 *
 	 * @since 1.0.0
@@ -455,7 +469,7 @@ class CheckView {
 				$plugin_logs,
 				'checkview_admin_logs_settings_save'
 			);
-			$this->loader->add_action(
+			$this->loader->add_filter(
 				'admin_footer_text',
 				$plugin_settings,
 				'checkview_add_footer_admin'

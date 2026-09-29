@@ -3,11 +3,11 @@ Contributors: checkview, inspry
 Donate link: https://checkview.io/
 Tags: form testing, form monitoring, wordpress testing, woocommerce testing, site monitoring
 Requires at least: 5.0.1
-Tested up to: 7.0
-Requires PHP: 7.4
-License: GPLv3
-License URI: http://www.gnu.org/licenses/gpl-3.0.html
-Stable tag: 2.3.0
+Tested up to: 7.1
+Requires PHP: 8.0
+License: GPLv2 or later
+License URI: http://www.gnu.org/licenses/gpl-2.0.html
+Stable tag: 2.4.3
 
 [CheckView](https://checkview.io/) automates WordPress form and WooCommerce testing, monitoring key flows to catch failures early before they cost you leads or sales everyday.
 
@@ -21,7 +21,7 @@ Built specifically for WordPress and WooCommerce, CheckView helps site owners, d
 
 == Works Well With ==
 
-CheckView works well with popular WordPress form and eCommerce plugins including Contact Form 7, WPForms, Gravity Forms, Fluent Forms, Ninja Forms, Formidable Forms, WS Form, Elementor Pro Forms (classic), and WooCommerce.
+CheckView works well with popular WordPress form and eCommerce plugins including Contact Form 7, WPForms, Gravity Forms, Fluent Forms, Ninja Forms, Formidable Forms, Forminator, WS Form, Elementor Pro Forms (classic), and WooCommerce.
 
 == Important == 
 
@@ -122,7 +122,7 @@ Yes. A [CheckView](https://checkview.io/) account is required to enable automate
 
 = Which form plugins does CheckView support? =
 
-CheckView supports automated testing for many popular WordPress form plugins, including WS Form, WPForms, Ninja Forms, Gravity Forms, Formidable Forms, Contact Form 7, Fluent Forms, and Elementor Pro Forms (classic). Elementor support covers the classic Form widget and requires Elementor Pro; V4 "Atomic" forms are not supported.
+CheckView supports automated testing for many popular WordPress form plugins, including WS Form, WPForms, Ninja Forms, Gravity Forms, Formidable Forms, Forminator, Contact Form 7, Fluent Forms, and Elementor Pro Forms (classic). Elementor support covers the classic Form widget and requires Elementor Pro; V4 "Atomic" forms are not supported.
 
 = If my preferred form plugin is not listed, can I still use CheckView? =
 
@@ -204,6 +204,45 @@ Support and test configuration are handled through the CheckView platform. Pleas
 3. CheckView general settings.
 
 == Changelog ==
+
+= 2.4.3 =
+* Stop changing PHP's error reporting level on REST requests. It applied to every REST request on the site, not only CheckView's, and turned deprecation notices on (and warnings off) in the site's PHP error log.
+* Logs: Stop writing a "bot check" log line for every request that carries a CheckView test ID but no request signature. Anyone could trigger those by adding the parameter to a URL. One such line is still kept every 10 minutes, so a host that strips the signature header still leaves a trace.
+
+= 2.4.2 =
+* Logs: Save any PHP fatal error that happens during a test, so a failed test can be looked into without server log access. Credentials are hidden before the error is sent.
+* Logs: Give each site its own hard-to-guess logs folder, since the old shared name was not protected on every server. Existing logs are moved over for you.
+* Logs: Keep the site-info request from returning log contents, which could use up too much memory and crash on sites with big logs. Logs are still available on their own.
+* Logs: Read only the recent part of each log file, so one busy day cannot make the response huge.
+* Forminator: Save each part of a multi-part field (name, address, date, time) on its own, so every part can be checked separately.
+* Forminator: Skip add-on actions (Mailchimp, webhooks and the rest) on test submissions, following the test's suppression settings.
+
+= 2.4.1 =
+* Elementor: Detect forms placed through a Global Widget and list them against the pages that render them.
+* Logs: Clean up old logs (default: 30 day retention).
+
+= 2.4.0 =
+* WP 7.1 compatibility: bump "Tested up to" to 7.1.
+* Stop loading admin assets from third-party CDNs: bundle SweetAlert2 and the Poppins webfont locally, and drop the unused Bootstrap stylesheet.
+* Fix the WooCommerce checkout payment method's text domain so its label is translatable.
+* Correct the PHPCS ruleset, which still carried scaffold placeholders and checked against PHP 5.6.
+* Form detection performance and accuracy improvements.
+* Local development improvements.
+
+= 2.3.3 =
+* Formidable: Strengthen test clean up.
+* Gravity Forms: Stop 500 errors related to argument count when Zero Spam fires certain filters.
+* Improve REST API sub-request handling.
+
+= 2.3.2 =
+* Security: fix an authentication bypass in the REST API request filter. Reported by Usama Arshad.
+
+= 2.3.1 =
+* PHP 8.4 compatibility: upgrade bundled firebase/php-jwt to 7.1.0 and raise the minimum PHP version to 8.0.
+* Correct Elementor watermark capture gating and document proxy IP limitations.
+* Query Elementor submissions by the element id Elementor actually stores, and remove the submission's actions-log rows on cleanup.
+* Prevent Simple Cloudflare Turnstile's Elementor widget from rendering during tests.
+* Reduce the shipped bundle size by removing unused dependencies.
 
 = 2.3.0 =
 * Add Elementor Pro Forms support (forms list, test results, upload field file types, save-to-database action).

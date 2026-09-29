@@ -1,14 +1,11 @@
-import { sprintf, __ } from '@wordpress/i18n';
+import { __ } from '@wordpress/i18n';
 import { registerPaymentMethod } from '@woocommerce/blocks-registry';
 import { decodeEntities } from '@wordpress/html-entities';
 import { getSetting } from '@woocommerce/settings';
 
 const settings = getSetting('checkview_data', {});
 
-const defaultLabel = __(
-	'CheckView Testing',
-	'woo-gutenberg-products-block'
-);
+const defaultLabel = __( 'CheckView Testing', 'checkview' );
 
 // Custom escapeHTML function for sanitizing
 function escapeHTML(str) {

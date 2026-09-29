@@ -2,11 +2,48 @@
  * All of the CSS for your admin-specific functionality should be
  * included in this file.
  */
- /**
- * All of the CSS for your admin-specific functionality should be
- * included in this file.
+
+/*
+ * Poppins is bundled with the plugin rather than fetched from Google Fonts.
+ * Loading it remotely offloaded an asset to a third party (against the plugin
+ * directory guidelines) and disclosed visitor IPs to Google on every admin
+ * page view. Only the four weights this stylesheet actually uses are shipped;
+ * the previous remote request pulled six.
+ *
+ * Poppins is licensed under the SIL Open Font License 1.1 — see
+ * `admin/assets/fonts/poppins/OFL.txt`.
  */
-@import url("https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700;800&display=swap");
+@font-face {
+  font-family: "Poppins";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("../fonts/poppins/poppins-400-latin.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: "Poppins";
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url("../fonts/poppins/poppins-500-latin.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: "Poppins";
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url("../fonts/poppins/poppins-600-latin.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: "Poppins";
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url("../fonts/poppins/poppins-700-latin.woff2") format("woff2");
+}
 
 body {
   background-color: #f1f1f1 !important;
@@ -142,6 +179,20 @@ body {
   color: #5f5f5f !important;
   font-weight: 400 !important;
   margin: 0 !important;
+}
+
+/*
+ * Value-column labels (the API endpoint URLs, etc.). These previously took
+ * their bold weight and inline-block layout from Bootstrap's global `label`
+ * reset, which loaded from a CDN and has been removed; own that style here
+ * so the page renders the same without it.
+ */
+.checkview-tab-innerbox .form-table td label,
+.checkview-tab-box .form-table td label {
+  display: inline-block;
+  max-width: 100%;
+  margin-bottom: 5px;
+  font-weight: 700;
 }
 
 /* .checkview-tab-innerbox .form-table tr:first-child {
@@ -669,4 +720,39 @@ textarea:focus {
 }
 .checkview-bb-tab-box .alert {
   padding: 8px !important;
+}
+
+/*
+ * Local replacements for the handful of layout helpers the settings templates
+ * use. These were previously expected from a CDN-hosted Bootstrap build, which
+ * has been removed: loading a third-party CDN asset is against the plugin
+ * directory guidelines, and the build in use (3.x) did not define any of the
+ * flex utilities below in the first place. Scoped to the plugin's own settings
+ * wrapper so nothing here can leak into other admin screens.
+ */
+.checkview-settings-wrapper .d-flex {
+  display: flex !important;
+}
+
+.checkview-settings-wrapper .align-items-center {
+  align-items: center !important;
+}
+
+.checkview-settings-wrapper .ml-auto {
+  margin-left: auto !important;
+}
+
+.checkview-settings-wrapper .mr-3 {
+  margin-right: 16px !important;
+}
+
+.checkview-settings-wrapper .btn-outline-secondary {
+  color: var(--color-priamry) !important;
+  border-color: var(--color-priamry) !important;
+  background: #fff !important;
+}
+
+.checkview-settings-wrapper .btn-outline-secondary:hover {
+  color: #fff !important;
+  background-color: var(--color-priamry) !important;
 }
