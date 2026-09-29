@@ -287,9 +287,19 @@ class Checkview_Woo_Automated_Testing {
 	/**
 	 * Clears the WooCommerce cart.
 	 *
+	 * Test-only behaviour: the CheckView bot appends `?checkview_empty_cart=true`
+	 * to reset its cart between checkout runs. This handler is hooked on
+	 * `template_redirect` for every front-end request, so it must be gated on
+	 * `is_bot()` — otherwise any shopper who follows a crafted product/shop link
+	 * carrying the parameter has their cart silently emptied.
+	 *
 	 * @return void
 	 */
 	public function checkview_empty_woocommerce_cart_if_parameter() {
+		if ( ! CheckView::is_bot() ) {
+			return;
+		}
+
 		// Check if WooCommerce is active.
 		if ( class_exists( 'WooCommerce' ) ) {
 			// Check if the parameter exists in the URL.
