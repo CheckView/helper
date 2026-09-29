@@ -172,6 +172,14 @@ if ( ! class_exists( 'Checkview_Fluent_Forms_Helper' ) ) {
 				999
 			);
 
+			// Fluent Forms answers 429 to a sixth submission from one IP inside
+			// 30 seconds, counted across every form on the site.
+			add_filter(
+				'fluentform/prevent_malicious_attacks',
+				'__return_false',
+				999
+			);
+
 			add_filter(
 				'fluentform/rendering_field_html_input_checkbox',
 				array($this, 'static_ids'),
