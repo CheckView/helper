@@ -10,3 +10,13 @@ scripts/dist
 CLAUDE.md
 *-har.json
 *.phar
+
+# Dev-only tooling installed into the Composer vendor-dir (includes/vendor).
+# These are require-dev (phpcs + standards); they must never be committed or
+# they ship to WordPress.org. Runtime deps (e.g. firebase/php-jwt) stay tracked.
+includes/vendor/bin
+includes/vendor/squizlabs
+includes/vendor/wp-coding-standards
+includes/vendor/phpcompatibility
+includes/vendor/phpcsstandards
+includes/vendor/dealerdirect

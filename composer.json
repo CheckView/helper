@@ -15,7 +15,20 @@
     "firebase/php-jwt": "^7.0",
     "ext-json": "*"
   },
+  "require-dev": {
+    "squizlabs/php_codesniffer": "^3.13.6",
+    "wp-coding-standards/wpcs": "^3.1",
+    "dealerdirect/phpcodesniffer-composer-installer": "^1.0",
+    "phpcompatibility/phpcompatibility-wp": "^2.1"
+  },
   "config": {
-    "vendor-dir": "includes/vendor"
+    "vendor-dir": "includes/vendor",
+    "allow-plugins": {
+      "dealerdirect/phpcodesniffer-composer-installer": true
+    }
+  },
+  "scripts": {
+    "lint":   "phpcs",
+    "format": "phpcbf"
   }
 }
