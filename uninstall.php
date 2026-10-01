@@ -21,6 +21,8 @@ $delete_all        = ! empty( $checkview_options['checkview_delete_data'] ) ? $c
 if ( $delete_all ) {
 	delete_option( 'checkview_advance_options' );
 	delete_option( 'checkview_log_options' );
+	delete_option( 'checkview_logs_dir_key' ); // Written by 2.4.1 pre-release builds only.
+	delete_option( 'checkview_logs_folder_version' );
 	delete_site_option( 'checkview_admin_menu_title' );
 
 	$cv_entry_table = $wpdb->prefix . 'cv_entry';
