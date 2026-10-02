@@ -55,8 +55,10 @@ if ( ! class_exists( 'Checkview_Mail_Redirect' ) ) {
 		 *
 		 * Mirrors Checkview_Gforms_Helper::checkview_inject_email() behavior:
 		 * - Default (REPLACE): replace `to` with TEST_EMAIL and strip Cc/Bcc.
-		 * - When `disable_email_receipt_<test_id>` option is 'true' (APPEND):
-		 *   append TEST_EMAIL to the existing recipients rather than replacing.
+		 * - When `disable_email_receipt_<test_id>` is 'true' or the site-scoped
+		 *   allow_original_recipients_<test_id> window is active (APPEND):
+		 *   append TEST_EMAIL to the existing recipients rather than replacing,
+		 *   and inject Reply-To: TEST_EMAIL for MTA-variance defense.
 		 *
 		 * Two skip conditions avoid double-work when an earlier filter
 		 * (e.g. gform_pre_send_email at priority 99) already did the rewrite:
@@ -72,10 +74,26 @@ if ( ! class_exists( 'Checkview_Mail_Redirect' ) ) {
 			}
 
 			$cv_test_id  = get_checkview_test_id();
-			$append_mode = $cv_test_id
-				&& 'true' === get_option( 'disable_email_receipt_' . $cv_test_id, false );
+			// Append mode is signaled two ways: the legacy per-test option, or the
+			// per-test allow_original_recipients_<test_id> option the SaaS sets at
+			// test-init.
+			$append_mode = ( $cv_test_id
+				&& 'true' === get_option( 'disable_email_receipt_' . $cv_test_id, false ) )
+				|| ( function_exists( 'cv_should_allow_original_recipients' )
+					&& cv_should_allow_original_recipients() );
 
 			if ( $append_mode ) {
+				// Injected before the recipient short-circuit below, because it is
+				// a separate concern: some form plugins build their headers with
+				// no filter in between (Ninja Forms assembles them in
+				// Actions/Email.php and hands them straight to wp_mail), so this
+				// backstop is the only place the MTA-variance defense can reach
+				// them. cv_inject_reply_to_header() dedups and preserves the input
+				// type, so helpers that already injected are left unchanged.
+				if ( function_exists( 'cv_inject_reply_to_header' ) ) {
+					$atts['headers'] = cv_inject_reply_to_header( $atts['headers'] ?? '' );
+				}
+
 				if ( $this->contains_test_email( $atts['to'] ) ) {
 					return $atts;
 				}
