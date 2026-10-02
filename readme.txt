@@ -21,7 +21,7 @@ Built specifically for WordPress and WooCommerce, CheckView helps site owners, d
 
 == Works Well With ==
 
-CheckView works well with popular WordPress form and eCommerce plugins including Contact Form 7, WPForms, Gravity Forms, Fluent Forms, Ninja Forms, Formidable Forms, Forminator, WS Form, and WooCommerce.
+CheckView works well with popular WordPress form and eCommerce plugins including Contact Form 7, WPForms, Gravity Forms, Fluent Forms, Ninja Forms, Formidable Forms, Forminator, WS Form, Elementor Pro Forms (classic), and WooCommerce.
 
 == Important == 
 
@@ -122,7 +122,7 @@ Yes. A [CheckView](https://checkview.io/) account is required to enable automate
 
 = Which form plugins does CheckView support? =
 
-CheckView supports automated testing for many popular WordPress form plugins, including WS Form, WPForms, Ninja Forms, Gravity Forms, Formidable Forms, Forminator, Contact Form 7, and Fluent Forms.
+CheckView supports automated testing for many popular WordPress form plugins, including WS Form, WPForms, Ninja Forms, Gravity Forms, Formidable Forms, Forminator, Contact Form 7, Fluent Forms, and Elementor Pro Forms (classic). Elementor support covers the classic Form widget and requires Elementor Pro; V4 "Atomic" forms are not supported.
 
 = If my preferred form plugin is not listed, can I still use CheckView? =
 
@@ -204,6 +204,11 @@ Support and test configuration are handled through the CheckView platform. Pleas
 3. CheckView general settings.
 
 == Changelog ==
+
+= 2.5.0 =
+* Email: when "allow original recipients" is turned on in CheckView, test notifications go to the form's real recipients as well as the CheckView test inbox. Off by default; nothing changes unless it is enabled.
+* Contact Form 7: finish the test after the notification is sent, not before.
+* Fluent Forms: CheckView test submissions no longer count against Fluent's 5-per-30-seconds limit, so bursts of tests on one site stop failing with 429. Visitors keep the limit.
 
 = 2.4.3 =
 * Stop changing PHP's error reporting level on REST requests. It applied to every REST request on the site, not only CheckView's, and turned deprecation notices on (and warnings off) in the site's PHP error log.

@@ -33,6 +33,13 @@ if ( ! class_exists( 'Checkview_Cf7_Helper' ) ) {
 		 * @var Checkview_Loader $loader Maintains and registers all hooks for the plugin.
 		 */
 		public $loader;
+
+		/**
+		 * Test id held between the clone and the completion.
+		 *
+		 * @var string
+		 */
+		protected $pending_test_id = '';
 		/**
 		 * Constructor.
 		 *
@@ -60,6 +67,20 @@ if ( ! class_exists( 'Checkview_Cf7_Helper' ) ) {
 				),
 				99,
 				1
+			);
+
+			// Must not complete in `wpcf7_before_send_mail`: completion deletes
+			// `disable_email_receipt_<test_id>`, which checkview_inject_email()
+			// still needs to read from `wpcf7_mail_components` afterwards.
+			// `wpcf7_submit` also fires on mail_failed, so the test cannot hang.
+			add_action(
+				'wpcf7_submit',
+				array(
+					$this,
+					'checkview_cf7_complete_after_submit',
+				),
+				99,
+				2
 			);
 
 			add_action(
@@ -403,8 +424,27 @@ if ( ! class_exists( 'Checkview_Cf7_Helper' ) ) {
 					}
 				}
 
-				complete_checkview_test( $checkview_test_id );
+				// Deferred to `wpcf7_submit` — see the registration comment.
+				$this->pending_test_id = $checkview_test_id;
 			}
+		}
+
+		/**
+		 * Finishes the testing session once CF7 has attempted the mail.
+		 *
+		 * @param \WPCF7_ContactForm $contact_form Submitted form (unused).
+		 * @param array              $result       Submission result (unused).
+		 * @return void
+		 */
+		public function checkview_cf7_complete_after_submit( $contact_form = null, $result = array() ) {
+			if ( '' === $this->pending_test_id ) {
+				return;
+			}
+
+			$test_id                = $this->pending_test_id;
+			$this->pending_test_id  = '';
+
+			complete_checkview_test( $test_id );
 		}
 
 		/**
@@ -426,6 +466,18 @@ if ( ! class_exists( 'Checkview_Cf7_Helper' ) ) {
 		 * @return array
 		 */
 		public function checkview_inject_email( $args ) {
+			// New: append-mode branch — deliver to BOTH real recipient and test inbox.
+			// CF7's $args['recipient'] is a comma-separated string. additional_headers
+			// is a CRLF-separated string.
+			if ( cv_should_allow_original_recipients() ) {
+				$args['recipient']          = cv_append_test_email_string( $args['recipient'] );
+				$args['additional_headers'] = cv_inject_reply_to_header( $args['additional_headers'] ?? '' );
+
+				Checkview_Admin_Logs::add( 'ip-logs', 'Append-mode submission recipient email address: ' . wp_json_encode( $args['recipient'] ) );
+				Checkview_Admin_Logs::add( 'ip-logs', 'Append-mode submission email additional headers: ' . wp_json_encode( $args['additional_headers'] ) );
+				return $args;
+			}
+
 			$cv_test_id = get_checkview_test_id();
 			if ( $cv_test_id && 'true' === get_option( 'disable_email_receipt_' . $cv_test_id, false ) ) {
 				$args['recipient'] .= ', ' . TEST_EMAIL;
