@@ -205,6 +205,11 @@ Support and test configuration are handled through the CheckView platform. Pleas
 
 == Changelog ==
 
+= 2.5.0 =
+* Email: when "allow original recipients" is turned on in CheckView, test notifications go to the form's real recipients as well as the CheckView test inbox. Off by default; nothing changes unless it is enabled.
+* Contact Form 7: finish the test after the notification is sent, not before.
+* Fluent Forms: CheckView test submissions no longer count against Fluent's 5-per-30-seconds limit, so bursts of tests on one site stop failing with 429. Visitors keep the limit.
+
 = 2.4.3 =
 * Stop changing PHP's error reporting level on REST requests. It applied to every REST request on the site, not only CheckView's, and turned deprecation notices on (and warnings off) in the site's PHP error log.
 * Logs: Stop writing a "bot check" log line for every request that carries a CheckView test ID but no request signature. Anyone could trigger those by adding the parameter to a URL. One such line is still kept every 10 minutes, so a host that strips the signature header still leaves a trace.
