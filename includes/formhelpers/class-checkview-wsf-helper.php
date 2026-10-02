@@ -221,8 +221,8 @@ if ( ! class_exists( 'Checkview_WSF_Helper' ) ) {
 		public function checkview_clone_entry( $form_data ) {
 			global $wpdb;
 
-			$form_id  = $form_data->form_id;
-			$entry_id = $form_data->id;
+			$form_id           = $form_data->form_id;
+			$entry_id          = $form_data->id;
 			$checkview_test_id = get_checkview_test_id();
 
 			Checkview_Admin_Logs::add( 'ip-logs', 'Cloning submission entry [' . $entry_id . ']...' );
@@ -233,13 +233,13 @@ if ( ! class_exists( 'Checkview_WSF_Helper' ) ) {
 
 			// Insert Entry.
 			$entry_data  = array(
-				'form_id' => $form_id,
-				'status' => 'publish',
-				'source_url' => isset( $_SERVER['HTTP_REFERER'] ) ? substr( sanitize_url( wp_unslash( $_SERVER['HTTP_REFERER'] ) ), 0, 200 ) : '',
+				'form_id'      => $form_id,
+				'status'       => 'publish',
+				'source_url'   => isset( $_SERVER['HTTP_REFERER'] ) ? substr( sanitize_url( wp_unslash( $_SERVER['HTTP_REFERER'] ) ), 0, 200 ) : '',
 				'date_created' => current_time( 'mysql' ),
 				'date_updated' => current_time( 'mysql' ),
-				'uid' => $checkview_test_id,
-				'form_type' => 'WSForms',
+				'uid'          => $checkview_test_id,
+				'form_type'    => 'WSForms',
 			);
 			$entry_table = $wpdb->prefix . 'cv_entry';
 
@@ -257,34 +257,32 @@ if ( ! class_exists( 'Checkview_WSF_Helper' ) ) {
 			if ( $result ) {
 				$entry_meta_table = $wpdb->prefix . 'cv_entry_meta';
 				$field_id_prefix  = 'wsf';
-				$tablename = $wpdb->prefix . 'wsf_submit_meta';
-				$form_fields = $wpdb->get_results( $wpdb->prepare( 'Select * from ' . $tablename . ' where parent_id=%d', $entry_id ) );
-				$count = 0;
+				$tablename        = $wpdb->prefix . 'wsf_submit_meta';
+				$form_fields      = $wpdb->get_results( $wpdb->prepare( 'Select * from ' . $tablename . ' where parent_id=%d', $entry_id ) );
+				$count            = 0;
 
 				foreach ( $form_fields as $field ) {
 					if ( ! in_array( $field->meta_key, array( '_form_id', 'post_id', 'wsf_meta_key_hidden' ) ) ) {
 						$entry_metadata = array(
-							'uid' => $checkview_test_id,
-							'form_id' => $form_id,
-							'entry_id' => $entry_id,
-							'meta_key' => checkview_truncate_meta_key( $field_id_prefix . str_replace( '_', '-', $field->meta_key ) ),
+							'uid'        => $checkview_test_id,
+							'form_id'    => $form_id,
+							'entry_id'   => $entry_id,
+							'meta_key'   => checkview_truncate_meta_key( $field_id_prefix . str_replace( '_', '-', $field->meta_key ) ),
 							'meta_value' => $field->meta_value,
 						);
 
 						$result = $wpdb->insert( $entry_meta_table, $entry_metadata );
 
 						if ( $result ) {
-							$count++;
+							++$count;
 						}
 					}
 				}
 
 				if ( $count > 0 ) {
 					Checkview_Admin_Logs::add( 'ip-logs', 'Cloned submission entry meta data (inserted ' . $count . ' rows into ' . $entry_meta_table . ').' );
-				} else {
-					if ( count( $form_fields ) > 0 ) {
+				} elseif ( count( $form_fields ) > 0 ) {
 						Checkview_Admin_Logs::add( 'ip-logs', 'Failed to clone submission entry meta data. wpdb->last_error=[' . $wpdb->last_error . ']' );
-					}
 				}
 			}
 
@@ -306,7 +304,6 @@ if ( ! class_exists( 'Checkview_WSF_Helper' ) ) {
 			$fields = WS_Form_Common::get_fields_from_form( $form, true );
 			// Process fields.
 			foreach ( $fields as $field ) {
-
 				if ( ! isset( $field->type ) ) {
 					continue;
 				}

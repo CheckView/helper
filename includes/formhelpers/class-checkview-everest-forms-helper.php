@@ -271,7 +271,7 @@ if ( ! class_exists( 'Checkview_Everest_Forms_Helper' ) ) {
 			// EVF entry delete and complete_checkview_test() below still run.
 			if ( $result ) {
 				// Clone entry meta, excluding non-data field types.
-				$excluded_types  = array( 'html', 'title', 'captcha', 'divider', 'reset', 'recaptcha', 'hcaptcha', 'turnstile', 'private-note' );
+				$excluded_types   = array( 'html', 'title', 'captcha', 'divider', 'reset', 'recaptcha', 'hcaptcha', 'turnstile', 'private-note' );
 				$entry_meta_table = $wpdb->prefix . 'cv_entry_meta';
 				$count            = 0;
 
@@ -292,17 +292,15 @@ if ( ! class_exists( 'Checkview_Everest_Forms_Helper' ) ) {
 						$result = $wpdb->insert( $entry_meta_table, $entry_metadata );
 
 						if ( $result ) {
-							$count++;
+							++$count;
 						}
 					}
 				}
 
 				if ( $count > 0 ) {
 					Checkview_Admin_Logs::add( 'ip-logs', 'Cloned submission entry meta data (inserted ' . $count . ' rows into ' . $entry_meta_table . ').' );
-				} else {
-					if ( count( $fields ) > 0 ) {
+				} elseif ( count( $fields ) > 0 ) {
 						Checkview_Admin_Logs::add( 'ip-logs', 'Failed to clone submission entry meta data. wpdb->last_error=[' . $wpdb->last_error . ']' );
-					}
 				}
 			}
 

@@ -37,10 +37,10 @@ $contents = $real_file && $real_logs_folder && 0 === strpos( $real_file, $real_l
 				<select name="checkview_log_select" style="" class="mr-3">
 					<option><?php esc_html_e( 'Select a Log File', 'checkview' ); ?></option>
 					<?php foreach ( $logs_list as $file_path ) : ?>
-					<?php
-					$real_option_path = realpath( $file_path );
-					$real_option_path = $real_option_path ? wp_normalize_path( $real_option_path ) : '';
-					?>
+						<?php
+						$real_option_path = realpath( $file_path );
+						$real_option_path = $real_option_path ? wp_normalize_path( $real_option_path ) : '';
+						?>
 					<option value="<?php echo esc_attr( $file_path ); ?>" <?php selected( $file === $file_path || $file === $real_option_path ); ?>><?php echo esc_attr( $file_path ); ?></option>
 					<?php endforeach; ?>
 				</select>

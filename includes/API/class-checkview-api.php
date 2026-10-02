@@ -431,10 +431,8 @@ class CheckView_Api {
 			),
 		);
 		if ( empty( $orders ) && ! empty( $checkview_order_last_modified_until ) && ! empty( $checkview_order_last_modified_since ) ) {
-
 			$args['date_before'] = $checkview_order_last_modified_until;
 			$args['date_after']  = $checkview_order_last_modified_since;
-
 		}
 
 		if ( empty( $orders ) && ! empty( $checkview_order_id_before ) ) {
@@ -454,7 +452,6 @@ class CheckView_Api {
 					$order_details['order_id']    = $order->get_id();
 					$order_details['customer_id'] = $order_object->get_customer_id();
 					$orders[]                     = $order_details;
-
 				}
 			}
 		}
@@ -713,13 +710,10 @@ class CheckView_Api {
 			'order'               => 'DESC',
 		);
 		if ( ! empty( $checkview_keyword ) && null !== $checkview_keyword ) {
-
 			$args['s'] = $checkview_keyword;
-
 		}
 
 		if ( ! empty( $checkview_product_type ) && null !== $checkview_product_type ) {
-
 			$args['tax_query'] = array(
 				array(
 					'taxonomy' => 'product_type',
@@ -727,14 +721,12 @@ class CheckView_Api {
 					'terms'    => $checkview_keyword,
 				),
 			);
-
 		}
 		$loop = new WP_Query( $args );
 
 		$products = array();
 
 		if ( ! empty( $loop->posts ) ) {
-
 			foreach ( $loop->posts as $post ) {
 				// Initialize an array to store variations.
 				$variations = array();
@@ -762,7 +754,6 @@ class CheckView_Api {
 					'thumb_url'  => get_the_post_thumbnail_url( $post->ID ),
 					'variations' => $variations,
 				);
-
 			}
 		}
 		if ( $products && ! empty( $products ) && false !== $products && '' !== $products ) {
@@ -852,7 +843,6 @@ class CheckView_Api {
 			wp_die();
 		}
 		foreach ( $zones as $zone ) {
-
 			$obj = array(
 				'countries'   => array(),
 				'postalCodes' => array(),
@@ -1182,7 +1172,7 @@ class CheckView_Api {
 				esc_html__( 'Invalid request.', 'checkview' ),
 			);
 		}
-		$product = Checkview_Woo_Automated_Testing::checkview_get_test_product();
+		$product                              = Checkview_Woo_Automated_Testing::checkview_get_test_product();
 		$product_details['checkview_product'] = $product ? get_permalink( $product->get_id() ) : false;
 		if ( ! empty( $product_details ) && false !== $product_details['checkview_product'] ) {
 			return new WP_REST_Response(
@@ -1209,7 +1199,7 @@ class CheckView_Api {
 	public function checkview_get_available_forms_list() {
 		global $wpdb;
 		$forms_list = get_transient( 'checkview_forms_list_transient' );
-		$is_local = checkview_is_local_environment();
+		$is_local   = checkview_is_local_environment();
 		if ( null !== $this->jwt_error ) {
 			Checkview_Admin_Logs::add( 'api-logs', $this->jwt_error );
 			return new WP_Error(
@@ -1277,9 +1267,7 @@ class CheckView_Api {
 					);
 					if ( $form_pages ) {
 						foreach ( $form_pages as $form_page ) {
-
 							if ( 'wp_block' === $form_page->post_type ) {
-
 								$wp_block_pages = checkview_get_wp_block_pages( $form_page->ID );
 								if ( $wp_block_pages ) {
 									foreach ( $wp_block_pages as $wp_block_page ) {
@@ -1335,9 +1323,7 @@ class CheckView_Api {
 						)
 					);
 					foreach ( $form_pages as $form_page ) {
-
 						if ( ! empty( $form_page->post_type ) && 'wp_block' === $form_page->post_type ) {
-
 							$wp_block_pages = checkview_get_wp_block_pages( $form_page->ID );
 							if ( $wp_block_pages ) {
 								foreach ( $wp_block_pages as $wp_block_page ) {
@@ -1486,9 +1472,7 @@ class CheckView_Api {
 					);
 					if ( $form_pages ) {
 						foreach ( $form_pages as $form_page ) {
-
 							if ( ! empty( $form_page->post_type ) && 'wp_block' === $form_page->post_type ) {
-
 								$wp_block_pages = checkview_get_wp_block_pages( $form_page->ID );
 								if ( $wp_block_pages ) {
 									foreach ( $wp_block_pages as $wp_block_page ) {
@@ -1551,7 +1535,6 @@ class CheckView_Api {
 					if ( $form_pages ) {
 						foreach ( $form_pages as $form_page ) {
 							if ( ! empty( $form_page->post_type ) && 'wp_block' === $form_page->post_type ) {
-
 								$wp_block_pages = checkview_get_wp_block_pages( $form_page->ID );
 								if ( $wp_block_pages ) {
 									foreach ( $wp_block_pages as $wp_block_page ) {
@@ -1609,9 +1592,7 @@ class CheckView_Api {
 						)
 					);
 					foreach ( $form_pages as $form_page ) {
-
 						if ( ! empty( $form_page->post_type ) && 'wp_block' === $form_page->post_type ) {
-
 							$wp_block_pages = checkview_get_wp_block_pages( $form_page->ID );
 							if ( $wp_block_pages ) {
 								foreach ( $wp_block_pages as $wp_block_page ) {
@@ -1643,8 +1624,8 @@ class CheckView_Api {
 			$results = get_posts( $args );
 			if ( $results ) {
 				foreach ( $results as $row ) {
-					$meta = get_post_meta( $row->ID, 'forminator_form_meta', true );
-					$display_name = $meta['settings']['formName'] ?? $row->post_title;
+					$meta                            = get_post_meta( $row->ID, 'forminator_form_meta', true );
+					$display_name                    = $meta['settings']['formName'] ?? $row->post_title;
 					$forms['forminator'][ $row->ID ] = array(
 						'ID'   => $row->ID,
 						'Name' => $display_name,
@@ -1674,7 +1655,6 @@ class CheckView_Api {
 					if ( $form_pages ) {
 						foreach ( $form_pages as $form_page ) {
 							if ( ! empty( $form_page->post_type ) && 'wp_block' === $form_page->post_type ) {
-
 								$wp_block_pages = checkview_get_wp_block_pages( $form_page->ID );
 								if ( $wp_block_pages ) {
 									foreach ( $wp_block_pages as $wp_block_page ) {
@@ -1996,11 +1976,11 @@ class CheckView_Api {
 					$value = $row->meta_value;
 
 					$results[] = array(
-						'field_id' => '',
-						'field_name' => $row->meta_key,
+						'field_id'    => '',
+						'field_name'  => $row->meta_key,
 						'field_value' => $value,
 					);
-				} else  {
+				} else {
 					$results[] = array(
 						'field_id'    => $row->meta_key,
 						'field_value' => maybe_unserialize( $row->meta_value ),
@@ -2148,7 +2128,7 @@ class CheckView_Api {
 		}
 
 		global $wp_version;
-		$core_info            = array(
+		$core_info = array(
 			'version' => $wp_version,
 		);
 		// Deliberately does NOT return log contents. This endpoint used to embed
@@ -2354,9 +2334,9 @@ class CheckView_Api {
 				array( 'status' => 400 )
 			);
 		}
-		$product = Checkview_Woo_Automated_Testing::checkview_get_test_product();
+		$product    = Checkview_Woo_Automated_Testing::checkview_get_test_product();
 		$product_id = ! empty( $product->get_id() ) ? $product->get_id() : false;
-		$status = checkview_update_woocommerce_product_status( $product_id, $checkview_status );
+		$status     = checkview_update_woocommerce_product_status( $product_id, $checkview_status );
 		if ( 0 != $status && ! is_wp_error( $product_id ) ) {
 			return new WP_REST_Response(
 				array(
@@ -2437,7 +2417,7 @@ class CheckView_Api {
 		);
 		if ( $table_exists !== $cv_used_nonces ) {
 			$charset_collate = $wpdb->get_charset_collate();
-			$sql = "CREATE TABLE IF NOT EXISTS $cv_used_nonces (
+			$sql             = "CREATE TABLE IF NOT EXISTS $cv_used_nonces (
 					id BIGINT(20) NOT NULL AUTO_INCREMENT,
 					nonce VARCHAR(255) NOT NULL,
 					used_at DATETIME DEFAULT CURRENT_TIMESTAMP NOT NULL,

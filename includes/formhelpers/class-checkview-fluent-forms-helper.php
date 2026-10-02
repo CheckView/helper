@@ -197,25 +197,25 @@ if ( ! class_exists( 'Checkview_Fluent_Forms_Helper' ) ) {
 
 			add_filter(
 				'fluentform/rendering_field_html_input_checkbox',
-				array($this, 'static_ids'),
+				array( $this, 'static_ids' ),
 				99
 			);
 
 			add_filter(
 				'fluentform/rendering_field_html_terms_and_condition',
-				array($this, 'static_ids'),
+				array( $this, 'static_ids' ),
 				99
 			);
 
 			add_filter(
 				'fluentform/rendering_field_html_gdpr_agreement',
-				array($this, 'static_ids'),
+				array( $this, 'static_ids' ),
 				99
 			);
 
 			add_filter(
 				'fluentform/rendering_field_html_input_radio',
-				array($this, 'static_ids'),
+				array( $this, 'static_ids' ),
 				99
 			);
 		}
@@ -228,9 +228,9 @@ if ( ! class_exists( 'Checkview_Fluent_Forms_Helper' ) ) {
 		 * existing partial-append behavior.
 		 *
 		 * @param string|array $address Email address.
-		 * @param string $notification Email notification.
-		 * @param array  $submitted_data Fluent Forms submitted data.
-		 * @param object $form Fluent Forms form object.
+		 * @param string       $notification Email notification.
+		 * @param array        $submitted_data Fluent Forms submitted data.
+		 * @param object       $form Fluent Forms form object.
 		 * @return string|array Email.
 		 */
 		public function checkview_inject_email( $address, $notification, $submitted_data, $form ) {
@@ -260,9 +260,9 @@ if ( ! class_exists( 'Checkview_Fluent_Forms_Helper' ) ) {
 		 * replace behavior.
 		 *
 		 * @param string|array $address Email address.
-		 * @param string $notification Email notification.
-		 * @param array  $submitted_data Fluent Forms submitted data.
-		 * @param object $form Fluent Forms form object.
+		 * @param string       $notification Email notification.
+		 * @param array        $submitted_data Fluent Forms submitted data.
+		 * @param object       $form Fluent Forms form object.
 		 * @return string|array Email.
 		 */
 		public function checkview_remove_receipt( $address, $notification, $submitted_data, $form ) {
@@ -344,7 +344,7 @@ if ( ! class_exists( 'Checkview_Fluent_Forms_Helper' ) ) {
 
 			// Guard against double execution (e.g., edge-case payment flows).
 			static $processed = array();
-			$key = $entry_id . '_' . $form->id;
+			$key              = $entry_id . '_' . $form->id;
 			if ( isset( $processed[ $key ] ) ) {
 				return;
 			}
@@ -352,7 +352,7 @@ if ( ! class_exists( 'Checkview_Fluent_Forms_Helper' ) ) {
 
 			Checkview_Admin_Logs::add( 'ip-logs', 'Cloning submission entry [' . $entry_id . ']...' );
 
-			$form_id = $form->id;
+			$form_id           = $form->id;
 			$checkview_test_id = get_checkview_test_id();
 
 			if ( empty( $checkview_test_id ) ) {
@@ -360,9 +360,9 @@ if ( ! class_exists( 'Checkview_Fluent_Forms_Helper' ) ) {
 			}
 
 			// Clone entry to check view tables.
-			$tablename = $wpdb->prefix . 'fluentform_entry_details';
-			$rows = $wpdb->get_results( $wpdb->prepare( 'Select * from ' . $tablename . ' where submission_id=%d and form_id=%d order by id ASC', $entry_id, $form_id ) );
-			$count = 0;
+			$tablename        = $wpdb->prefix . 'fluentform_entry_details';
+			$rows             = $wpdb->get_results( $wpdb->prepare( 'Select * from ' . $tablename . ' where submission_id=%d and form_id=%d order by id ASC', $entry_id, $form_id ) );
+			$count            = 0;
 			$entry_meta_table = $wpdb->prefix . 'cv_entry_meta';
 
 			foreach ( $rows as $row ) {
@@ -372,7 +372,7 @@ if ( ! class_exists( 'Checkview_Fluent_Forms_Helper' ) ) {
 					$meta_key .= '_' . $row->sub_field_name . '_';
 				}
 
-				$data  = array(
+				$data = array(
 					'uid'        => $checkview_test_id,
 					'form_id'    => $form_id,
 					'entry_id'   => $row->submission_id,
@@ -383,31 +383,29 @@ if ( ! class_exists( 'Checkview_Fluent_Forms_Helper' ) ) {
 				$result = $wpdb->insert( $entry_meta_table, $data );
 
 				if ( $result ) {
-					$count++;
+					++$count;
 				}
 			}
 
 			if ( $count > 0 ) {
 				Checkview_Admin_Logs::add( 'ip-logs', 'Cloned submission entry meta data (inserted ' . $count . ' rows into ' . $entry_meta_table . ').' );
-			} else {
-				if ( count( $rows ) > 0 ) {
+			} elseif ( count( $rows ) > 0 ) {
 					Checkview_Admin_Logs::add( 'ip-logs', 'Failed to clone submission entry meta data. wpdb->last_error=[' . $wpdb->last_error . ']' );
-				}
 			}
 
-			$tablename = $wpdb->prefix . 'fluentform_submissions';
-			$row = $wpdb->get_row( $wpdb->prepare( 'Select * from ' . $tablename . ' where id=%d and form_id=%d LIMIT 1', $entry_id, $form_id ), ARRAY_A );
+			$tablename   = $wpdb->prefix . 'fluentform_submissions';
+			$row         = $wpdb->get_row( $wpdb->prepare( 'Select * from ' . $tablename . ' where id=%d and form_id=%d LIMIT 1', $entry_id, $form_id ), ARRAY_A );
 			$entry_table = $wpdb->prefix . 'cv_entry';
-			$data = array(
-				'uid' => $checkview_test_id,
-				'form_type' => 'FluentForms',
-				'form_id' => $form_id,
-				'source_url' => isset( $row['source_url'] ) ? substr( $row['source_url'], 0, 200 ) : 'n/a',
-				'response' => isset( $row['response'] ) ? $row['response'] : 'n/a',
-				'user_agent' => isset( $row['browser'] ) ? $row['browser'] : 'n/a',
-				'ip' => isset( $row['ip'] ) ? $row['ip'] : 'n/a',
-				'date_created' => isset( $row['created_at'] ) ? $row['created_at'] : 'n/a',
-				'date_updated' => isset( $row['updated_at'] ) ? $row['updated_at'] : 'n/a',
+			$data        = array(
+				'uid'            => $checkview_test_id,
+				'form_type'      => 'FluentForms',
+				'form_id'        => $form_id,
+				'source_url'     => isset( $row['source_url'] ) ? substr( $row['source_url'], 0, 200 ) : 'n/a',
+				'response'       => isset( $row['response'] ) ? $row['response'] : 'n/a',
+				'user_agent'     => isset( $row['browser'] ) ? $row['browser'] : 'n/a',
+				'ip'             => isset( $row['ip'] ) ? $row['ip'] : 'n/a',
+				'date_created'   => isset( $row['created_at'] ) ? $row['created_at'] : 'n/a',
+				'date_updated'   => isset( $row['updated_at'] ) ? $row['updated_at'] : 'n/a',
 				'payment_status' => isset( $row['payment_status'] ) ? $row['payment_status'] : 'n/a',
 				'payment_method' => isset( $row['payment_method'] ) ? $row['payment_method'] : 'n/a',
 				'payment_amount' => isset( $row['payment_total'] ) ? $row['payment_total'] : 0,
@@ -505,22 +503,22 @@ if ( ! class_exists( 'Checkview_Fluent_Forms_Helper' ) ) {
 		 *
 		 * @return string Modified HTML.
 		 */
-		public static function static_ids($html) {
-			$map = [];
+		public static function static_ids( $html ) {
+			$map = array();
 
 			// Build map of old IDs to new IDs
-			preg_match_all('/\bid=[\'"]([^\'"]+)[\'"]/', $html, $matches);
-			foreach ($matches[1] as $oldId) {
-				if (!isset($map[$oldId])) {
-					$map[$oldId] = 'ff_checkable_' . (++self::$counter);
+			preg_match_all( '/\bid=[\'"]([^\'"]+)[\'"]/', $html, $matches );
+			foreach ( $matches[1] as $oldId ) {
+				if ( ! isset( $map[ $oldId ] ) ) {
+					$map[ $oldId ] = 'ff_checkable_' . ( ++self::$counter );
 				}
 			}
 
 			// Replace both id= and for= attributes
-			foreach ($map as $oldId => $newId) {
+			foreach ( $map as $oldId => $newId ) {
 				$html = str_replace(
-					['id="' . $oldId . '"', "id='" . $oldId . "'", 'for="' . $oldId . '"', "for='" . $oldId . "'"],
-					['id="' . $newId . '"', "id='" . $newId . "'", 'for="' . $newId . '"', "for='" . $newId . "'"],
+					array( 'id="' . $oldId . '"', "id='" . $oldId . "'", 'for="' . $oldId . '"', "for='" . $oldId . "'" ),
+					array( 'id="' . $newId . '"', "id='" . $newId . "'", 'for="' . $newId . '"', "for='" . $newId . "'" ),
 					$html
 				);
 			}

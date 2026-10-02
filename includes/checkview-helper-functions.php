@@ -300,7 +300,6 @@ if ( is_plugin_active( 'better-wp-security/better-wp-security.php' ) ) {
 		},
 		0
 	);
-
 }
 // Bypass WP Defender.
 if ( is_plugin_active( 'defender-security/wp-defender.php' ) ) {

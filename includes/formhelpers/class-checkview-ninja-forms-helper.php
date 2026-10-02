@@ -203,13 +203,13 @@ if ( ! class_exists( 'Checkview_Ninja_Forms_Helper' ) ) {
 
 			// Insert Entry.
 			$entry_data  = array(
-				'form_id' => $form_id,
-				'status' => 'publish',
-				'source_url' => isset( $_SERVER['HTTP_REFERER'] ) ? substr( sanitize_url( wp_unslash( $_SERVER['HTTP_REFERER'] ) ), 0, 200 ) : '',
+				'form_id'      => $form_id,
+				'status'       => 'publish',
+				'source_url'   => isset( $_SERVER['HTTP_REFERER'] ) ? substr( sanitize_url( wp_unslash( $_SERVER['HTTP_REFERER'] ) ), 0, 200 ) : '',
 				'date_created' => current_time( 'mysql' ),
 				'date_updated' => current_time( 'mysql' ),
-				'uid' => $checkview_test_id,
-				'form_type' => 'NinjaForms',
+				'uid'          => $checkview_test_id,
+				'form_type'    => 'NinjaForms',
 			);
 			$entry_table = $wpdb->prefix . 'cv_entry';
 
@@ -226,7 +226,7 @@ if ( ! class_exists( 'Checkview_Ninja_Forms_Helper' ) ) {
 			// NF entry deferred-delete and complete_checkview_test() below still run.
 			if ( $result ) {
 				$entry_meta_table = $wpdb->prefix . 'cv_entry_meta';
-				$count = 0;
+				$count            = 0;
 
 				// Read field values from the raw AJAX POST data instead of
 				// wp_postmeta or $form_data['fields']. NF actions in the
@@ -289,7 +289,7 @@ if ( ! class_exists( 'Checkview_Ninja_Forms_Helper' ) ) {
 						$result = $wpdb->insert( $entry_meta_table, $entry_metadata );
 
 						if ( $result ) {
-							$count++;
+							++$count;
 						}
 					}
 				}

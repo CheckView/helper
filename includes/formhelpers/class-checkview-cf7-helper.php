@@ -138,10 +138,10 @@ if ( ! class_exists( 'Checkview_Cf7_Helper' ) ) {
 			);
 
 			// Set Piped values back to original values for required select fields
-			add_filter('wpcf7_posted_data_select*', array($this, 'checkview_handled_cf7_piped_data'), 99, 3);
+			add_filter( 'wpcf7_posted_data_select*', array( $this, 'checkview_handled_cf7_piped_data' ), 99, 3 );
 
 			// Set Piped values back to original values for optional select fields
-			add_filter('wpcf7_posted_data_select', array($this, 'checkview_handled_cf7_piped_data'), 99, 3);
+			add_filter( 'wpcf7_posted_data_select', array( $this, 'checkview_handled_cf7_piped_data' ), 99, 3 );
 
 			// disable_actions enumeration: when the flow's disable_actions flag
 			// resolves to "yes", remove third-party callbacks on CF7's email-stage
@@ -284,22 +284,22 @@ if ( ! class_exists( 'Checkview_Cf7_Helper' ) ) {
 		public function checkview_cf7_before_send_mail( $form_tag ) {
 			global $wpdb;
 
-			$form_id = $form_tag->id();
+			$form_id              = $form_tag->id();
 			$wp_filesystem_direct = new WP_Filesystem_Direct( array() );
-			$checkview_test_id = get_checkview_test_id();
+			$checkview_test_id    = get_checkview_test_id();
 
 			if ( empty( $checkview_test_id ) ) {
 				$checkview_test_id = $form_id . gmdate( 'Ymd' );
 			}
 
-			$upload_dir = wp_upload_dir();
+			$upload_dir     = wp_upload_dir();
 			$cv_cf7_dirname = $upload_dir['basedir'] . '/cv_cf7_uploads';
 
 			if ( ! file_exists( $cv_cf7_dirname ) ) {
 				$wp_filesystem_direct->mkdir( $cv_cf7_dirname, 0777, true );
 			}
 
-			$time_now = time();
+			$time_now   = time();
 			$submission = WPCF7_Submission::get_instance();
 
 			if ( $submission ) {
@@ -319,11 +319,11 @@ if ( ! class_exists( 'Checkview_Cf7_Helper' ) ) {
 					}
 				}
 
-				$allowed_tags = $tags_names;
+				$allowed_tags     = $tags_names;
 				$not_allowed_tags = array( 'g-recaptcha-response' );
-				$data = $submission->get_posted_data();
-				$files = $submission->uploaded_files();
-				$uploaded_files = array();
+				$data             = $submission->get_posted_data();
+				$files            = $submission->uploaded_files();
+				$uploaded_files   = array();
 
 				foreach ( $_FILES as $file_key => $file ) {
 					array_push( $uploaded_files, $file_key );
@@ -348,8 +348,8 @@ if ( ! class_exists( 'Checkview_Cf7_Helper' ) ) {
 						$tmp_d = $d;
 
 						if ( ! is_array( $d ) ) {
-							$bl = array( '\"', "\'", '/', '\\', '"', "'" );
-							$wl = array( '&quot;', '&#039;', '&#047;', '&#092;', '&quot;', '&#039;' );
+							$bl    = array( '\"', "\'", '/', '\\', '"', "'" );
+							$wl    = array( '&quot;', '&#039;', '&#047;', '&#092;', '&quot;', '&#039;' );
 							$tmp_d = str_replace( $bl, $wl, $tmp_d );
 						}
 
@@ -361,7 +361,7 @@ if ( ! class_exists( 'Checkview_Cf7_Helper' ) ) {
 					}
 
 					if ( in_array( $key, $uploaded_files ) ) {
-						$file = is_array( $files[ $key ] ) ? reset( $files[ $key ] ) : $files[ $key ];
+						$file      = is_array( $files[ $key ] ) ? reset( $files[ $key ] ) : $files[ $key ];
 						$file_name = empty( $file ) ? '' : $time_now . '-' . $key . '-' . basename( $file );
 						// Store under suffixed key for backward compat (no current readers, but preserved).
 						$form_data[ $key . 'cv_cf7_file' ] = $file_name;
@@ -373,13 +373,13 @@ if ( ! class_exists( 'Checkview_Cf7_Helper' ) ) {
 
 				// insert entry.
 				$entry_data  = array(
-					'form_id' => $form_id,
-					'status' => 'publish',
-					'source_url' => isset( $_SERVER['HTTP_REFERER'] ) ? substr( sanitize_url( wp_unslash( $_SERVER['HTTP_REFERER'] ) ), 0, 200 ) : '',
+					'form_id'      => $form_id,
+					'status'       => 'publish',
+					'source_url'   => isset( $_SERVER['HTTP_REFERER'] ) ? substr( sanitize_url( wp_unslash( $_SERVER['HTTP_REFERER'] ) ), 0, 200 ) : '',
 					'date_created' => current_time( 'mysql' ),
 					'date_updated' => current_time( 'mysql' ),
-					'uid' => $checkview_test_id,
-					'form_type' => 'CF7',
+					'uid'          => $checkview_test_id,
+					'form_type'    => 'CF7',
 				);
 				$entry_table = $wpdb->prefix . 'cv_entry';
 
@@ -401,26 +401,24 @@ if ( ! class_exists( 'Checkview_Cf7_Helper' ) ) {
 
 					foreach ( $form_data as $key => $val ) {
 						$entry_metadata = array(
-							'uid' => $checkview_test_id,
-							'form_id' => $form_id,
-							'entry_id' => $inserted_entry_id,
-							'meta_key' => checkview_truncate_meta_key( $key ),
+							'uid'        => $checkview_test_id,
+							'form_id'    => $form_id,
+							'entry_id'   => $inserted_entry_id,
+							'meta_key'   => checkview_truncate_meta_key( $key ),
 							'meta_value' => $val,
 						);
 
 						$result = $wpdb->insert( $entry_meta_table, $entry_metadata );
 
 						if ( $result ) {
-							$count++;
+							++$count;
 						}
 					}
 
 					if ( $count > 0 ) {
 						Checkview_Admin_Logs::add( 'ip-logs', 'Cloned submission entry meta data (inserted ' . $count . ' rows into ' . $entry_meta_table . ').' );
-					} else {
-						if ( count( $form_data ) > 0 ) {
+					} elseif ( count( $form_data ) > 0 ) {
 							Checkview_Admin_Logs::add( 'ip-logs', 'Failed to clone submission entry meta data. wpdb->last_error=[' . $wpdb->last_error . ']' );
-						}
 					}
 				}
 
@@ -441,8 +439,8 @@ if ( ! class_exists( 'Checkview_Cf7_Helper' ) ) {
 				return;
 			}
 
-			$test_id                = $this->pending_test_id;
-			$this->pending_test_id  = '';
+			$test_id               = $this->pending_test_id;
+			$this->pending_test_id = '';
 
 			complete_checkview_test( $test_id );
 		}
@@ -526,16 +524,16 @@ if ( ! class_exists( 'Checkview_Cf7_Helper' ) ) {
 		 *
 		 * @param array|mixed|string $value Piped value.
 		 * @param array|mixed|string $value_orig Original value.
-		 * @param mixed $tag Tag.
+		 * @param mixed              $tag Tag.
 		 *
 		 * @return array|mixed|string
 		 */
 		public function checkview_handled_cf7_piped_data( $value, $value_orig, $tag ) {
-			if ( ! is_array( $value ) || ! is_string( $value[0]) || ! is_string( $value_orig ) ) {
+			if ( ! is_array( $value ) || ! is_string( $value[0] ) || ! is_string( $value_orig ) ) {
 				return $value;
 			}
 
-			if ($value[0] !== $value_orig) {
+			if ( $value[0] !== $value_orig ) {
 				Checkview_Admin_Logs::add( 'api-logs', 'Detected piped CF7 select field, restoring original value.' );
 
 				return $value_orig;

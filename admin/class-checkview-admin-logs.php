@@ -10,7 +10,7 @@
 
 /**
  * Handles admin logs.
- * 
+ *
  * Reads, writes, and clears admin logs. Supports writing to differnt log
  * files within the logs folder, which is useful for splitting logs depending
  * on their purpose.
@@ -44,7 +44,7 @@ class Checkview_Admin_Logs {
 
 	/**
 	 * Constructor.
-	 * 
+	 *
 	 * Defines log handles property as an empty array.
 	 */
 	public function __construct() {
@@ -53,7 +53,7 @@ class Checkview_Admin_Logs {
 
 	/**
 	 * Destructor.
-	 * 
+	 *
 	 * Closes file pointers when this class is destroyed.
 	 */
 	public function __destruct() {
@@ -116,7 +116,6 @@ class Checkview_Admin_Logs {
 				$checkview_options                         = apply_filters( 'checkview_save_log_options', $checkview_options );
 				update_option( 'checkview_log_options', $checkview_options );
 				$uploads = 'true';
-
 			}
 			wp_safe_redirect( add_query_arg( 'logs-settings-updated', $uploads, isset( $_POST['_wp_http_referer'] ) ? sanitize_url( wp_unslash( $_POST['_wp_http_referer'] ) ) : '' ) );
 			exit;
@@ -417,13 +416,13 @@ class Checkview_Admin_Logs {
 
 	/**
 	 * Reads a log file.
-	 * 
+	 *
 	 * If given a `$lines`, this function will only return the last `$lines`
 	 * lines of the chosen log file.
-	 * 
+	 *
 	 * @since 1.6.0
-	 * 
-	 * @param string $handle File handle.
+	 *
+	 * @param string  $handle File handle.
 	 * @param integer $lines Number of line to limit.
 	 * @return array
 	 */
@@ -433,17 +432,13 @@ class Checkview_Admin_Logs {
 
 		// Open the file for reading.
 		if ( self::open( $handle, 'r' ) && is_resource( self::$_handles[ $handle ] ) ) {
-
 			while ( ! feof( self::$_handles[ $handle ] ) ) {
-
 				$line = fgets( self::$_handles[ $handle ], 4096 );
 
 				array_push( $results, $line );
 
 				if ( count( $results ) > $lines + 1 ) {
-
 					array_shift( $results );
-
 				}
 			}
 		}
@@ -512,7 +507,7 @@ class Checkview_Admin_Logs {
 	 * @since 1.2.0 Checks if the directory exists
 	 *
 	 * @access private
-	 * @param mixed $handle File handle.
+	 * @param mixed  $handle File handle.
 	 * @param string $permission File permissions.
 	 * @return bool True on success, false otherwise.
 	 */
@@ -528,7 +523,6 @@ class Checkview_Admin_Logs {
 		}
 		self::$_handles[ $handle ] = @fopen( $path . $handle . '.log', $permission );
 		if ( self::$_handles[ $handle ] ) {
-
 			return true;
 		}
 
@@ -537,7 +531,7 @@ class Checkview_Admin_Logs {
 
 	/**
 	 * Writes to a log file.
-	 * 
+	 *
 	 * Given a log file's `$handle`, append `$message` to it. Prepends each new
 	 * message with the time the log was written.
 	 *
@@ -591,7 +585,7 @@ class Checkview_Admin_Logs {
 	 * Gets the current date-time.
 	 *
 	 * @since 1.5.1
-	 * 
+	 *
 	 * @param string $type Type of date.
 	 * @return mixed
 	 */
@@ -608,14 +602,12 @@ class Checkview_Admin_Logs {
 	 */
 	public static function get_current_time( $type = 'mysql' ) {
 		if ( is_multisite() ) {
-
 			switch_to_blog( get_current_site()->blog_id );
 
 			$time = current_time( $type );
 
 			restore_current_blog();
 		} else {
-
 			$time = current_time( $type );
 		}
 

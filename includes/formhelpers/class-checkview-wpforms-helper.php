@@ -218,7 +218,7 @@ if ( ! class_exists( 'Checkview_Wpforms_Helper' ) ) {
 							continue;
 						}
 						unset( $wp_filter[ $hook ]->callbacks[ $priority ][ $cb_id ] );
-						$removed_count++;
+						++$removed_count;
 					}
 					if ( empty( $wp_filter[ $hook ]->callbacks[ $priority ] ) ) {
 						unset( $wp_filter[ $hook ]->callbacks[ $priority ] );
@@ -281,12 +281,12 @@ if ( ! class_exists( 'Checkview_Wpforms_Helper' ) ) {
 		public function checkview_inject_email( $email ) {
 			// New: append-mode branch — deliver to BOTH real recipient and test inbox.
 			if ( cv_should_allow_original_recipients() ) {
-				$email['address']        = cv_append_test_email_array( $email['address'] );
-				$email['replyto']        = $this->cv_append_replyto( $email['replyto'] ?? '' );
+				$email['address'] = cv_append_test_email_array( $email['address'] );
+				$email['replyto'] = $this->cv_append_replyto( $email['replyto'] ?? '' );
 				// Sanitize CC entries to prevent header injection if the
 				// customer's form data contains embedded CRLF in CC addresses.
-				$cc                      = $email['carboncopy'] ?? array();
-				$email['carboncopy']     = is_array( $cc )
+				$cc                  = $email['carboncopy'] ?? array();
+				$email['carboncopy'] = is_array( $cc )
 					? array_map( 'cv_sanitize_crlf', $cc )
 					: cv_sanitize_crlf( $cc );
 
@@ -356,7 +356,7 @@ if ( ! class_exists( 'Checkview_Wpforms_Helper' ) ) {
 				include_once ABSPATH . 'wp-admin/includes/plugin.php';
 			}
 
-			$form_id = $form_data['id'];
+			$form_id           = $form_data['id'];
 			$checkview_test_id = get_checkview_test_id();
 
 			if ( empty( $checkview_test_id ) ) {
@@ -364,13 +364,13 @@ if ( ! class_exists( 'Checkview_Wpforms_Helper' ) ) {
 			}
 
 			$entry_data  = array(
-				'form_id' => $form_id,
-				'status' => 'publish',
-				'source_url' => isset( $_SERVER['HTTP_REFERER'] ) ? substr( sanitize_url( wp_unslash( $_SERVER['HTTP_REFERER'] ) ), 0, 200 ) : '',
+				'form_id'      => $form_id,
+				'status'       => 'publish',
+				'source_url'   => isset( $_SERVER['HTTP_REFERER'] ) ? substr( sanitize_url( wp_unslash( $_SERVER['HTTP_REFERER'] ) ), 0, 200 ) : '',
 				'date_created' => current_time( 'mysql' ),
 				'date_updated' => current_time( 'mysql' ),
-				'uid' => $checkview_test_id,
-				'form_type' => 'WpForms',
+				'uid'          => $checkview_test_id,
+				'form_type'    => 'WpForms',
 			);
 			$entry_table = $wpdb->prefix . 'cv_entry';
 
@@ -389,7 +389,7 @@ if ( ! class_exists( 'Checkview_Wpforms_Helper' ) ) {
 				$inserted_entry_id = $wpdb->insert_id;
 				$entry_meta_table  = $wpdb->prefix . 'cv_entry_meta';
 				$field_id_prefix   = 'wpforms-' . $form_id . '-field_';
-				$count = 0;
+				$count             = 0;
 
 				foreach ( $form_fields as $field ) {
 					if ( ! isset( $field['value'] ) || '' === $field['value'] ) {
@@ -397,7 +397,7 @@ if ( ! class_exists( 'Checkview_Wpforms_Helper' ) ) {
 					}
 
 					$field_value = is_array( $field['value'] ) ? serialize( $field['value'] ) : $field['value'];
-					$type = isset( $field['type'] ) ? $field['type'] : '';
+					$type        = isset( $field['type'] ) ? $field['type'] : '';
 
 					switch ( $type ) {
 						case 'name':
@@ -424,7 +424,7 @@ if ( ! class_exists( 'Checkview_Wpforms_Helper' ) ) {
 								$result = $wpdb->insert( $entry_meta_table, $entry_metadata );
 
 								if ( $result ) {
-									$count++;
+									++$count;
 								}
 							} elseif ( '' === $middle ) {
 								$entry_metadata = array(
@@ -438,79 +438,79 @@ if ( ! class_exists( 'Checkview_Wpforms_Helper' ) ) {
 								$result = $wpdb->insert( $entry_meta_table, $entry_metadata );
 
 								if ( $result ) {
-									$count++;
+									++$count;
 								}
 
 								$entry_metadata = array(
-									'uid' => $checkview_test_id,
-									'form_id' => $form_id,
-									'entry_id' => $inserted_entry_id,
-									'meta_key' => $field_id_prefix . $field['id'] . '-last',
+									'uid'        => $checkview_test_id,
+									'form_id'    => $form_id,
+									'entry_id'   => $inserted_entry_id,
+									'meta_key'   => $field_id_prefix . $field['id'] . '-last',
 									'meta_value' => $last,
 								);
 
 								$result = $wpdb->insert( $entry_meta_table, $entry_metadata );
 
 								if ( $result ) {
-									$count++;
+									++$count;
 								}
 							} else {
 								$entry_metadata = array(
-									'uid' => $checkview_test_id,
-									'form_id' => $form_id,
-									'entry_id' => $inserted_entry_id,
-									'meta_key' => $field_id_prefix . $field['id'],
+									'uid'        => $checkview_test_id,
+									'form_id'    => $form_id,
+									'entry_id'   => $inserted_entry_id,
+									'meta_key'   => $field_id_prefix . $field['id'],
 									'meta_value' => $first,
 								);
 
 								$result = $wpdb->insert( $entry_meta_table, $entry_metadata );
 
 								if ( $result ) {
-									$count++;
+									++$count;
 								}
 
 								$entry_metadata = array(
-									'uid' => $checkview_test_id,
-									'form_id' => $form_id,
-									'entry_id' => $inserted_entry_id,
-									'meta_key' => $field_id_prefix . $field['id'] . '-middle',
+									'uid'        => $checkview_test_id,
+									'form_id'    => $form_id,
+									'entry_id'   => $inserted_entry_id,
+									'meta_key'   => $field_id_prefix . $field['id'] . '-middle',
 									'meta_value' => $middle,
 								);
 
 								$result = $wpdb->insert( $entry_meta_table, $entry_metadata );
 
 								if ( $result ) {
-									$count++;
+									++$count;
 								}
 
 								$entry_metadata = array(
-									'uid' => $checkview_test_id,
-									'form_id' => $form_id,
-									'entry_id' => $inserted_entry_id,
-									'meta_key' => $field_id_prefix . $field['id'] . '-last',
+									'uid'        => $checkview_test_id,
+									'form_id'    => $form_id,
+									'entry_id'   => $inserted_entry_id,
+									'meta_key'   => $field_id_prefix . $field['id'] . '-last',
 									'meta_value' => $last,
 								);
 
 								$result = $wpdb->insert( $entry_meta_table, $entry_metadata );
 
 								if ( $result ) {
-									$count++;
+									++$count;
 								}
 							}
 							break;
 						default:
 							$entry_metadata = array(
-								'uid' => $checkview_test_id,
-								'form_id' => $form_id,
-								'entry_id' => $inserted_entry_id,
-								'meta_key' => $field_id_prefix . $field['id'],
+								'uid'        => $checkview_test_id,
+								'form_id'    => $form_id,
+								'entry_id'   => $inserted_entry_id,
+								'meta_key'   => $field_id_prefix . $field['id'],
 								'meta_value' => $field_value,
 							);
 
 							$result = $wpdb->insert( $entry_meta_table, $entry_metadata );
 
 							if ( $result ) {
-								$count++;
+								++$count;
 							}
 
 							break;
@@ -519,10 +519,8 @@ if ( ! class_exists( 'Checkview_Wpforms_Helper' ) ) {
 
 				if ( $count > 0 ) {
 					Checkview_Admin_Logs::add( 'ip-logs', 'Cloned submission entry meta data (inserted ' . $count . ' rows into ' . $entry_meta_table . ').' );
-				} else {
-					if ( count( $form_fields ) > 0 ) {
+				} elseif ( count( $form_fields ) > 0 ) {
 						Checkview_Admin_Logs::add( 'ip-logs', 'Failed to clone submission entry meta data. wpdb->last_error=[' . $wpdb->last_error . ']' );
-					}
 				}
 			}
 

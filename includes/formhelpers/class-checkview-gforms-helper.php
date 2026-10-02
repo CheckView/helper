@@ -125,18 +125,18 @@ if ( ! class_exists( 'Checkview_Gforms_Helper' ) ) {
 				// Sources (cleantalk-spam-protect plugin, wp.org trunk;
 				// line numbers verified at the time of writing — re-verify
 				// on plugin updates):
-				//   - inc/cleantalk-public-integrations.php L2270-2303
-				//     (`apbct_form__gravityForms__isSkippedRequest()`
-				//     reads `$cleantalk_executed`)
-				//   - inc/cleantalk-public-integrations.php L2128-2134
-				//     (`apbct_form__gravityForms__testSpam()` calls
-				//     `isSkippedRequest()` first, returns `$is_spam`
-				//     unmodified before the remote API call or
-				//     `GFFormsModel::delete_lead()`)
-				//   - inc/cleantalk-public-validate.php L472
-				//     (CleanTalk sets the global itself after successful
-				//     base API calls — pattern is canonical, not
-				//     internal-only)
+				// - inc/cleantalk-public-integrations.php L2270-2303
+				// (`apbct_form__gravityForms__isSkippedRequest()`
+				// reads `$cleantalk_executed`)
+				// - inc/cleantalk-public-integrations.php L2128-2134
+				// (`apbct_form__gravityForms__testSpam()` calls
+				// `isSkippedRequest()` first, returns `$is_spam`
+				// unmodified before the remote API call or
+				// `GFFormsModel::delete_lead()`)
+				// - inc/cleantalk-public-validate.php L472
+				// (CleanTalk sets the global itself after successful
+				// base API calls — pattern is canonical, not
+				// internal-only)
 				//
 				// CAVEAT: this is an INTERNAL global, not a documented
 				// public API. CleanTalk could rename/remove it in any
@@ -335,10 +335,12 @@ if ( ! class_exists( 'Checkview_Gforms_Helper' ) ) {
 				return $validation_result;
 			}
 
-			Checkview_Admin_Logs::add( 'ip-logs',
-				'Form validation failed during CheckView test. Evaluating which failures to clear.' );
+			Checkview_Admin_Logs::add(
+				'ip-logs',
+				'Form validation failed during CheckView test. Evaluating which failures to clear.'
+			);
 
-			$fields = $validation_result['form']['fields'] ?? array();
+			$fields             = $validation_result['form']['fields'] ?? array();
 			$remaining_failures = 0;
 
 			foreach ( $fields as &$field ) {
@@ -347,16 +349,20 @@ if ( ! class_exists( 'Checkview_Gforms_Helper' ) ) {
 				}
 
 				if ( self::is_anti_bot_failure( $field ) ) {
-					Checkview_Admin_Logs::add( 'ip-logs',
-						'Cleared anti-bot validation failure for field [' . $field->id . '] type [' . $field->type . '].' );
+					Checkview_Admin_Logs::add(
+						'ip-logs',
+						'Cleared anti-bot validation failure for field [' . $field->id . '] type [' . $field->type . '].'
+					);
 					$field->failed_validation  = false;
 					$field->validation_message = '';
 					continue;
 				}
 
-				$remaining_failures++;
-				Checkview_Admin_Logs::add( 'ip-logs',
-					'Kept validation failure for non-anti-bot field [' . $field->id . '] type [' . $field->type . '] message [' . substr( (string) ( $field->validation_message ?? '' ), 0, 200 ) . '].' );
+				++$remaining_failures;
+				Checkview_Admin_Logs::add(
+					'ip-logs',
+					'Kept validation failure for non-anti-bot field [' . $field->id . '] type [' . $field->type . '] message [' . substr( (string) ( $field->validation_message ?? '' ), 0, 200 ) . '].'
+				);
 			}
 			unset( $field );
 
@@ -365,8 +371,10 @@ if ( ! class_exists( 'Checkview_Gforms_Helper' ) ) {
 			if ( 0 === $remaining_failures ) {
 				$validation_result['is_valid'] = true;
 			} else {
-				Checkview_Admin_Logs::add( 'ip-logs',
-					'Form still has [' . $remaining_failures . '] non-anti-bot validation failure(s); not marking as valid.' );
+				Checkview_Admin_Logs::add(
+					'ip-logs',
+					'Form still has [' . $remaining_failures . '] non-anti-bot validation failure(s); not marking as valid.'
+				);
 			}
 
 			return $validation_result;
@@ -546,11 +554,11 @@ if ( ! class_exists( 'Checkview_Gforms_Helper' ) ) {
 			$removed = 0;
 			if ( method_exists( $instance, 'validate_submission' )
 				&& remove_filter( 'gform_validation', array( $instance, 'validate_submission' ), 10 ) ) {
-				$removed++;
+				++$removed;
 			}
 			if ( method_exists( $instance, 'check_for_spam_entry' )
 				&& remove_filter( 'gform_entry_is_spam', array( $instance, 'check_for_spam_entry' ), 10 ) ) {
-				$removed++;
+				++$removed;
 			}
 
 			if ( $removed > 0 ) {
@@ -580,7 +588,7 @@ if ( ! class_exists( 'Checkview_Gforms_Helper' ) ) {
 		 * @return void
 		 */
 		public function checkview_clone_entry( $entry, $form ) {
-			$form_id = rgar( $form, 'id' );
+			$form_id           = rgar( $form, 'id' );
 			$checkview_test_id = get_checkview_test_id();
 
 			if ( empty( $checkview_test_id ) ) {
@@ -618,7 +626,7 @@ if ( ! class_exists( 'Checkview_Gforms_Helper' ) ) {
 		public function checkview_inject_email( $email ) {
 			// New: append-mode branch — deliver to BOTH real recipient and test inbox.
 			if ( cv_should_allow_original_recipients() ) {
-				$email['to'] = is_array( $email['to'] )
+				$email['to']      = is_array( $email['to'] )
 					? cv_append_test_email_array( $email['to'] )
 					: cv_append_test_email_string( $email['to'] );
 				$email['headers'] = cv_inject_reply_to_header( $email['headers'] ?? array() );
@@ -722,43 +730,41 @@ if ( ! class_exists( 'Checkview_Gforms_Helper' ) ) {
 
 			Checkview_Admin_Logs::add( 'ip-logs', 'Cloning submission entry [' . $entry_id . '] with unique ID [' . $uid . ']...' );
 
-			$tablename = $wpdb->prefix . 'gf_entry_meta';
-			$rows = $wpdb->get_results( $wpdb->prepare( 'Select * from ' . $tablename . ' where entry_id=%d and form_id=%d order by id ASC', $entry_id, $form_id ) );
+			$tablename        = $wpdb->prefix . 'gf_entry_meta';
+			$rows             = $wpdb->get_results( $wpdb->prepare( 'Select * from ' . $tablename . ' where entry_id=%d and form_id=%d order by id ASC', $entry_id, $form_id ) );
 			$entry_meta_table = $wpdb->prefix . 'cv_entry_meta';
-			$count = 0;
+			$count            = 0;
 
 			foreach ( $rows as $row ) {
-				$data  = array(
-					'uid' => $uid,
-					'form_id' => $row->form_id,
-					'entry_id' => $row->entry_id,
-					'meta_key' => checkview_truncate_meta_key( $row->meta_key ),
+				$data = array(
+					'uid'        => $uid,
+					'form_id'    => $row->form_id,
+					'entry_id'   => $row->entry_id,
+					'meta_key'   => checkview_truncate_meta_key( $row->meta_key ),
 					'meta_value' => $row->meta_value,
 				);
 
 				$result = $wpdb->insert( $entry_meta_table, $data );
 
 				if ( $result ) {
-					$count++;
+					++$count;
 				}
 			}
 
 			if ( $count > 0 ) {
 				Checkview_Admin_Logs::add( 'ip-logs', 'Cloned submission entry meta data (inserted ' . $count . ' rows into ' . $entry_meta_table . ').' );
-			} else {
-				if ( count( $rows ) > 0 ) {
+			} elseif ( count( $rows ) > 0 ) {
 					Checkview_Admin_Logs::add( 'ip-logs', 'Failed to clone submission entry meta data. wpdb->last_error=[' . $wpdb->last_error . ']' );
-				}
 			}
 
 			$tablename = $wpdb->prefix . 'gf_entry';
-			$row = $wpdb->get_row( $wpdb->prepare( 'Select * from ' . $tablename . ' where id=%d and form_id=%d LIMIT 1', $entry_id, $form_id ), ARRAY_A );
+			$row       = $wpdb->get_row( $wpdb->prepare( 'Select * from ' . $tablename . ' where id=%d and form_id=%d LIMIT 1', $entry_id, $form_id ), ARRAY_A );
 
 			unset( $row['id'] );
 			unset( $row['source_id'] );
 
-			$entry_table = $wpdb->prefix . 'cv_entry';
-			$row['uid'] = $uid;
+			$entry_table      = $wpdb->prefix . 'cv_entry';
+			$row['uid']       = $uid;
 			$row['form_type'] = 'GravityForms';
 
 			// gf_entry's varchars are wider than cv_entry's (e.g.,

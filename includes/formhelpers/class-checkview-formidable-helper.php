@@ -272,18 +272,18 @@ if ( ! class_exists( 'Checkview_Formidable_Helper' ) ) {
 			}
 
 			// Insert entry.
-			$entry_data = array(
-				'form_id' => $form_id,
-				'status' => 'publish',
-				'source_url' => isset( $_SERVER['HTTP_REFERER'] ) ? substr( sanitize_url( wp_unslash( $_SERVER['HTTP_REFERER'] ) ), 0, 200 ) : '',
+			$entry_data  = array(
+				'form_id'      => $form_id,
+				'status'       => 'publish',
+				'source_url'   => isset( $_SERVER['HTTP_REFERER'] ) ? substr( sanitize_url( wp_unslash( $_SERVER['HTTP_REFERER'] ) ), 0, 200 ) : '',
 				'date_created' => current_time( 'mysql' ),
 				'date_updated' => current_time( 'mysql' ),
-				'uid' => $checkview_test_id,
-				'form_type' => 'Formidable',
+				'uid'          => $checkview_test_id,
+				'form_type'    => 'Formidable',
 			);
 			$entry_table = $wpdb->prefix . 'cv_entry';
 
-			$result  = $wpdb->insert( $entry_table, $entry_data );
+			$result = $wpdb->insert( $entry_table, $entry_data );
 
 			if ( ! $result ) {
 				Checkview_Admin_Logs::add( 'ip-logs', 'Failed to clone submission entry data. wpdb->last_error=[' . $wpdb->last_error . ']' );
@@ -297,7 +297,7 @@ if ( ! class_exists( 'Checkview_Formidable_Helper' ) ) {
 			if ( $result ) {
 				// Insert entry meta.
 				$entry_meta_table = $wpdb->prefix . 'cv_entry_meta';
-				$fields = $this->get_form_fields( $form_id );
+				$fields           = $this->get_form_fields( $form_id );
 
 				// Previously `return`ed here. That exited the whole method,
 				// skipping BOTH the Formidable entry delete and
@@ -314,9 +314,9 @@ if ( ! class_exists( 'Checkview_Formidable_Helper' ) ) {
 					$fields = array();
 				}
 
-				$tablename = $wpdb->prefix . 'frm_item_metas';
+				$tablename   = $wpdb->prefix . 'frm_item_metas';
 				$form_fields = $wpdb->get_results( $wpdb->prepare( 'Select * from ' . $tablename . ' where item_id=%d', $entry_id ) );
-				$count = 0;
+				$count       = 0;
 
 				foreach ( $form_fields as $field ) {
 					if ( empty( $field->field_id ) ) {
@@ -360,47 +360,47 @@ if ( ! class_exists( 'Checkview_Formidable_Helper' ) ) {
 
 								// First.
 								$entry_metadata = array(
-									'uid' => $checkview_test_id,
-									'form_id' => $form_id,
-									'entry_id' => $entry_id,
-									'meta_key' => $sub_fields[0]['field_id'],
+									'uid'        => $checkview_test_id,
+									'form_id'    => $form_id,
+									'entry_id'   => $entry_id,
+									'meta_key'   => $sub_fields[0]['field_id'],
 									'meta_value' => $first,
 								);
 
 								$result = $wpdb->insert( $entry_meta_table, $entry_metadata );
 
 								if ( $result ) {
-									$count++;
+									++$count;
 								}
 
 								// Middle.
 								$entry_metadata = array(
-									'uid' => $checkview_test_id,
-									'form_id' => $form_id,
-									'entry_id' => $entry_id,
-									'meta_key' => $sub_fields[1]['field_id'],
+									'uid'        => $checkview_test_id,
+									'form_id'    => $form_id,
+									'entry_id'   => $entry_id,
+									'meta_key'   => $sub_fields[1]['field_id'],
 									'meta_value' => $middle,
 								);
 
 								$result = $wpdb->insert( $entry_meta_table, $entry_metadata );
 
 								if ( $result ) {
-									$count++;
+									++$count;
 								}
 
 								// Last.
 								$entry_metadata = array(
-									'uid' => $checkview_test_id,
-									'form_id' => $form_id,
-									'entry_id' => $entry_id,
-									'meta_key' => $sub_fields[2]['field_id'],
+									'uid'        => $checkview_test_id,
+									'form_id'    => $form_id,
+									'entry_id'   => $entry_id,
+									'meta_key'   => $sub_fields[2]['field_id'],
 									'meta_value' => $last,
 								);
 
 								$result = $wpdb->insert( $entry_meta_table, $entry_metadata );
 
 								if ( $result ) {
-									$count++;
+									++$count;
 								}
 
 								break;
@@ -412,32 +412,32 @@ if ( ! class_exists( 'Checkview_Formidable_Helper' ) ) {
 
 								// First.
 								$entry_metadata = array(
-									'uid' => $checkview_test_id,
-									'form_id' => $form_id,
-									'entry_id' => $entry_id,
-									'meta_key' => $sub_fields[0]['field_id'],
+									'uid'        => $checkview_test_id,
+									'form_id'    => $form_id,
+									'entry_id'   => $entry_id,
+									'meta_key'   => $sub_fields[0]['field_id'],
 									'meta_value' => $first,
 								);
 
 								$result = $wpdb->insert( $entry_meta_table, $entry_metadata );
 
 								if ( $result ) {
-									$count++;
+									++$count;
 								}
 
 								// Last.
 								$entry_metadata = array(
-									'uid' => $checkview_test_id,
-									'form_id' => $form_id,
-									'entry_id' => $entry_id,
-									'meta_key' => $sub_fields[1]['field_id'],
+									'uid'        => $checkview_test_id,
+									'form_id'    => $form_id,
+									'entry_id'   => $entry_id,
+									'meta_key'   => $sub_fields[1]['field_id'],
 									'meta_value' => $last,
 								);
 
 								$result = $wpdb->insert( $entry_meta_table, $entry_metadata );
 
 								if ( $result ) {
-									$count++;
+									++$count;
 								}
 
 								break;
@@ -449,32 +449,32 @@ if ( ! class_exists( 'Checkview_Formidable_Helper' ) ) {
 
 								// First.
 								$entry_metadata = array(
-									'uid' => $checkview_test_id,
-									'form_id' => $form_id,
-									'entry_id' => $entry_id,
-									'meta_key' => $sub_fields[1]['field_id'],
+									'uid'        => $checkview_test_id,
+									'form_id'    => $form_id,
+									'entry_id'   => $entry_id,
+									'meta_key'   => $sub_fields[1]['field_id'],
 									'meta_value' => $first,
 								);
 
 								$result = $wpdb->insert( $entry_meta_table, $entry_metadata );
 
 								if ( $result ) {
-									$count++;
+									++$count;
 								}
 
 								// Last.
 								$entry_metadata = array(
-									'uid' => $checkview_test_id,
-									'form_id' => $form_id,
-									'entry_id' => $entry_id,
-									'meta_key' => $sub_fields[0]['field_id'],
+									'uid'        => $checkview_test_id,
+									'form_id'    => $form_id,
+									'entry_id'   => $entry_id,
+									'meta_key'   => $sub_fields[0]['field_id'],
 									'meta_value' => $last,
 								);
 
 								$result = $wpdb->insert( $entry_meta_table, $entry_metadata );
 
 								if ( $result ) {
-									$count++;
+									++$count;
 								}
 
 								break;
@@ -483,19 +483,19 @@ if ( ! class_exists( 'Checkview_Formidable_Helper' ) ) {
 								break;
 						}
 					} else {
-						$field_value = $field->meta_value;
+						$field_value    = $field->meta_value;
 						$entry_metadata = array(
-							'uid' => $checkview_test_id,
-							'form_id' => $form_id,
-							'entry_id' => $entry_id,
-							'meta_key' => $fields[ $field->field_id ]['field_id'],
+							'uid'        => $checkview_test_id,
+							'form_id'    => $form_id,
+							'entry_id'   => $entry_id,
+							'meta_key'   => $fields[ $field->field_id ]['field_id'],
 							'meta_value' => $field_value,
 						);
 
 						$result = $wpdb->insert( $entry_meta_table, $entry_metadata );
 
 						if ( $result ) {
-							$count++;
+							++$count;
 						}
 					}
 				}

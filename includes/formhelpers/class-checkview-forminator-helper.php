@@ -458,7 +458,7 @@ if ( ! class_exists( 'Checkview_Forminator_Helper' ) ) {
 			// absent, so reading it yielded 0 — and this handler then took the
 			// "nothing was stored" branch, cloned nothing, never deleted the test
 			// entry, and completed the test green with no field data.
-			$entry_id = (int) $this->pending_entry_id;
+			$entry_id               = (int) $this->pending_entry_id;
 			$this->pending_entry_id = 0;
 			$this->handler_ran      = true;
 
@@ -556,7 +556,7 @@ if ( ! class_exists( 'Checkview_Forminator_Helper' ) ) {
 			);
 
 			$entry_table = $wpdb->prefix . 'cv_entry';
-			$result = $wpdb->insert( $entry_table, $entry_data );
+			$result      = $wpdb->insert( $entry_table, $entry_data );
 
 			if ( ! $result ) {
 				Checkview_Admin_Logs::add( 'ip-logs', 'Failed to clone submission entry data. wpdb->last_error=[' . $wpdb->last_error . ']' );

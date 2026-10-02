@@ -76,8 +76,8 @@ class Checkview_Woo_Automated_Testing {
 	 *
 	 * @since 1.0.0
 	 *
-	 * @param string $plugin_name The name of this plugin.
-	 * @param string $version The version of this plugin.
+	 * @param string           $plugin_name The name of this plugin.
+	 * @param string           $version The version of this plugin.
 	 * @param Checkview_Loader $loader Loads the hooks.
 	 */
 	public function __construct( $plugin_name, $version, $loader ) {
@@ -512,8 +512,8 @@ class Checkview_Woo_Automated_Testing {
 			return $query_args;
 		}
 
-		$existing = $query_args['post__not_in'] ?? array();
-		$query_args['post__not_in'] = wp_parse_id_list( $existing );
+		$existing                     = $query_args['post__not_in'] ?? array();
+		$query_args['post__not_in']   = wp_parse_id_list( $existing );
 		$query_args['post__not_in'][] = (int) $product_id;
 
 		return $query_args;
@@ -537,8 +537,8 @@ class Checkview_Woo_Automated_Testing {
 			return $args;
 		}
 
-		$existing = $args['post__not_in'] ?? array();
-		$args['post__not_in'] = wp_parse_id_list( $existing );
+		$existing               = $args['post__not_in'] ?? array();
+		$args['post__not_in']   = wp_parse_id_list( $existing );
 		$args['post__not_in'][] = (int) $product_id;
 
 		return $args;
@@ -566,8 +566,8 @@ class Checkview_Woo_Automated_Testing {
 			return;
 		}
 
-		$test_type = CheckView::test_type();
-		$woo_checkout_types = [ 'full_checkout', 'woo_checkout' ];
+		$test_type          = CheckView::test_type();
+		$woo_checkout_types = array( 'full_checkout', 'woo_checkout' );
 
 		if ( ! in_array( $test_type, $woo_checkout_types, true ) ) {
 			return;
@@ -656,7 +656,7 @@ class Checkview_Woo_Automated_Testing {
 
 					$is_visible = $product_id === $product->get_id() ? true : $visible;
 
-					if ($is_visible) {
+					if ( $is_visible ) {
 						Checkview_Admin_Logs::add( 'ip-logs', 'Setting Woo test product visibility to true.' );
 
 						return true;
@@ -670,18 +670,18 @@ class Checkview_Woo_Automated_Testing {
 
 			// H1 split (replaces the old combined `checkview_add_custom_fields_after_purchase`):
 			// - `checkview_stamp_order_meta` runs early on `woocommerce_new_order @ priority STAMP_PRIORITY`
-			//   so the order meta is in place BEFORE any addon's hook on the same event fires
-			//   (e.g. Mailchimp for WooCommerce hooks `handleOrderCreate` at priority 200, so we
-			//   stamp at priority 1).
+			// so the order meta is in place BEFORE any addon's hook on the same event fires
+			// (e.g. Mailchimp for WooCommerce hooks `handleOrderCreate` at priority 200, so we
+			// stamp at priority 1).
 			// - `checkview_stamp_order_meta_from_save` runs on every order save
-			//   (`woocommerce_after_order_object_save @ STAMP_PRIORITY`) so WC Block Checkout
-			//   drafts get their meta BEFORE any `order.updated@checkout-draft` webhook fires.
+			// (`woocommerce_after_order_object_save @ STAMP_PRIORITY`) so WC Block Checkout
+			// drafts get their meta BEFORE any `order.updated@checkout-draft` webhook fires.
 			// - `checkview_schedule_order_cleanup` keeps the existing `woocommerce_order_status_changed`
-			//   registration so order deletion is scheduled after the order has its final status.
+			// registration so order deletion is scheduled after the order has its final status.
 			// - `checkview_complete_test_deferred` runs at `shutdown` so per-test options stay alive
-			//   for the entire request — addons firing later in the request (Mailchimp's filter,
-			//   any `woocommerce_webhook_should_deliver` filter) can still read the option to
-			//   decide whether to suppress.
+			// for the entire request — addons firing later in the request (Mailchimp's filter,
+			// any `woocommerce_webhook_should_deliver` filter) can still read the option to
+			// decide whether to suppress.
 			$this->loader->add_action(
 				'woocommerce_new_order',
 				$this,
@@ -975,7 +975,7 @@ class Checkview_Woo_Automated_Testing {
 		// this way). Setting both makes the exclusion work on either backend —
 		// the key the active backend ignores is harmless.
 		foreach ( array( 'post__not_in', 'exclude' ) as $exclude_key ) {
-			$existing            = ( isset( $args[ $exclude_key ] ) && is_array( $args[ $exclude_key ] ) ) ? $args[ $exclude_key ] : array();
+			$existing             = ( isset( $args[ $exclude_key ] ) && is_array( $args[ $exclude_key ] ) ) ? $args[ $exclude_key ] : array();
 			$args[ $exclude_key ] = array_values( array_unique( array_merge( $existing, $ids ) ) );
 		}
 
@@ -1302,7 +1302,7 @@ class Checkview_Woo_Automated_Testing {
 		if ( '' !== $order_id && (int) $order_id > 0 ) {
 			$orders = array( (int) $order_id );
 		} elseif ( function_exists( 'wc_get_orders' ) ) {
-			$args = array(
+			$args   = array(
 				'limit'        => -1,
 				'type'         => 'shop_order',
 				'meta_key'     => 'payment_made_by', // Postmeta key field.
@@ -1365,7 +1365,7 @@ class Checkview_Woo_Automated_Testing {
 								require_once ABSPATH . 'wp-admin/includes/user.php';
 							}
 
-							$res = $customer->delete( true );
+							$res      = $customer->delete( true );
 							$customer = null;
 						}
 					}
@@ -1374,12 +1374,11 @@ class Checkview_Woo_Automated_Testing {
 						require_once CHECKVIEW_ADMIN_DIR . '/class-checkview-admin-logs.php';
 					}
 
-					if ($order_object) {
+					if ( $order_object ) {
 						Checkview_Admin_Logs::add( 'cron-logs', 'Failed to delete CheckView order [' . $order_object->get_id() . '] from the database.' );
 					} else {
 						Checkview_Admin_Logs::add( 'cron-logs', 'Failed to delete CheckView order from the database.' );
 					}
-
 				}
 			}
 
@@ -1461,7 +1460,6 @@ class Checkview_Woo_Automated_Testing {
 		}
 		$in_progress[ $order_id ] = true;
 		try {
-
 			$order = wc_get_order( $order_id );
 			if ( ! $order ) {
 				return;
@@ -1479,7 +1477,6 @@ class Checkview_Woo_Automated_Testing {
 			$order->save();
 
 			Checkview_Admin_Logs::add( 'ip-logs', 'Stamped CheckView meta on order [' . $order->get_id() . '] for test [' . CV_TEST_ID . '].' );
-
 		} finally {
 			unset( $in_progress[ $order_id ] );
 		}

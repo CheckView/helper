@@ -20,7 +20,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 class Checkview_Admin_Settings {
 	/**
 	 * The current tab.
-	 * 
+	 *
 	 * The CheckView settings page has tabs, where each tab contains its relevant settings.
 	 *
 	 * @var string
@@ -31,7 +31,7 @@ class Checkview_Admin_Settings {
 	 *
 	 * @since 1.0.0
 	 * @access protected
-	 * 
+	 *
 	 * @var string $plugin_name The string used to uniquely identify this plugin.
 	 */
 	protected $plugin_name;
@@ -41,17 +41,17 @@ class Checkview_Admin_Settings {
 	 *
 	 * @since 1.0.0
 	 * @access protected
-	 * 
+	 *
 	 * @var string $version The current version of the plugin.
 	 */
 	protected $version;
 	/**
 	 * Constructor.
-	 * 
+	 *
 	 * Sets class properties.
 	 *
 	 * @since 1.0.0
-	 * 
+	 *
 	 * @param string $plugin_name Name of the plugin.
 	 * @param string $version Version number of the plugin.
 	 */
@@ -63,11 +63,11 @@ class Checkview_Admin_Settings {
 
 	/**
 	 * Displays admin notices.
-	 * 
+	 *
 	 * Displays a success notice when a user updates settings within the admin area.
 	 *
 	 * @since 1.0.0
-	 * 
+	 *
 	 * @return void
 	 */
 	public function checkview_admin_notices() {
@@ -101,7 +101,7 @@ class Checkview_Admin_Settings {
 	 * Saves settings to the database.
 	 *
 	 * @since 1.0.0
-	 * 
+	 *
 	 * @return void
 	 */
 	public function checkview_admin_advance_settings_save() {
@@ -236,7 +236,6 @@ class Checkview_Admin_Settings {
 					<?php
 					foreach ( $checkview_sections as $key => $checkview_section ) {
 						if ( $this->page_tab === $key ) {
-
 							$url = 'templates/' . $key . '.php';
 							apply_filters( 'checkview_template_url', $url );
 							include $url;
@@ -291,7 +290,7 @@ class Checkview_Admin_Settings {
 	 * Adds Inspry mention in the admin footer text.
 	 *
 	 * @since 1.0.0
-	 * 
+	 *
 	 * @param string $footer_text Footer text.
 	 * @return mixed
 	 */

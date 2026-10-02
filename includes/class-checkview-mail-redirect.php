@@ -73,7 +73,7 @@ if ( ! class_exists( 'Checkview_Mail_Redirect' ) ) {
 				return $atts;
 			}
 
-			$cv_test_id  = get_checkview_test_id();
+			$cv_test_id = get_checkview_test_id();
 			// Append mode is signaled two ways: the legacy per-test option, or the
 			// per-test allow_original_recipients_<test_id> option the SaaS sets at
 			// test-init.

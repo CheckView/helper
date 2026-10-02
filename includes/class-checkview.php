@@ -75,7 +75,7 @@ class CheckView {
 	 * @return bool
 	 */
 	public static function is_checkview_dev(): bool {
-		return defined('CHECKVIEW_DEV') && CHECKVIEW_DEV;
+		return defined( 'CHECKVIEW_DEV' ) && CHECKVIEW_DEV;
 	}
 
 	/**
@@ -124,7 +124,7 @@ class CheckView {
 	 *
 	 * @return string|null Parameter's value,
 	 */
-	public static function get_param( string $url, string $param): ?string {
+	public static function get_param( string $url, string $param ): ?string {
 		$params = array();
 		parse_str( $url, $params );
 		return sanitize_text_field( $params[ $param ] ?? '' );
@@ -241,7 +241,7 @@ class CheckView {
 		$verified       = $require_signed ? $sig_verified : ( $sig_verified || $ip_verified );
 
 		$test_type = self::test_type();
-		$result = $test_type && $verified;
+		$result    = $test_type && $verified;
 
 		// Only log during actual tests
 		if ( isset( $_REQUEST[ self::PARAM_TEST_ID ] ) && self::should_log_bot_check( $result ) ) {
@@ -280,18 +280,21 @@ class CheckView {
 			}
 			$headers[] = 'RA=[' . ( $ra ?: 'not set' ) . ']';
 
-			Checkview_Admin_Logs::add( 'ip-logs', sprintf(
-				'Bot check %s [%s]: detected=[%s], %s, ip_ok=[%s], sig_ok=[%s], mode=[%s], whitelist=[%d IPs]%s',
-				$result ? 'PASSED' : 'FAILED',
-				$test_id,
-				$safe_visitor_ip ?: 'empty',
-				implode( ', ', $headers ),
-				$ip_verified ? 'yes' : 'no',
-				$sig_verified ? 'yes' : 'no',
-				$require_signed ? 'require-signed' : 'transitional',
-				is_array( $cv_bot_ip ) ? count( $cv_bot_ip ) : 0,
-				$is_local ? ', LOCAL_ENV' : ''
-			) );
+			Checkview_Admin_Logs::add(
+				'ip-logs',
+				sprintf(
+					'Bot check %s [%s]: detected=[%s], %s, ip_ok=[%s], sig_ok=[%s], mode=[%s], whitelist=[%d IPs]%s',
+					$result ? 'PASSED' : 'FAILED',
+					$test_id,
+					$safe_visitor_ip ?: 'empty',
+					implode( ', ', $headers ),
+					$ip_verified ? 'yes' : 'no',
+					$sig_verified ? 'yes' : 'no',
+					$require_signed ? 'require-signed' : 'transitional',
+					is_array( $cv_bot_ip ) ? count( $cv_bot_ip ) : 0,
+					$is_local ? ', LOCAL_ENV' : ''
+				)
+			);
 		}
 
 		return $result;
@@ -557,9 +560,13 @@ class CheckView {
 
 			// Also dequeue turnstile in footer — Fluent Forms enqueues it
 			// during template rendering, which runs after wp_enqueue_scripts.
-			add_action( 'wp_print_footer_scripts', function () {
-				wp_dequeue_script( 'turnstile' );
-			}, 1 );
+			add_action(
+				'wp_print_footer_scripts',
+				function () {
+					wp_dequeue_script( 'turnstile' );
+				},
+				1
+			);
 
 			$this->loader->add_action(
 				'pre_option_require_name_email',

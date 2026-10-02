@@ -6,7 +6,6 @@
  */
 
 if ( ! defined( 'ABSPATH' ) ) {
-
 	exit;
 }
 $checkview_options = get_option( 'checkview_advance_options', array() );

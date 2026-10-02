@@ -404,7 +404,7 @@ if ( ! class_exists( 'Checkview_Elementor_Helper' ) ) {
 				$form_data = array();
 			}
 
-			$entry_data  = array(
+			$entry_data        = array(
 				'form_id'      => $form_id,
 				'status'       => 'publish',
 				'source_url'   => isset( $_SERVER['HTTP_REFERER'] ) ? substr( sanitize_url( wp_unslash( $_SERVER['HTTP_REFERER'] ) ), 0, 200 ) : '',
@@ -413,8 +413,8 @@ if ( ! class_exists( 'Checkview_Elementor_Helper' ) ) {
 				'uid'          => $checkview_test_id,
 				'form_type'    => 'Elementor',
 			);
-			$entry_table = $wpdb->prefix . 'cv_entry';
-			$result      = $wpdb->insert( $entry_table, $entry_data );
+			$entry_table       = $wpdb->prefix . 'cv_entry';
+			$result            = $wpdb->insert( $entry_table, $entry_data );
 			$inserted_entry_id = $wpdb->insert_id;
 
 			if ( ! $result ) {
@@ -437,7 +437,7 @@ if ( ! class_exists( 'Checkview_Elementor_Helper' ) ) {
 					);
 
 					if ( $wpdb->insert( $entry_meta_table, $entry_metadata ) ) {
-						$count++;
+						++$count;
 					}
 				}
 
@@ -634,9 +634,9 @@ if ( ! class_exists( 'Checkview_Elementor_Helper' ) ) {
 		/**
 		 * Adds a `data-cv-file-types` attribute to Elementor upload fields.
 		 *
-		 * @param array                                                  $item       Field settings.
-		 * @param int                                                    $item_index Field index.
-		 * @param \ElementorPro\Modules\Forms\Widgets\Form               $form       Form widget instance.
+		 * @param array                                    $item       Field settings.
+		 * @param int                                      $item_index Field index.
+		 * @param \ElementorPro\Modules\Forms\Widgets\Form $form       Form widget instance.
 		 * @return void
 		 */
 		public function checkview_add_upload_file_types( $item, $item_index, $form ) {

@@ -152,7 +152,7 @@ if ( ! function_exists( 'checkview_validate_jwt_token' ) ) {
 			$leeway = apply_filters( 'checkview_jwt_leeway', 5 );
 
 			JWT::$leeway = $leeway;
-			$decoded = JWT::decode( $token, new Key( $key, 'RS256' ) );
+			$decoded     = JWT::decode( $token, new Key( $key, 'RS256' ) );
 		} catch ( Exception $e ) {
 			Checkview_Admin_Logs::add( 'api-logs', esc_html( $e->getMessage() ) );
 			return new WP_Error(
@@ -161,7 +161,7 @@ if ( ! function_exists( 'checkview_validate_jwt_token' ) ) {
 				array( 'status' => 401 )
 			);
 		}
-		$jwt = (array) $decoded;
+		$jwt              = (array) $decoded;
 		$default_site_url = checkview_ensure_trailing_slash( get_bloginfo( 'url' ) );
 
 		/**
@@ -254,8 +254,8 @@ if ( ! function_exists( 'complete_checkview_test' ) ) {
 		}
 
 		$session_table = $wpdb->prefix . 'cv_session';
-		$visitor_ip = checkview_get_visitor_ip();
-		$cv_session = checkview_get_cv_session( $visitor_ip, CV_TEST_ID );
+		$visitor_ip    = checkview_get_visitor_ip();
+		$cv_session    = checkview_get_cv_session( $visitor_ip, CV_TEST_ID );
 
 		// Stop if session not found.
 		if ( ! empty( $cv_session ) ) {
@@ -268,7 +268,7 @@ if ( ! function_exists( 'complete_checkview_test' ) ) {
 			$session_table,
 			array(
 				'visitor_ip' => $visitor_ip,
-				'test_id' => $checkview_test_id,
+				'test_id'    => $checkview_test_id,
 			)
 		);
 
@@ -296,8 +296,8 @@ if ( ! function_exists( 'complete_checkview_test' ) ) {
 		if ( ! empty( $form_id ) && ! empty( $entry_id ) && ! doing_action( 'shutdown' ) ) {
 			if ( class_exists( 'WS_Form_Submit' ) ) {
 				try {
-					$ws_form_submit = new WS_Form_Submit();
-					$ws_form_submit->id = $entry_id;
+					$ws_form_submit          = new WS_Form_Submit();
+					$ws_form_submit->id      = $entry_id;
 					$ws_form_submit->form_id = $form_id;
 					$ws_form_submit->db_delete( true, true, true );
 				} catch ( \Throwable $e ) {
@@ -502,7 +502,7 @@ if ( ! function_exists( 'checkview_get_api_ip' ) ) {
 			);
 
 			if ( is_wp_error( $request ) ) {
-				$code = $request->get_error_code();
+				$code    = $request->get_error_code();
 				$message = $request->get_error_message();
 
 				Checkview_Admin_Logs::add( 'ip-logs', 'Request for new IP addresses failed with code [' . $code . ']. Message: ' . $message );
@@ -607,7 +607,7 @@ if ( ! function_exists( 'checkview_get_visitor_ip' ) ) {
 		// Check view Bot IP.
 		$cv_bot_ip  = checkview_get_api_ip();
 		$ip_options = checkview_get_custom_header_keys_for_ip();
-		$ip = '';
+		$ip         = '';
 
 		foreach ( $ip_options as $key ) {
 			if ( ! isset( $_SERVER[ $key ] ) ) {
@@ -618,7 +618,7 @@ if ( ! function_exists( 'checkview_get_visitor_ip' ) ) {
 
 			foreach ( explode( ',', $key ) as $ip ) {
 				$ip = trim( $ip );
-				$ip = preg_replace('/:\d{1,5}$/', '', $ip);
+				$ip = preg_replace( '/:\d{1,5}$/', '', $ip );
 
 				if ( $ip !== null && checkview_validate_ip( $ip ) && is_array( $cv_bot_ip ) && in_array( $ip, $cv_bot_ip ) ) {
 					return sanitize_text_field( $ip );
@@ -647,11 +647,14 @@ if ( ! function_exists( 'checkview_get_cleantalk_whitelisted_ips' ) ) {
 
 		$spbc_data  = get_option( 'cleantalk_data', array() );
 		$user_token = $spbc_data['user_token'];
-		$api_url = "https://api.cleantalk.org/?method_name=private_list_get&user_token=$user_token&service_type=" . $service_type . '&product_id=1&service_id=' . $service_id;
+		$api_url    = "https://api.cleantalk.org/?method_name=private_list_get&user_token=$user_token&service_type=" . $service_type . '&product_id=1&service_id=' . $service_id;
 
-		$response = wp_remote_get( $api_url, array(
-			'timeout' => 20,
-		) );
+		$response = wp_remote_get(
+			$api_url,
+			array(
+				'timeout' => 20,
+			)
+		);
 
 		if ( is_wp_error( $response ) ) {
 			error_log( 'Error fetching whitelisted IPs: ' . $response->get_error_message() );
@@ -691,13 +694,13 @@ if ( ! function_exists( 'checkview_whitelist_api_ip' ) ) {
 	 * Whitelists CheckView in a CleanTalk account via their API.
 	 *
 	 * @since 1.0.0
-	 * 
+	 *
 	 * @return null
 	 */
 	function checkview_whitelist_api_ip() {
 		global $apbct;
 
-		if ( ! isset($apbct->data['service_id'] ) ) {
+		if ( ! isset( $apbct->data['service_id'] ) ) {
 			error_log( 'CleanTalk service ID could not be found.' );
 		}
 
@@ -705,7 +708,7 @@ if ( ! function_exists( 'checkview_whitelist_api_ip' ) ) {
 		$spbc_data  = get_option( 'cleantalk_data', array() );
 		$user_token = $spbc_data['user_token'];
 
-		if ( empty( $user_token ) || ( function_exists('apbct_api_key__is_correct') && ! apbct_api_key__is_correct() ) ) {
+		if ( empty( $user_token ) || ( function_exists( 'apbct_api_key__is_correct' ) && ! apbct_api_key__is_correct() ) ) {
 			return null;
 		}
 
@@ -722,7 +725,7 @@ if ( ! function_exists( 'checkview_whitelist_api_ip' ) ) {
 				return null;
 			}
 
-			if ( is_array( $home_url ) && ! isset( $home_url[ 'host' ] ) ) {
+			if ( is_array( $home_url ) && ! isset( $home_url['host'] ) ) {
 				error_log( sprintf( 'Cannot determine host when parsing URL [%1$s].', json_encode( $home_url ) ) );
 				Checkview_Admin_Logs::add( 'ip-logs', sprintf( 'Cannot determine host when parsing URL [%1$s].', json_encode( $home_url ) ) );
 
@@ -745,36 +748,45 @@ if ( ! function_exists( 'checkview_whitelist_api_ip' ) ) {
 				} else {
 					// Otherwise, check for our IPs/hosts individually, and request to add them if needed.
 					if ( is_array( $antispam_ips[ $host_name ] ) ) {
-						$has_current_ip = array_find( $antispam_ips[ $host_name ], function( $value, $key ) use ($current_ip) {
-							$position = strpos( $value, $current_ip );
+						$has_current_ip = array_find(
+							$antispam_ips[ $host_name ],
+							function ( $value, $key ) use ( $current_ip ) {
+								$position = strpos( $value, $current_ip );
 
-							return $position === false ? false : true;
-						});
+								return $position === false ? false : true;
+							}
+						);
 
 						if ( ! $has_current_ip ) {
 							checkview_add_to_cleantalk( $user_token, 'antispam', $current_ip, 1, $service_id );
 						}
 
-						$has_checkview_hostname = array_find( $antispam_ips[ $host_name ], function( $value, $key ) {
-							$position = strpos( $value, 'checkview.io' );
+						$has_checkview_hostname = array_find(
+							$antispam_ips[ $host_name ],
+							function ( $value, $key ) {
+								$position = strpos( $value, 'checkview.io' );
 
-							// Skip test-mail domain
-							if ($value === 'test-mail.checkview.io') {
-								return false;
+								// Skip test-mail domain
+								if ( $value === 'test-mail.checkview.io' ) {
+									return false;
+								}
+
+								return $position === false ? false : true;
 							}
-
-							return $position === false ? false : true;
-						});
+						);
 
 						if ( ! $has_checkview_hostname ) {
 							checkview_add_to_cleantalk( $user_token, 'antispam', 'checkview.io', 4, $service_id );
 						}
 
-						$has_mail_hostname = array_find( $antispam_ips[ $host_name ], function( $value, $key ) {
-							$position = strpos( $value, 'test-mail.checkview.io' );
+						$has_mail_hostname = array_find(
+							$antispam_ips[ $host_name ],
+							function ( $value, $key ) {
+								$position = strpos( $value, 'test-mail.checkview.io' );
 
-							return $position === false ? false : true;
-						});
+								return $position === false ? false : true;
+							}
+						);
 
 						if ( ! $has_mail_hostname ) {
 							checkview_add_to_cleantalk( $user_token, 'antispam', 'test-mail.checkview.io', 4, $service_id );
@@ -795,21 +807,22 @@ if ( ! function_exists( 'checkview_whitelist_api_ip' ) ) {
 
 					// If host name is not set, request to add it.
 					checkview_add_to_cleantalk( $user_token, 'spamfirewall', $current_ip . '/32', 6, $service_id );
-				} else {
-					if ( is_array( $spamfirewall_ips[ $host_name ] ) ) {
-						$has_current_ip = array_find( $spamfirewall_ips[ $host_name ], function( $value, $key ) use ($current_ip) {
-							$position = strpos( $value, $current_ip );
+				} elseif ( is_array( $spamfirewall_ips[ $host_name ] ) ) {
+						$has_current_ip = array_find(
+							$spamfirewall_ips[ $host_name ],
+							function ( $value, $key ) use ( $current_ip ) {
+								$position = strpos( $value, $current_ip );
 
-							return $position === false ? false : true;
-						});
+								return $position === false ? false : true;
+							}
+						);
 
-						if ( ! $has_current_ip ) {
-							checkview_add_to_cleantalk( $user_token, 'spamfirewall', $current_ip, 6, $service_id );
-						}
-					} else {
-						error_log( sprintf( 'Value for spam firewall IPs at hostname [%1$s] is unexpected type [%2$s], expected array.', $host_name, gettype( $antispam_ips[ $host_name ] ) ) );
-						Checkview_Admin_Logs::add( 'ip-logs', sprintf( 'Value for spam firewall IPs at hostname [%1$s] is unexpected type [%2$s], expected array.', $host_name, gettype( $antispam_ips[ $host_name ] ) ) );
+					if ( ! $has_current_ip ) {
+						checkview_add_to_cleantalk( $user_token, 'spamfirewall', $current_ip, 6, $service_id );
 					}
+				} else {
+					error_log( sprintf( 'Value for spam firewall IPs at hostname [%1$s] is unexpected type [%2$s], expected array.', $host_name, gettype( $antispam_ips[ $host_name ] ) ) );
+					Checkview_Admin_Logs::add( 'ip-logs', sprintf( 'Value for spam firewall IPs at hostname [%1$s] is unexpected type [%2$s], expected array.', $host_name, gettype( $antispam_ips[ $host_name ] ) ) );
 				}
 			}
 		}
@@ -831,13 +844,15 @@ if ( ! function_exists( 'checkview_add_to_cleantalk' ) ) {
 	 * @return mixed
 	 */
 	function checkview_add_to_cleantalk( $user_token, $service_type, $record, $record_type, $service_id ) {
-		error_log( sprintf(
-			'Adding record [%1$s] with type [%2$s] and service type [%3$s] to CleanTalk\'s API with service id [%4$s]',
-			$record,
-			$record_type,
-			$service_type,
-			$service_id,
-		) );
+		error_log(
+			sprintf(
+				'Adding record [%1$s] with type [%2$s] and service type [%3$s] to CleanTalk\'s API with service id [%4$s]',
+				$record,
+				$record_type,
+				$service_type,
+				$service_id,
+			)
+		);
 
 		$response = wp_remote_get(
 			'https://api.cleantalk.org/?method_name=private_list_add&user_token=' . $user_token .
@@ -850,7 +865,7 @@ if ( ! function_exists( 'checkview_add_to_cleantalk' ) ) {
 			)
 		);
 
-		delete_transient('checkview_whitelisted_ips_' . $service_type);
+		delete_transient( 'checkview_whitelisted_ips_' . $service_type );
 
 		if ( is_wp_error( $response ) ) {
 			error_log( 'Request failed: ' . $response->get_error_message() );
@@ -907,7 +922,6 @@ if ( ! function_exists( 'checkview_create_cv_session' ) ) {
 	 *
 	 * @return void|boolean
 	 * @since 1.0.0
-	 *
 	 */
 	function checkview_create_cv_session( $ip, $test_id ) {
 		global $wp, $wpdb;
@@ -983,20 +997,26 @@ if ( ! function_exists( 'checkview_create_cv_session' ) ) {
 		$safe_test = substr( $test_id, 0, 8 );
 
 		if ( false === $result ) {
-			Checkview_Admin_Logs::add( 'ip-logs', sprintf(
-				'Session INSERT FAILED: IP=[%s], test=[%s...], page=[%d], err=[%s].',
-				$safe_ip,
-				$safe_test,
-				(int) $page_id,
-				$wpdb->last_error ? substr( $wpdb->last_error, 0, 80 ) : 'none'
-			) );
+			Checkview_Admin_Logs::add(
+				'ip-logs',
+				sprintf(
+					'Session INSERT FAILED: IP=[%s], test=[%s...], page=[%d], err=[%s].',
+					$safe_ip,
+					$safe_test,
+					(int) $page_id,
+					$wpdb->last_error ? substr( $wpdb->last_error, 0, 80 ) : 'none'
+				)
+			);
 		} else {
-			Checkview_Admin_Logs::add( 'ip-logs', sprintf(
-				'Session CREATED: IP=[%s], test=[%s...], page=[%d].',
-				$safe_ip,
-				$safe_test,
-				(int) $page_id
-			) );
+			Checkview_Admin_Logs::add(
+				'ip-logs',
+				sprintf(
+					'Session CREATED: IP=[%s], test=[%s...], page=[%d].',
+					$safe_ip,
+					$safe_test,
+					(int) $page_id
+				)
+			);
 		}
 	}
 }
@@ -1010,7 +1030,6 @@ if ( ! function_exists( 'checkview_get_cv_session' ) ) {
 	 *
 	 * @return array Array of results from DB.
 	 * @since 1.0.0
-	 *
 	 */
 	function checkview_get_cv_session( $ip, $test_id ) {
 		global $wpdb;
@@ -1042,20 +1061,26 @@ if ( ! function_exists( 'checkview_get_cv_session' ) ) {
 				: '?';
 
 			if ( ! empty( $result ) ) {
-				Checkview_Admin_Logs::add( 'ip-logs', sprintf(
-					'Session FOUND [%s]: IP=[%s], test=[%s...].',
-					$method,
-					$safe_ip,
-					$safe_test
-				) );
+				Checkview_Admin_Logs::add(
+					'ip-logs',
+					sprintf(
+						'Session FOUND [%s]: IP=[%s], test=[%s...].',
+						$method,
+						$safe_ip,
+						$safe_test
+					)
+				);
 			} else {
-				Checkview_Admin_Logs::add( 'ip-logs', sprintf(
-					'Session NOT FOUND [%s]: IP=[%s], test=[%s...]%s.',
-					$method,
-					$safe_ip,
-					$safe_test,
-					$wpdb->last_error ? ', err' : ''
-				) );
+				Checkview_Admin_Logs::add(
+					'ip-logs',
+					sprintf(
+						'Session NOT FOUND [%s]: IP=[%s], test=[%s...]%s.',
+						$method,
+						$safe_ip,
+						$safe_test,
+						$wpdb->last_error ? ', err' : ''
+					)
+				);
 			}
 		}
 
@@ -1496,7 +1521,7 @@ if ( ! function_exists( 'checkview_delete_tables_data' ) ) {
 
 		Checkview_Admin_Logs::add( 'ip-logs', 'Running scheduled deletion of CheckView rows...' );
 
-		$table_entry = esc_sql( $wpdb->prefix . 'cv_entry' );
+		$table_entry      = esc_sql( $wpdb->prefix . 'cv_entry' );
 		$table_entry_meta = esc_sql( $wpdb->prefix . 'cv_entry_meta' );
 
 		// Delete entries older than 1 day from 'cv_entry_meta' table.
@@ -1695,7 +1720,7 @@ if ( ! function_exists( 'checkview_update_woocommerce_product_status' ) ) {
 	 */
 	function checkview_update_woocommerce_product_status( $product_id, $status ) {
 		// Check if the product ID is valid and status is either 'publish' or 'draft'.
-		$updated = 0;
+		$updated        = 0;
 		$allowed_status = array( 'publish', 'draft' );
 
 		Checkview_Admin_Logs::add( 'api-logs', 'Updating status of test product [' . $product_id . '] to [' . $status . ']...' );
@@ -1707,7 +1732,7 @@ if ( ! function_exists( 'checkview_update_woocommerce_product_status' ) ) {
 					'post_status' => $status,
 				)
 			);
-			delete_transient('checkview_store_products_transient');
+			delete_transient( 'checkview_store_products_transient' );
 			Checkview_Admin_Logs::add( 'api-logs', 'Updated status of test product and cleared product caches.' );
 		} else {
 			Checkview_Admin_Logs::add( 'api-logs', 'Called [checkview_update_woocommerce_product_status] on invalid post type or with invalid status (accepts ' . implode( ', ', $allowed_status ) . ', got ' . $status . ').' );
@@ -1716,25 +1741,25 @@ if ( ! function_exists( 'checkview_update_woocommerce_product_status' ) ) {
 	}
 }
 
-if (!function_exists('array_find')) {
-    /**
-     * Finds the first element in the array that satisfies the callback condition.
-		 * 
-		 * Essentially polyfills `array_find`, which was introduced in PHP v8.4.0.
-     *
-     * @param array $array The array to search.
-     * @param callable $callback The callback function to test each element.
-     * @return mixed The first matching element, or null if none found.
-     */
-    function array_find(array $array, callable $callback) {
-        foreach ($array as $key => $value) {
-            if ($callback($value, $key)) {
-                return $value;
-            }
-        }
+if ( ! function_exists( 'array_find' ) ) {
+	/**
+	 * Finds the first element in the array that satisfies the callback condition.
+	 *
+	 * Essentially polyfills `array_find`, which was introduced in PHP v8.4.0.
+	 *
+	 * @param array    $array The array to search.
+	 * @param callable $callback The callback function to test each element.
+	 * @return mixed The first matching element, or null if none found.
+	 */
+	function array_find( array $array, callable $callback ) {
+		foreach ( $array as $key => $value ) {
+			if ( $callback( $value, $key ) ) {
+				return $value;
+			}
+		}
 
-        return null;
-    }
+		return null;
+	}
 }
 
 if ( ! function_exists( 'cv_update_option' ) ) {
@@ -1755,14 +1780,12 @@ if ( ! function_exists( 'cv_update_option' ) ) {
 	 */
 	function cv_update_option( $option, $value, $autoload = null ) {
 		$old_option = get_option( $option );
-		$result = update_option( $option, $value, $autoload );
+		$result     = update_option( $option, $value, $autoload );
 
 		if ( $result ) {
 			Checkview_Admin_Logs::add( 'ip-logs', 'Updated option [' . $option . '] with value [' . print_r( $value, true ) . '].' );
-		} else {
-			if ($old_option !== false && $old_option !== $value && maybe_serialize( $old_option ) !== maybe_serialize( $value ) ) {
+		} elseif ( $old_option !== false && $old_option !== $value && maybe_serialize( $old_option ) !== maybe_serialize( $value ) ) {
 				Checkview_Admin_Logs::add( 'ip-logs', 'Failed updating option [' . $option . '] with value [' . print_r( $value, true ) . '].' );
-			}
 		}
 
 		return $result;
@@ -2134,7 +2157,7 @@ if ( ! function_exists( 'cv_inject_reply_to_header' ) ) {
 			// in the existing value before we touch it, regardless of whether
 			// dedup hits or we append. Consistent with the other helpers
 			// (cv_append_test_email_string/array always sanitize).
-			$sanitized = cv_sanitize_crlf( $existing );
+			$sanitized               = cv_sanitize_crlf( $existing );
 			$list[ $existing_index ] = $sanitized;
 
 			// Extract addresses already in this Reply-To and check via the

@@ -387,8 +387,8 @@ class Checkview_Admin {
 	 * sub-request of a batch, which carry routes of their own.
 	 *
 	 * @param WP_REST_Response|mixed $response The REST API response object.
-	 * @param WP_REST_Server|null $server Unused. The server instance.
-	 * @param WP_REST_Request|null $request The request that was dispatched.
+	 * @param WP_REST_Server|null    $server Unused. The server instance.
+	 * @param WP_REST_Request|null   $request The request that was dispatched.
 	 *
 	 * @return WP_REST_Response|mixed The response object with modified headers.
 	 *
@@ -456,8 +456,8 @@ class Checkview_Admin {
 				$allowlist = $visitor_ip;
 			}
 
-			$ips = sanitize_textarea_field( wp_unslash( $allowlist ) );
-			$ips = AIOWPSecurity_Utility_IP::create_ip_list_array_from_string_with_newline( $ips );
+			$ips                     = sanitize_textarea_field( wp_unslash( $allowlist ) );
+			$ips                     = AIOWPSecurity_Utility_IP::create_ip_list_array_from_string_with_newline( $ips );
 			$validated_ip_list_array = AIOWPSecurity_Utility_IP::validate_ip_list( $ips, 'firewall_allowlist' );
 
 			if ( is_wp_error( $validated_ip_list_array ) ) {
@@ -471,18 +471,18 @@ class Checkview_Admin {
 		}
 
 		if ( is_plugin_active( 'defender-security/wp-defender.php' ) ) {
-			$data = array();
-			$data['allow_list'] = (array) $visitor_ip;
-			$data['block_list'] = array();
-			$data['last_update_time'] = '';
+			$data                         = array();
+			$data['allow_list']           = (array) $visitor_ip;
+			$data['block_list']           = array();
+			$data['last_update_time']     = '';
 			$data['last_update_time_utc'] = '';
 
 			$global_ip_component = wd_di()->get( Global_IP::class );
-			$result = $global_ip_component->set_global_ip_list( $data );
+			$result              = $global_ip_component->set_global_ip_list( $data );
 		}
 
 		if ( is_plugin_active( 'enhanced-cloudflare-turnstile/enhanced-cloudflare-turnstile.php' ) ) {
-			$ect_ip_address = ecft_get_option( 'ecft_ip_address' );
+			$ect_ip_address       = ecft_get_option( 'ecft_ip_address' );
 			$ect_ip_address_array = explode( "\n", $ect_ip_address );
 
 			if ( ! empty( $ect_ip_address_array ) && is_array( $ect_ip_address_array ) ) {
@@ -516,9 +516,9 @@ class Checkview_Admin {
 		}
 
 		if ( is_plugin_active( 'recaptcha-for-woocommerce/woo-recaptcha.php' ) ) {
-			$captcha_ip_range = '';
+			$captcha_ip_range     = '';
 			$captcha_ip_range_opt = '';
-			$captcha_ip_range = array();
+			$captcha_ip_range     = array();
 
 			// Get the existing whitelist from the database.
 			$captcha_ip_range_opt = sanitize_text_field( wp_unslash( get_option( 'i13_recapcha_ip_to_skip_captcha' ) ) );
@@ -534,27 +534,27 @@ class Checkview_Admin {
 					// Save the updated list back to the database.
 					cv_update_option( 'i13_recapcha_ip_to_skip_captcha', implode( ',', $captcha_ip_range ) );
 				} else {
-					cv_update_option( 'i13_recapcha_ip_to_skip_captcha',  $visitor_ip );
+					cv_update_option( 'i13_recapcha_ip_to_skip_captcha', $visitor_ip );
 				}
 			}
 		}
 
-		$disable_email_receipt = isset( $_REQUEST['disable_email_receipt'] ) ? sanitize_text_field( wp_unslash( $_REQUEST['disable_email_receipt'] ) ) : false;
-		$disable_webhooks = isset( $_REQUEST['disable_webhooks'] ) ? sanitize_text_field( wp_unslash( $_REQUEST['disable_webhooks'] ) ) : false;
-		$disable_actions = isset( $_REQUEST['disable_actions'] )
+		$disable_email_receipt     = isset( $_REQUEST['disable_email_receipt'] ) ? sanitize_text_field( wp_unslash( $_REQUEST['disable_email_receipt'] ) ) : false;
+		$disable_webhooks          = isset( $_REQUEST['disable_webhooks'] ) ? sanitize_text_field( wp_unslash( $_REQUEST['disable_webhooks'] ) ) : false;
+		$disable_actions           = isset( $_REQUEST['disable_actions'] )
 			? sanitize_text_field( wp_unslash( $_REQUEST['disable_actions'] ) )
 			: '';
 		$allow_original_recipients = isset( $_REQUEST['allow_original_recipients'] )
 			? sanitize_text_field( wp_unslash( $_REQUEST['allow_original_recipients'] ) )
 			: '';
-		$referrer_url = sanitize_url( wp_get_raw_referer(), array( 'http', 'https' ) );
+		$referrer_url              = sanitize_url( wp_get_raw_referer(), array( 'http', 'https' ) );
 
 		// If not Ajax submission and found test_id.
 		if ( isset( $_SERVER['REQUEST_URI'] ) && strpos( sanitize_url( wp_unslash( $_SERVER['REQUEST_URI'] ) ), 'admin-ajax.php' ) === false && '' !== $cv_test_id ) {
 			// Create session for later use when form submit VIA AJAX.
 			checkview_create_cv_session( $visitor_ip, $cv_test_id );
 
-			cv_update_option( $visitor_ip, 'checkview-saas', true);
+			cv_update_option( $visitor_ip, 'checkview-saas', true );
 		}
 
 		if ( ! empty( $cv_test_id ) && ! checkview_is_valid_uuid( $cv_test_id ) ) {
@@ -597,7 +597,7 @@ class Checkview_Admin {
 		}
 
 		if ( ! empty( $cv_session ) ) {
-			$test_key = $cv_session[0]['test_key'];
+			$test_key  = $cv_session[0]['test_key'];
 			$test_form = get_option( $test_key, '' );
 
 			if ( ! empty( $test_form ) ) {
