@@ -7,7 +7,7 @@ Tested up to: 7.1
 Requires PHP: 8.0
 License: GPLv2 or later
 License URI: http://www.gnu.org/licenses/gpl-2.0.html
-Stable tag: 2.4.3
+Stable tag: 2.5.1
 
 [CheckView](https://checkview.io/) automates WordPress form and WooCommerce testing, monitoring key flows to catch failures early before they cost you leads or sales everyday.
 
@@ -204,6 +204,9 @@ Support and test configuration are handled through the CheckView platform. Pleas
 3. CheckView general settings.
 
 == Changelog ==
+
+= 2.5.1 =
+* Release the 2.5.0 changes below. 2.5.0 was published with the wrong stable tag, so WordPress.org never offered it to sites.
 
 = 2.5.0 =
 * Email: when "allow original recipients" is turned on in CheckView, test notifications go to the form's real recipients as well as the CheckView test inbox. Off by default; nothing changes unless it is enabled.
