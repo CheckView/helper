@@ -1167,16 +1167,52 @@ if ( ! function_exists( 'checkview_get_elementor_form_widgets' ) ) {
 	 * every page that renders it; see checkview_get_elementor_global_widget_form()
 	 * for which id the resolved node carries.
 	 *
+	 * A whole saved template can also be embedded, with the Template widget
+	 * (`settings.template_id`) or the `[elementor-template id="N"]` shortcode in
+	 * a Shortcode or Text Editor widget. Those are resolved too, keeping each
+	 * form's own id; see checkview_get_elementor_template_forms().
+	 *
 	 * @since 1.0.0
 	 *
 	 * @param array $elements Decoded Elementor element tree (or a subtree).
 	 * @return array List of form-widget element arrays.
 	 */
 	function checkview_get_elementor_form_widgets( $elements ) {
-		$found = array();
+		$scan  = checkview_scan_elementor_elements( $elements );
+		$found = $scan['forms'];
+
+		foreach ( array_unique( $scan['template_ids'] ) as $template_id ) {
+			$found = array_merge( $found, checkview_get_elementor_template_forms( $template_id ) );
+		}
+
+		return $found;
+	}
+}
+
+if ( ! function_exists( 'checkview_scan_elementor_elements' ) ) {
+	/**
+	 * Walks one Elementor element tree without following embedded templates.
+	 *
+	 * Returns the form widgets placed in the tree itself (Global Widgets
+	 * resolved) and the ids of the templates it embeds, so callers decide how
+	 * far to follow them; see checkview_get_elementor_template_forms().
+	 *
+	 * @since 1.0.0
+	 *
+	 * @param array $elements Decoded Elementor element tree (or a subtree).
+	 * @return array {
+	 *     @type array $forms        Form-widget element arrays.
+	 *     @type int[] $template_ids Embedded template ids, possibly repeated.
+	 * }
+	 */
+	function checkview_scan_elementor_elements( $elements ) {
+		$scan = array(
+			'forms'        => array(),
+			'template_ids' => array(),
+		);
 
 		if ( ! is_array( $elements ) ) {
-			return $found;
+			return $scan;
 		}
 
 		foreach ( $elements as $element ) {
@@ -1187,23 +1223,37 @@ if ( ! function_exists( 'checkview_get_elementor_form_widgets' ) ) {
 			$widget_type = isset( $element['widgetType'] ) ? $element['widgetType'] : '';
 
 			if ( 'form' === $widget_type ) {
-				$found[] = $element;
+				$scan['forms'][] = $element;
 			} elseif ( 'global' === $widget_type ) {
 				$global_form = checkview_get_elementor_global_widget_form( $element );
 				if ( null !== $global_form ) {
-					$found[] = $global_form;
+					$scan['forms'][] = $global_form;
 				}
+			} elseif ( 'template' === $widget_type ) {
+				$template_id = isset( $element['settings']['template_id'] ) ? $element['settings']['template_id'] : 0;
+				if ( is_numeric( $template_id ) && (int) $template_id > 0 ) {
+					$scan['template_ids'][] = (int) $template_id;
+				}
+			} elseif ( 'shortcode' === $widget_type || 'text-editor' === $widget_type ) {
+				// The HTML widget is left out on purpose: it does not run shortcodes.
+				$setting = ( 'shortcode' === $widget_type ) ? 'shortcode' : 'editor';
+				$content = isset( $element['settings'][ $setting ] ) ? $element['settings'][ $setting ] : '';
+
+				$scan['template_ids'] = array_merge(
+					$scan['template_ids'],
+					checkview_get_elementor_template_shortcode_ids( $content )
+				);
 			}
 
 			if ( ! empty( $element['elements'] ) && is_array( $element['elements'] ) ) {
-				$found = array_merge(
-					$found,
-					checkview_get_elementor_form_widgets( $element['elements'] )
-				);
+				$child_scan = checkview_scan_elementor_elements( $element['elements'] );
+
+				$scan['forms']        = array_merge( $scan['forms'], $child_scan['forms'] );
+				$scan['template_ids'] = array_merge( $scan['template_ids'], $child_scan['template_ids'] );
 			}
 		}
 
-		return $found;
+		return $scan;
 	}
 }
 
@@ -1251,7 +1301,13 @@ if ( ! function_exists( 'checkview_get_elementor_global_widget_form' ) ) {
 					$data = json_decode( $data, true );
 				}
 
-				$template_widgets = checkview_get_elementor_form_widgets( $data );
+				/*
+				 * Only forms placed in the template itself. A Template widget
+				 * saved as a Global Widget renders its template as a separate
+				 * document whose forms keep their own ids, so re-keying them to
+				 * the host element below would report an id that is not on the page.
+				 */
+				$template_widgets = checkview_scan_elementor_elements( $data )['forms'];
 				if ( ! empty( $template_widgets ) ) {
 					$template_forms[ $template_id ] = $template_widgets[0];
 				}
@@ -1267,6 +1323,116 @@ if ( ! function_exists( 'checkview_get_elementor_global_widget_form' ) ) {
 		$form['templateID'] = $template_id;
 
 		return $form;
+	}
+}
+
+if ( ! function_exists( 'checkview_get_elementor_template_forms' ) ) {
+	/**
+	 * Collects the form widgets a saved Elementor template renders when embedded.
+	 *
+	 * Unlike a Global Widget, a template embedded with the Template widget or
+	 * the `[elementor-template]` shortcode renders as its own document: each
+	 * form keeps its element id, posts the template's id as `post_id`, and has
+	 * the same form id on every page that embeds the template. So the nodes are
+	 * returned unchanged.
+	 *
+	 * Only published templates count; the Template widget renders nothing for
+	 * any other status. Templates nested in templates are followed breadth
+	 * first with a visited set, so a template that embeds itself, directly or
+	 * through a chain, is walked once and the result does not depend on which
+	 * template was asked about first. Each template is decoded once per request.
+	 *
+	 * @since 1.0.0
+	 *
+	 * @param int|string $template_id Elementor library post id.
+	 * @return array List of form-widget element arrays.
+	 */
+	function checkview_get_elementor_template_forms( $template_id ) {
+		static $scans    = array();
+		static $resolved = array();
+
+		$template_id = (int) $template_id;
+		if ( $template_id <= 0 ) {
+			return array();
+		}
+
+		if ( isset( $resolved[ $template_id ] ) ) {
+			return $resolved[ $template_id ];
+		}
+
+		$forms   = array();
+		$queue   = array( $template_id );
+		$visited = array( $template_id => true );
+
+		while ( ! empty( $queue ) ) {
+			$current_id = array_shift( $queue );
+
+			if ( ! isset( $scans[ $current_id ] ) ) {
+				$scans[ $current_id ] = checkview_scan_elementor_elements( array() );
+
+				if ( 'elementor_library' === get_post_type( $current_id ) && 'publish' === get_post_status( $current_id ) ) {
+					$data = get_post_meta( $current_id, '_elementor_data', true );
+					if ( is_string( $data ) && '' !== $data ) {
+						$data = json_decode( $data, true );
+					}
+
+					$scans[ $current_id ] = checkview_scan_elementor_elements( $data );
+				}
+			}
+
+			$forms = array_merge( $forms, $scans[ $current_id ]['forms'] );
+
+			foreach ( $scans[ $current_id ]['template_ids'] as $embedded_id ) {
+				if ( ! isset( $visited[ $embedded_id ] ) ) {
+					$visited[ $embedded_id ] = true;
+					$queue[]                 = $embedded_id;
+				}
+			}
+		}
+
+		$resolved[ $template_id ] = $forms;
+
+		return $forms;
+	}
+}
+
+if ( ! function_exists( 'checkview_get_elementor_template_shortcode_ids' ) ) {
+	/**
+	 * Extracts the template ids of `[elementor-template id="N"]` shortcodes.
+	 *
+	 * @since 1.0.0
+	 *
+	 * @param string $content Text that may contain the shortcode.
+	 * @return int[] Unique template ids.
+	 */
+	function checkview_get_elementor_template_shortcode_ids( $content ) {
+		if ( ! is_string( $content ) || false === strpos( $content, '[elementor-template' ) ) {
+			return array();
+		}
+
+		if ( ! preg_match_all( '/' . get_shortcode_regex( array( 'elementor-template' ) ) . '/', $content, $matches, PREG_SET_ORDER ) ) {
+			return array();
+		}
+
+		$ids = array();
+		foreach ( $matches as $match ) {
+			// `[[elementor-template ...]]` is escaped and renders as literal text.
+			if ( '[' === $match[1] && ']' === $match[6] ) {
+				continue;
+			}
+
+			$atts = shortcode_parse_atts( $match[3] );
+			if ( ! is_array( $atts ) || ! isset( $atts['id'] ) || ! is_numeric( $atts['id'] ) ) {
+				continue;
+			}
+
+			$id = (int) $atts['id'];
+			if ( $id > 0 ) {
+				$ids[] = $id;
+			}
+		}
+
+		return array_values( array_unique( $ids ) );
 	}
 }
 
