@@ -1778,8 +1778,17 @@ class CheckView_Api {
 			 * the reference. Matching on every `global` node would not do: a
 			 * header or button saved as global is on most pages of a site, and
 			 * this query loads each matched page's whole element tree.
+			 *
+			 * A whole template can also be embedded with the Template widget
+			 * (`"template_id":"N"`) or the `[elementor-template id="N"]`
+			 * shortcode, and templates can embed templates. So the set of
+			 * form-bearing templates is widened to every published template
+			 * that reaches a form through such a chain, and pages are matched
+			 * on those ids too. The LIKE patterns are only a prefilter; the walk
+			 * in checkview_get_elementor_form_widgets() decides exactly.
 			 */
-			$patterns = array( '%"widgetType":"form"%' );
+			$patterns          = array( '%"widgetType":"form"%' );
+			$shortcode_pattern = '%' . $wpdb->esc_like( '[elementor-template' ) . '%';
 
 			$form_template_ids = $wpdb->get_col(
 				$wpdb->prepare(
@@ -1793,15 +1802,80 @@ class CheckView_Api {
 					'%"widgetType":"form"%'
 				)
 			);
-			foreach ( (array) $form_template_ids as $form_template_id ) {
-				$form_template_id = (int) $form_template_id;
-				if ( $form_template_id <= 0 ) {
-					continue;
+			$form_template_ids = array_values( array_filter( array_map( 'intval', (array) $form_template_ids ) ) );
+
+			if ( ! empty( $form_template_ids ) ) {
+				// Templates that embed a template, or place a form-bearing Global Widget.
+				$embed_patterns = array( '%"widgetType":"template"%', $shortcode_pattern );
+				foreach ( $form_template_ids as $form_template_id ) {
+					$embed_patterns[] = '%"templateID":' . $form_template_id . '%';
+					$embed_patterns[] = '%"templateID":"' . $form_template_id . '"%';
 				}
-				// Elementor writes templateID as a JSON number; some exports carry a string.
-				$patterns[] = '%"templateID":' . $form_template_id . '%';
-				$patterns[] = '%"templateID":"' . $form_template_id . '"%';
+
+				$embed_like_clauses = implode( ' OR ', array_fill( 0, count( $embed_patterns ), 'pm.meta_value LIKE %s' ) );
+
+				$embedding_template_ids = $wpdb->get_col(
+					$wpdb->prepare(
+						"SELECT p.ID FROM {$wpdb->prefix}posts p
+						INNER JOIN {$wpdb->prefix}postmeta pm ON pm.post_id = p.ID
+						WHERE pm.meta_key = %s
+						AND ( {$embed_like_clauses} )
+						AND p.post_status = 'publish'
+						AND p.post_type = 'elementor_library'",
+						array_merge( array( '_elementor_data' ), $embed_patterns )
+					)
+				);
+				foreach ( (array) $embedding_template_ids as $embedding_template_id ) {
+					$embedding_template_id = (int) $embedding_template_id;
+					if (
+						$embedding_template_id > 0
+						&& ! in_array( $embedding_template_id, $form_template_ids, true )
+						&& ! empty( checkview_get_elementor_template_forms( $embedding_template_id ) )
+					) {
+						$form_template_ids[] = $embedding_template_id;
+					}
+				}
+
+				foreach ( $form_template_ids as $form_template_id ) {
+					// Elementor writes templateID as a JSON number; some exports carry a string.
+					$patterns[] = '%"templateID":' . $form_template_id . '%';
+					$patterns[] = '%"templateID":"' . $form_template_id . '"%';
+					// Template widget control values are saved as strings; accept a bare number too.
+					$patterns[] = '%"template_id":"' . $form_template_id . '"%';
+					$patterns[] = '%"template_id":' . $form_template_id . '%';
+				}
+
+				// One id-agnostic pattern for shortcode embeds; the walk parses the id.
+				$patterns[] = $shortcode_pattern;
 			}
+
+			/*
+			 * Pages are keyed by post id so a form reached twice on one page,
+			 * or by both queries below, is listed for that page once.
+			 */
+			$add_elementor_page = static function ( $form_widget, $page_id ) use ( &$forms ) {
+				if ( empty( $form_widget['id'] ) ) {
+					return;
+				}
+				$form_id = $form_widget['id'];
+
+				if ( ! isset( $forms['Elementor'][ $form_id ] ) ) {
+					$forms['Elementor'][ $form_id ] = array(
+						'ID'   => $form_id,
+						'Name' => ( ! empty( $form_widget['settings']['form_name'] ) )
+							? $form_widget['settings']['form_name']
+							: 'Form ' . $form_id,
+					);
+				}
+
+				$page_url = checkview_must_ssl_url( get_the_permalink( $page_id ) );
+				if ( ! empty( $page_url ) ) {
+					$forms['Elementor'][ $form_id ]['pages'][ $page_id ] = array(
+						'ID'  => $page_id,
+						'url' => $page_url,
+					);
+				}
+			};
 
 			$like_clauses = implode( ' OR ', array_fill( 0, count( $patterns ), 'pm.meta_value LIKE %s' ) );
 
@@ -1822,30 +1896,54 @@ class CheckView_Api {
 					if ( ! is_array( $elementor_data ) ) {
 						continue;
 					}
-					$form_widgets = checkview_get_elementor_form_widgets( $elementor_data );
-					foreach ( $form_widgets as $form_widget ) {
-						if ( empty( $form_widget['id'] ) ) {
-							continue;
-						}
-						$form_id   = $form_widget['id'];
-						$form_name = ( ! empty( $form_widget['settings']['form_name'] ) )
-							? $form_widget['settings']['form_name']
-							: 'Form ' . $form_id;
+					foreach ( checkview_get_elementor_form_widgets( $elementor_data ) as $form_widget ) {
+						$add_elementor_page( $form_widget, $elementor_page->ID );
+					}
+				}
+			}
 
-						if ( ! isset( $forms['Elementor'][ $form_id ] ) ) {
-							$forms['Elementor'][ $form_id ] = array(
-								'ID'   => $form_id,
-								'Name' => $form_name,
-							);
-						}
+			/*
+			 * A page not built with Elementor can still embed a template through
+			 * the shortcode in its post content, directly or inside a reusable
+			 * block. Library posts are public but are never the page a form is
+			 * tested on, so they stay out.
+			 */
+			if ( ! empty( $form_template_ids ) ) {
+				$shortcode_posts = $wpdb->get_results(
+					$wpdb->prepare(
+						"SELECT ID, post_type, post_content FROM {$wpdb->prefix}posts
+						WHERE post_content LIKE %s
+						AND post_status = 'publish'
+						AND post_type IN ( {$type_placeholders} )
+						AND post_type <> 'elementor_library'",
+						array_merge( array( $shortcode_pattern ), $post_types )
+					)
+				);
+				foreach ( (array) $shortcode_posts as $shortcode_post ) {
+					$template_forms = array();
+					foreach ( checkview_get_elementor_template_shortcode_ids( $shortcode_post->post_content ) as $template_id ) {
+						$template_forms = array_merge( $template_forms, checkview_get_elementor_template_forms( $template_id ) );
+					}
+					if ( empty( $template_forms ) ) {
+						continue;
+					}
 
-						$page_url = checkview_must_ssl_url( get_the_permalink( $elementor_page->ID ) );
-						if ( ! empty( $page_url ) ) {
-							$forms['Elementor'][ $form_id ]['pages'][] = array(
-								'ID'  => $elementor_page->ID,
-								'url' => $page_url,
-							);
+					$page_ids = array( $shortcode_post->ID );
+					if ( 'wp_block' === $shortcode_post->post_type ) {
+						$page_ids = wp_list_pluck( (array) checkview_get_wp_block_pages( $shortcode_post->ID ), 'ID' );
+					}
+					foreach ( $page_ids as $page_id ) {
+						foreach ( $template_forms as $form_widget ) {
+							$add_elementor_page( $form_widget, $page_id );
 						}
+					}
+				}
+			}
+
+			if ( ! empty( $forms['Elementor'] ) ) {
+				foreach ( $forms['Elementor'] as $form_id => $elementor_form ) {
+					if ( isset( $elementor_form['pages'] ) ) {
+						$forms['Elementor'][ $form_id ]['pages'] = array_values( $elementor_form['pages'] );
 					}
 				}
 			}
