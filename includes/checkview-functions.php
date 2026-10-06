@@ -1301,7 +1301,13 @@ if ( ! function_exists( 'checkview_get_elementor_global_widget_form' ) ) {
 					$data = json_decode( $data, true );
 				}
 
-				$template_widgets = checkview_get_elementor_form_widgets( $data );
+				/*
+				 * Only forms placed in the template itself. A Template widget
+				 * saved as a Global Widget renders its template as a separate
+				 * document whose forms keep their own ids, so re-keying them to
+				 * the host element below would report an id that is not on the page.
+				 */
+				$template_widgets = checkview_scan_elementor_elements( $data )['forms'];
 				if ( ! empty( $template_widgets ) ) {
 					$template_forms[ $template_id ] = $template_widgets[0];
 				}
