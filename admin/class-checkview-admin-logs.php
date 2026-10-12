@@ -403,6 +403,7 @@ class Checkview_Admin_Logs {
 
 		if ( ! file_exists( $htaccess ) || false === strpos( (string) @file_get_contents( $htaccess ), 'Require all denied' ) ) {
 			if ( false === @file_put_contents( $htaccess, $rules, LOCK_EX ) ) {
+				// phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log -- Desired production debug logging.
 				error_log( 'CheckView: Could not write the .htaccess file in the logs folder.' );
 			}
 		}
@@ -410,6 +411,7 @@ class Checkview_Admin_Logs {
 		$index = $folder . 'index.html';
 
 		if ( ! file_exists( $index ) && false === @file_put_contents( $index, '' ) ) {
+			// phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log -- Desired production debug logging.
 			error_log( 'CheckView: Could not write the index.html file in the logs folder.' );
 		}
 	}

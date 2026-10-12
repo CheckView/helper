@@ -82,6 +82,7 @@ if ( ! function_exists( 'checkview_dbdelta_or_query' ) ) {
 				// Checkview_Admin_Logs isn't loaded yet (e.g. during
 				// activation). Surface to PHP's error log so the failure
 				// isn't silently swallowed.
+				// phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log -- Desired production debug logging.
 				error_log( '[CheckView] ' . $msg );
 			}
 		}
@@ -658,6 +659,7 @@ if ( ! function_exists( 'checkview_get_cleantalk_whitelisted_ips' ) ) {
 		);
 
 		if ( is_wp_error( $response ) ) {
+			// phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log -- Desired production debug logging.
 			error_log( 'Error fetching whitelisted IPs: ' . $response->get_error_message() );
 			Checkview_Admin_Logs::add( 'ip-logs', esc_html__( 'Error fetching whitelisted IPs: ' . $response->get_error_message(), 'checkview' ) );
 
@@ -702,6 +704,7 @@ if ( ! function_exists( 'checkview_whitelist_api_ip' ) ) {
 		global $apbct;
 
 		if ( ! isset( $apbct->data['service_id'] ) ) {
+			// phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log -- Desired production debug logging.
 			error_log( 'CleanTalk service ID could not be found.' );
 		}
 
@@ -720,6 +723,7 @@ if ( ! function_exists( 'checkview_whitelist_api_ip' ) ) {
 			$home_url = parse_url( home_url() ); // Returns `false`, `null`, or an assosiative array.
 
 			if ( $home_url === false || $home_url === null ) {
+				// phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log -- Desired production debug logging.
 				error_log( sprintf( 'Error parsing the home url [%1$s].', home_url() ) );
 				Checkview_Admin_Logs::add( 'ip-logs', sprintf( 'Error parsing the home url [%1$s].', home_url() ) );
 
@@ -727,6 +731,7 @@ if ( ! function_exists( 'checkview_whitelist_api_ip' ) ) {
 			}
 
 			if ( is_array( $home_url ) && ! isset( $home_url['host'] ) ) {
+				// phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log -- Desired production debug logging.
 				error_log( sprintf( 'Cannot determine host when parsing URL [%1$s].', json_encode( $home_url ) ) );
 				Checkview_Admin_Logs::add( 'ip-logs', sprintf( 'Cannot determine host when parsing URL [%1$s].', json_encode( $home_url ) ) );
 
@@ -740,6 +745,7 @@ if ( ! function_exists( 'checkview_whitelist_api_ip' ) ) {
 
 			if ( is_array( $antispam_ips ) ) {
 				if ( ! isset( $antispam_ips[ $host_name ] ) ) {
+					// phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log -- Desired production debug logging.
 					error_log( 'No host name found in Antispam IP list.' );
 
 					// If the host name is not in the whitelist, request to add our IPs/hosts.
@@ -793,6 +799,7 @@ if ( ! function_exists( 'checkview_whitelist_api_ip' ) ) {
 							checkview_add_to_cleantalk( $user_token, 'antispam', 'test-mail.checkview.io', 4, $service_id );
 						}
 					} else {
+						// phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log -- Desired production debug logging.
 						error_log( sprintf( 'The value for antispam IPs at hostname [%1$s] is not an array.', $host_name ) );
 						Checkview_Admin_Logs::add( 'ip-logs', sprintf( 'The value for antispam IPs at hostname [%1$s] is not an array.', $host_name ) );
 					}
@@ -804,6 +811,7 @@ if ( ! function_exists( 'checkview_whitelist_api_ip' ) ) {
 
 			if ( is_array( $spamfirewall_ips ) ) {
 				if ( ! isset( $spamfirewall_ips[ $host_name ] ) ) {
+					// phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log -- Desired production debug logging.
 					error_log( 'No host name found in Spam Firewall IP list.' );
 
 					// If host name is not set, request to add it.
@@ -822,6 +830,7 @@ if ( ! function_exists( 'checkview_whitelist_api_ip' ) ) {
 						checkview_add_to_cleantalk( $user_token, 'spamfirewall', $current_ip, 6, $service_id );
 					}
 				} else {
+					// phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log -- Desired production debug logging.
 					error_log( sprintf( 'Value for spam firewall IPs at hostname [%1$s] is unexpected type [%2$s], expected array.', $host_name, gettype( $antispam_ips[ $host_name ] ) ) );
 					Checkview_Admin_Logs::add( 'ip-logs', sprintf( 'Value for spam firewall IPs at hostname [%1$s] is unexpected type [%2$s], expected array.', $host_name, gettype( $antispam_ips[ $host_name ] ) ) );
 				}
@@ -845,6 +854,7 @@ if ( ! function_exists( 'checkview_add_to_cleantalk' ) ) {
 	 * @return mixed
 	 */
 	function checkview_add_to_cleantalk( $user_token, $service_type, $record, $record_type, $service_id ) {
+		// phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log -- Desired production debug logging.
 		error_log(
 			sprintf(
 				'Adding record [%1$s] with type [%2$s] and service type [%3$s] to CleanTalk\'s API with service id [%4$s]',
@@ -869,6 +879,7 @@ if ( ! function_exists( 'checkview_add_to_cleantalk' ) ) {
 		delete_transient( 'checkview_whitelisted_ips_' . $service_type );
 
 		if ( is_wp_error( $response ) ) {
+			// phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log -- Desired production debug logging.
 			error_log( 'Request failed: ' . $response->get_error_message() );
 			return null;
 		}
@@ -1784,9 +1795,11 @@ if ( ! function_exists( 'checkview_update_option' ) ) {
 		$result     = update_option( $option, $value, $autoload );
 
 		if ( $result ) {
+			// phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_print_r -- Desired production debug logging.
 			Checkview_Admin_Logs::add( 'ip-logs', 'Updated option [' . $option . '] with value [' . print_r( $value, true ) . '].' );
 		} elseif ( $old_option !== false && $old_option !== $value && maybe_serialize( $old_option ) !== maybe_serialize( $value ) ) {
-				Checkview_Admin_Logs::add( 'ip-logs', 'Failed updating option [' . $option . '] with value [' . print_r( $value, true ) . '].' );
+			// phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_print_r -- Desired production debug logging.
+			Checkview_Admin_Logs::add( 'ip-logs', 'Failed updating option [' . $option . '] with value [' . print_r( $value, true ) . '].' );
 		}
 
 		return $result;

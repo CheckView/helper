@@ -99,6 +99,7 @@ function checkview_invalidate_opcache( $reason = '' ) {
 		}
 	}
 
+	// phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log -- Desired production debug logging.
 	error_log( sprintf( '[CheckView] OPcache invalidated %d PHP files in %s (reason: %s)', $count, $dir, $reason ?: 'unspecified' ) );
 }
 

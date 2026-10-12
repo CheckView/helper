@@ -629,6 +629,7 @@ if ( ! class_exists( 'Checkview_Formidable_Helper' ) ) {
 									if ( is_array( $val ) ) {
 										$field_options[ $key ]['field_id'] = $field_id . '-' . $key;
 									} else {
+										// phpcs:ignore WordPress.PHP.DevelopmentFunctions -- Desired production debug logging.
 										error_log( "Non-array value detected in field_options for field '{$field_id}', key '{$key}': " . print_r( $val, true ) );
 									}
 								}
@@ -651,6 +652,7 @@ if ( ! class_exists( 'Checkview_Formidable_Helper' ) ) {
 									if ( is_array( $val ) ) {
 										$field_options[ $key ]['field_id'] = $field_id . '-' . $key;
 									} else {
+										// phpcs:ignore WordPress.PHP.DevelopmentFunctions -- Desired production debug logging.
 										error_log( "Non-array value detected in field_options for field '{$field_id}', key '{$key}': " . print_r( $val, true ) );
 									}
 								}

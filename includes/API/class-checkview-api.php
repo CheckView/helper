@@ -1207,8 +1207,6 @@ class CheckView_Api {
 				esc_html__( 'Invalid request.', 'checkview' ),
 			);
 		}
-		// Temporarily suppress errors.
-		$previous_error_reporting = error_reporting( 0 );
 
 		if ( '' !== $forms_list && null !== $forms_list && false !== $forms_list && ! $is_local ) {
 			return new WP_REST_Response(
