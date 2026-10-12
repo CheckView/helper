@@ -328,7 +328,7 @@ class Checkview_Admin {
 			return $result;
 		}
 
-		// Disable caching layers for this specific request
+		// Disable caching layers for this specific request.
 
 		// phpcs:disable WordPress.NamingConventions.PrefixAllGlobals -- WordPress constants
 		if ( ! defined( 'DONOTCACHEPAGE' ) ) {
@@ -344,8 +344,7 @@ class Checkview_Admin {
 		}
 		// phpcs:enable
 
-		// Ignore Redis/Memcached
-
+		// Ignore Redis/Memcached.
 		if ( function_exists( 'wp_using_ext_object_cache' ) ) {
 			wp_using_ext_object_cache( false );
 		}

@@ -1876,7 +1876,7 @@ class CheckView_Api {
 			$table_name    = $wpdb->prefix . 'cv_entry';
 			$query         = $wpdb->prepare( 'Select * from ' . $table_name . ' where uid=%s', $uid );
 			$query_as_json = wp_json_encode( array( 'query' => $query ) );
-			$result        = $wpdb->get_row( $query ); // We expect an object
+			$result        = $wpdb->get_row( $query );
 
 			if ( is_null( $result ) ) {
 				// Check if a session still exists for this test ID.
@@ -1920,7 +1920,7 @@ class CheckView_Api {
 			$table_name         = $wpdb->prefix . 'cv_entry_meta';
 			$query              = $wpdb->prepare( 'Select * from ' . $table_name . ' where uid=%s order by id ASC', $uid );
 			$meta_query_as_json = wp_json_encode( array( 'query' => $query ) );
-			$rows               = $wpdb->get_results( $query ); // We expect an array of objects
+			$rows               = $wpdb->get_results( $query );
 
 			if ( is_null( $rows ) ) {
 				Checkview_Admin_Logs::add( 'api-logs', 'Failed to find test results (query [' . $meta_query_as_json . '] returned null).' );

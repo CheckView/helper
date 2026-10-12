@@ -137,10 +137,10 @@ if ( ! class_exists( 'Checkview_Cf7_Helper' ) ) {
 				99
 			);
 
-			// Set Piped values back to original values for required select fields
+			// Set Piped values back to original values for required select fields.
 			add_filter( 'wpcf7_posted_data_select*', array( $this, 'checkview_handled_cf7_piped_data' ), 99, 3 );
 
-			// Set Piped values back to original values for optional select fields
+			// Set Piped values back to original values for optional select fields.
 			add_filter( 'wpcf7_posted_data_select', array( $this, 'checkview_handled_cf7_piped_data' ), 99, 3 );
 
 			// disable_actions enumeration: when the flow's disable_actions flag

@@ -629,7 +629,7 @@ class Checkview_Woo_Automated_Testing {
 			// The plugin checks for a token and throws before calling cfturnstile_check()
 			// where our cfturnstile_whitelisted filter lives. Adding 'checkview' to the
 			// skipped payment methods list makes turnstile skip validation entirely.
-			// @since 2.0.30
+			// Since 2.0.30.
 			add_filter(
 				'option_cfturnstile_selected_payment_methods',
 				function ( $methods ) {
@@ -1436,10 +1436,10 @@ class Checkview_Woo_Automated_Testing {
 	 */
 	public function checkview_stamp_order_meta( $order_id ) {
 		if ( ! defined( 'CHECKVIEW_TEST_ID' ) || ! CHECKVIEW_TEST_ID ) {
-			return; // not a CheckView test request
+			return; // Not a CheckView test request.
 		}
 		if ( ! function_exists( 'wc_get_order' ) ) {
-			return; // WC not loaded; bail safely
+			return; // WC not loaded; bail safely.
 		}
 		// Don't stamp orders that are being torn down by the cleanup cron —
 		// `$order->delete()` fires save() hooks during the delete sequence,
@@ -1528,7 +1528,7 @@ class Checkview_Woo_Automated_Testing {
 	 */
 	public function checkview_schedule_order_cleanup( $order_id, $old_status, $new_status ) {
 		if ( ! defined( 'CHECKVIEW_TEST_ID' ) || ! CHECKVIEW_TEST_ID ) {
-			return; // not a test request
+			return; // Not a test request.
 		}
 		if ( ! function_exists( 'wc_get_order' ) ) {
 			return;
@@ -1536,7 +1536,7 @@ class Checkview_Woo_Automated_Testing {
 
 		$order = wc_get_order( $order_id );
 		if ( ! $order || $order->get_meta( CheckView::PARAM_TEST_ID ) !== CHECKVIEW_TEST_ID ) {
-			return; // not OUR test order
+			return; // Not OUR test order.
 		}
 
 		checkview_schedule_delete_orders( $order_id );
@@ -1589,7 +1589,7 @@ class Checkview_Woo_Automated_Testing {
 	 */
 	public function checkview_complete_test_deferred() {
 		if ( ! defined( 'CHECKVIEW_TEST_ID' ) || ! CHECKVIEW_TEST_ID ) {
-			return; // not a test request — don't delete options with empty key
+			return; // Not a test request — don't delete options with empty key.
 		}
 
 		$completion_fired = did_action( 'woocommerce_new_order' )

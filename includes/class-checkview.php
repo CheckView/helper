@@ -243,9 +243,9 @@ class CheckView {
 		$test_type = self::test_type();
 		$result    = $test_type && $verified;
 
-		// Only log during actual tests
+		// Only log during actual tests.
 		if ( isset( $_REQUEST[ self::PARAM_TEST_ID ] ) && self::should_log_bot_check( $result ) ) {
-			// Sanitize for logging: remove control chars, limit length
+			// Sanitize for logging: remove control chars, limit length.
 			$sanitize = function ( $val, $max_len = 200 ) {
 				$str = preg_replace( '/[\x00-\x1F\x7F]/', '', strval( $val ) );
 				if ( null === $str ) {
@@ -258,7 +258,7 @@ class CheckView {
 			$test_id         = substr( sanitize_text_field( wp_unslash( $_REQUEST[ self::PARAM_TEST_ID ] ) ), 0, 36 );
 			$safe_visitor_ip = $sanitize( $visitor_ip, 45 );
 
-			// Collect IP headers
+			// Collect IP headers.
 			$headers = array();
 			$cf      = $sanitize( isset( $_SERVER['HTTP_CF_CONNECTING_IP'] ) ? $_SERVER['HTTP_CF_CONNECTING_IP'] : '', 45 );
 			$xff     = $sanitize( isset( $_SERVER['HTTP_X_FORWARDED_FOR'] ) ? $_SERVER['HTTP_X_FORWARDED_FOR'] : '', 100 );
@@ -380,19 +380,13 @@ class CheckView {
 	 * @access private
 	 */
 	private function load_dependencies() {
-		// WordPress Core
 		if ( ! function_exists( 'is_plugin_active' ) ) {
 			include_once ABSPATH . 'wp-admin/includes/plugin.php';
 		}
 
-		// WordPress Core
 		require_once ABSPATH . 'wp-admin/includes/class-wp-filesystem-base.php';
 		require_once ABSPATH . 'wp-admin/includes/class-wp-filesystem-direct.php';
-
-		// Vendor
 		require_once plugin_dir_path( __DIR__ ) . 'includes/vendor/autoload.php';
-
-		// CheckView
 		require_once plugin_dir_path( __DIR__ ) . 'includes/checkview-functions.php';
 		require_once plugin_dir_path( __DIR__ ) . 'includes/class-checkview-loader.php';
 		require_once plugin_dir_path( __DIR__ ) . 'admin/class-checkview-admin.php';
@@ -402,10 +396,8 @@ class CheckView {
 
 		$this->loader = new Checkview_Loader();
 
-		// Current visitor IP.
 		$visitor_ip = checkview_get_visitor_ip();
 		$woo_helper = '';
-		// Check view Bot IP.
 		$cv_bot_ip = checkview_get_api_ip();
 
 		// TODO: What is this for?

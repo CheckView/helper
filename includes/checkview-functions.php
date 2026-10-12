@@ -397,7 +397,7 @@ if ( ! function_exists( 'checkview_is_suppressible_test_order' ) ) {
 			if ( is_numeric( $order ) ) {
 				$order = wc_get_order( $order );
 			} else {
-				return false; // not an order ID we can resolve
+				return false; // Not an order ID we can resolve.
 			}
 		}
 		if ( ! is_object( $order ) || ! method_exists( $order, 'get_meta' ) ) {
@@ -773,7 +773,6 @@ if ( ! function_exists( 'checkview_whitelist_api_ip' ) ) {
 							function ( $value, $key ) {
 								$position = strpos( $value, 'checkview.io' );
 
-								// Skip test-mail domain
 								if ( $value === 'test-mail.checkview.io' ) {
 									return false;
 								}
@@ -942,7 +941,6 @@ if ( ! function_exists( 'checkview_create_cv_session' ) ) {
 			return;
 		}
 
-		// Check if already exists (get_cv_session handles its own logging)
 		$already_have = checkview_get_cv_session( $ip, $test_id );
 		if ( ! empty( $already_have ) ) {
 			return;
@@ -1003,8 +1001,6 @@ if ( ! function_exists( 'checkview_create_cv_session' ) ) {
 		);
 
 		$result = $wpdb->insert( $session_table, $session_data );
-
-		// Log create/fail
 		$safe_ip   = preg_replace( '/[^0-9a-fA-F.:,]/', '', substr( $ip, 0, 45 ) );
 		$safe_test = substr( $test_id, 0, 8 );
 
@@ -1061,7 +1057,7 @@ if ( ! function_exists( 'checkview_get_cv_session' ) ) {
 			ARRAY_A
 		);
 
-		// Log once per IP+test combo per request, only for valid UUIDs
+		// Log once per IP+test combo per request, only for valid UUIDs.
 		$log_key = $ip . '|' . $test_id;
 		if ( checkview_is_valid_uuid( $test_id ) && ! isset( $logged_this_request[ $log_key ] ) ) {
 			$logged_this_request[ $log_key ] = true;

@@ -468,19 +468,19 @@ if ( ! class_exists( 'Checkview_Gforms_Helper' ) ) {
 				array(
 					// GF core `GF_Field_CAPTCHA` (Really Simple CAPTCHA /
 					// math captcha): "The CAPTCHA wasn't entered correctly…"
-					// Source: gravityforms/includes/fields/class-gf-field-captcha.php:216,252
+					// Source: gravityforms/includes/fields/class-gf-field-captcha.php:216,252.
 					'captcha',
 					// GF reCAPTCHA Add-On default: "The reCAPTCHA was invalid…"
 					// Source: gravityforms/includes/fields/class-gf-field-captcha.php:293
-					// (defense-in-depth alongside `unhook_gf_recaptcha_addon()`)
+					// (defense-in-depth alongside `unhook_gf_recaptcha_addon()`).
 					'recaptcha',
 					// Simple Cloudflare Turnstile default: "Please verify
 					// that you are human." `are you human` is a substring.
-					// Source: simple-cloudflare-turnstile/inc/errors.php:95
+					// Source: simple-cloudflare-turnstile/inc/errors.php:95.
 					'are you human',
 					// Maspik default: "This looks like spam. Try to rephrase…"
 					// The plugin slug never appears in the user-facing message.
-					// Source: contact-forms-anti-spam/includes/functions.php:1281
+					// Source: contact-forms-anti-spam/includes/functions.php:1281.
 					'looks like spam',
 				)
 			);

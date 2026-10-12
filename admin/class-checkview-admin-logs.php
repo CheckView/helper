@@ -567,9 +567,9 @@ class Checkview_Admin_Logs {
 					$sanitize_table[ chr( $i ) ] = ' ';
 				}
 				// HTML/browser log viewers render these as line breaks.
-				$sanitize_table["\xC2\x85"]     = ' '; // U+0085 NEL
-				$sanitize_table["\xE2\x80\xA8"] = ' '; // U+2028 LINE SEPARATOR
-				$sanitize_table["\xE2\x80\xA9"] = ' '; // U+2029 PARAGRAPH SEPARATOR
+				$sanitize_table["\xC2\x85"]     = ' '; // U+0085 NEL.
+				$sanitize_table["\xE2\x80\xA8"] = ' '; // U+2028 LINE SEPARATOR.
+				$sanitize_table["\xE2\x80\xA9"] = ' '; // U+2029 PARAGRAPH SEPARATOR.
 			}
 			$message = strtr( $message, $sanitize_table );
 		}

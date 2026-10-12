@@ -506,7 +506,7 @@ if ( ! class_exists( 'Checkview_Fluent_Forms_Helper' ) ) {
 		public static function static_ids( $html ) {
 			$map = array();
 
-			// Build map of old IDs to new IDs
+			// Build map of old IDs to new IDs.
 			preg_match_all( '/\bid=[\'"]([^\'"]+)[\'"]/', $html, $matches );
 			foreach ( $matches[1] as $oldId ) {
 				if ( ! isset( $map[ $oldId ] ) ) {
@@ -514,7 +514,7 @@ if ( ! class_exists( 'Checkview_Fluent_Forms_Helper' ) ) {
 				}
 			}
 
-			// Replace both id= and for= attributes
+			// Replace both id= and for= attributes.
 			foreach ( $map as $oldId => $newId ) {
 				$html = str_replace(
 					array( 'id="' . $oldId . '"', "id='" . $oldId . "'", 'for="' . $oldId . '"', "for='" . $oldId . "'" ),
