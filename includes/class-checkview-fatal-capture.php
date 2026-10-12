@@ -229,12 +229,12 @@ if ( ! class_exists( 'Checkview_Fatal_Capture' ) ) {
 		 * @return string
 		 */
 		private static function test_id() {
-			if ( defined( 'CV_TEST_ID' ) ) {
-				return (string) CV_TEST_ID;
+			if ( defined( 'CHECKVIEW_TEST_ID' ) ) {
+				return (string) CHECKVIEW_TEST_ID;
 			}
 
-			if ( function_exists( 'get_checkview_test_id' ) ) {
-				$test_id = get_checkview_test_id();
+			if ( function_exists( 'checkview_get_test_id' ) ) {
+				$test_id = checkview_get_test_id();
 
 				if ( $test_id ) {
 					return (string) $test_id;

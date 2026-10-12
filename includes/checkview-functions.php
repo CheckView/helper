@@ -195,7 +195,8 @@ if ( ! function_exists( 'checkview_validate_jwt_token' ) ) {
 		return $jwt['_checkview_nonce'];
 	}
 }
-if ( ! function_exists( 'get_checkview_test_id' ) ) {
+
+if ( ! function_exists( 'checkview_get_test_id' ) ) {
 	/**
 	 * Gets a test ID from the request.
 	 *
@@ -204,7 +205,7 @@ if ( ! function_exists( 'get_checkview_test_id' ) ) {
 	 *
 	 * @return string|false Test ID, or `false` on failure.
 	 */
-	function get_checkview_test_id() {
+	function checkview_get_test_id() {
 		$cv_test_id = isset( $_REQUEST[ CheckView::PARAM_TEST_ID ] ) ? sanitize_text_field( wp_unslash( $_REQUEST[ CheckView::PARAM_TEST_ID ] ) ) : '';
 
 		if ( ! empty( $cv_test_id ) ) {
@@ -234,7 +235,7 @@ if ( ! function_exists( 'get_checkview_test_id' ) ) {
 	}
 }
 
-if ( ! function_exists( 'complete_checkview_test' ) ) {
+if ( ! function_exists( 'checkview_complete_test' ) ) {
 	/**
 	 * Concludes a test.
 	 *
@@ -244,24 +245,24 @@ if ( ! function_exists( 'complete_checkview_test' ) ) {
 	 * @param string $checkview_test_id Test ID.
 	 * @return void
 	 */
-	function complete_checkview_test( string $checkview_test_id = '' ) {
+	function checkview_complete_test( string $checkview_test_id = '' ) {
 		global $wpdb;
 
 		Checkview_Admin_Logs::add( 'ip-logs', 'Completing test...' );
 
-		if ( ! defined( 'CV_TEST_ID' ) ) {
-			define( 'CV_TEST_ID', $checkview_test_id );
+		if ( ! defined( 'CHECKVIEW_TEST_ID' ) ) {
+			define( 'CHECKVIEW_TEST_ID', $checkview_test_id );
 		}
 
 		$session_table = $wpdb->prefix . 'cv_session';
 		$visitor_ip    = checkview_get_visitor_ip();
-		$cv_session    = checkview_get_cv_session( $visitor_ip, CV_TEST_ID );
+		$cv_session    = checkview_get_cv_session( $visitor_ip, CHECKVIEW_TEST_ID );
 
 		// Stop if session not found.
 		if ( ! empty( $cv_session ) ) {
 			$test_key = $cv_session[0]['test_key'];
 
-			cv_delete_option( $test_key );
+			checkview_delete_option( $test_key );
 		}
 
 		$result = $wpdb->delete(
@@ -311,9 +312,9 @@ if ( ! function_exists( 'complete_checkview_test' ) ) {
 			}
 		}
 
-		cv_delete_option( $checkview_test_id . '_wsf_entry_id' );
-		cv_delete_option( $checkview_test_id . '_wsf_frm_id' );
-		cv_delete_option( $visitor_ip );
+		checkview_delete_option( $checkview_test_id . '_wsf_entry_id' );
+		checkview_delete_option( $checkview_test_id . '_wsf_frm_id' );
+		checkview_delete_option( $visitor_ip );
 
 		// setcookie() silently fails when headers have been sent (which is the
 		// norm at shutdown time, the new deferred caller). Form-helper sync
@@ -326,28 +327,28 @@ if ( ! function_exists( 'complete_checkview_test' ) ) {
 			setcookie( CheckView::PARAM_TEST_TYPE, '', time() - 6600, COOKIEPATH, COOKIE_DOMAIN );
 		}
 
-		cv_delete_option( 'disable_actions_' . $checkview_test_id );
-		cv_delete_option( 'disable_email_receipt_' . $checkview_test_id );
-		cv_delete_option( 'disable_webhooks_' . $checkview_test_id );
-		cv_delete_option( 'allow_original_recipients_' . $checkview_test_id );
-		cv_delete_option( 'allow_original_recipients_set_at_' . $checkview_test_id );
+		checkview_delete_option( 'disable_actions_' . $checkview_test_id );
+		checkview_delete_option( 'disable_email_receipt_' . $checkview_test_id );
+		checkview_delete_option( 'disable_webhooks_' . $checkview_test_id );
+		checkview_delete_option( 'allow_original_recipients_' . $checkview_test_id );
+		checkview_delete_option( 'allow_original_recipients_set_at_' . $checkview_test_id );
 
 		// Legacy cleanup: remove global options from before per-test scoping.
-		cv_delete_option( 'disable_actions' );
-		cv_delete_option( 'disable_email_receipt' );
-		cv_delete_option( 'disable_webhooks' );
-		cv_delete_option( 'allow_original_recipients' );
-		cv_delete_option( 'allow_original_recipients_set_at' );
+		checkview_delete_option( 'disable_actions' );
+		checkview_delete_option( 'disable_email_receipt' );
+		checkview_delete_option( 'disable_webhooks' );
+		checkview_delete_option( 'allow_original_recipients' );
+		checkview_delete_option( 'allow_original_recipients_set_at' );
 
 		// Legacy cleanup: remove orphaned captcha backup keys from old code.
-		cv_delete_option( 'checkview_wpforms_turnstile-site-key' );
-		cv_delete_option( 'checkview_wpforms_turnstile-secret-key' );
+		checkview_delete_option( 'checkview_wpforms_turnstile-site-key' );
+		checkview_delete_option( 'checkview_wpforms_turnstile-secret-key' );
 
 		Checkview_Admin_Logs::add( 'ip-logs', 'Test complete.' );
 	}
 }
 
-if ( ! function_exists( 'cv_is_suppressible_test_order' ) ) {
+if ( ! function_exists( 'checkview_is_suppressible_test_order' ) ) {
 	/**
 	 * Determines whether webhooks/actions on a WooCommerce order should be
 	 * suppressed because the order belongs to an active CheckView test.
@@ -355,11 +356,11 @@ if ( ! function_exists( 'cv_is_suppressible_test_order' ) ) {
 	 * Implements the safety invariant: suppression engages only when BOTH
 	 *   (1) the order has a valid `checkview_test_id` UUID meta (set by
 	 *       `checkview_stamp_order_meta` at order creation time when
-	 *       `CV_TEST_ID` was defined), AND
+	 *       `CHECKVIEW_TEST_ID` was defined), AND
 	 *   (2) a per-test option (`disable_webhooks_<uuid>` or
 	 *       `disable_actions_<uuid>`) is still set to `'true'` (test is still
 	 *       active in our system; cleanup happens at request end via
-	 *       `complete_checkview_test`).
+	 *       `checkview_complete_test`).
 	 *
 	 * Either condition missing → fall through, deliver the webhook / fire the
 	 * action. Default-on safety, not default-off.
@@ -382,7 +383,7 @@ if ( ! function_exists( 'cv_is_suppressible_test_order' ) ) {
 	 *
 	 * @return bool True if suppression should engage, false otherwise.
 	 */
-	function cv_is_suppressible_test_order( $order ) {
+	function checkview_is_suppressible_test_order( $order ) {
 		// H8 kill switch — incident response escape hatch.
 		if ( get_option( 'cv_suppression_kill_switch' ) === 'true' ) {
 			return false;
@@ -1751,7 +1752,7 @@ if ( ! function_exists( 'array_find' ) ) {
 	 * @param callable $callback The callback function to test each element.
 	 * @return mixed The first matching element, or null if none found.
 	 */
-	function array_find( array $array, callable $callback ) {
+	function array_find( array $array, callable $callback ) { // phpcs:ignore WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedFunctionFound -- PHP parity.
 		foreach ( $array as $key => $value ) {
 			if ( $callback( $value, $key ) ) {
 				return $value;
@@ -1762,7 +1763,7 @@ if ( ! function_exists( 'array_find' ) ) {
 	}
 }
 
-if ( ! function_exists( 'cv_update_option' ) ) {
+if ( ! function_exists( 'checkview_update_option' ) ) {
 	/**
 	 * Updates an option in WordPress.
 	 *
@@ -1778,7 +1779,7 @@ if ( ! function_exists( 'cv_update_option' ) ) {
 	 *
 	 * @return boolean True if the value was updated, false otherwise.
 	 */
-	function cv_update_option( $option, $value, $autoload = null ) {
+	function checkview_update_option( $option, $value, $autoload = null ) {
 		$old_option = get_option( $option );
 		$result     = update_option( $option, $value, $autoload );
 
@@ -1792,7 +1793,7 @@ if ( ! function_exists( 'cv_update_option' ) ) {
 	}
 }
 
-if ( ! function_exists( 'cv_delete_option' ) ) {
+if ( ! function_exists( 'checkview_delete_option' ) ) {
 	/**
 	 * Deletes an option in WordPress.
 	 *
@@ -1806,7 +1807,7 @@ if ( ! function_exists( 'cv_delete_option' ) ) {
 	 *
 	 * @return boolean True if the value was deleted, false otherwise.
 	 */
-	function cv_delete_option( $option ) {
+	function checkview_delete_option( $option ) {
 		$current_option = get_option( $option );
 
 		if ( false !== $current_option ) {
@@ -1916,7 +1917,8 @@ if ( ! function_exists( 'checkview_truncate_meta_key' ) ) {
 			: substr( $key, 0, 255 );
 	}
 }
-if ( ! function_exists( 'cv_should_allow_original_recipients' ) ) {
+
+if ( ! function_exists( 'checkview_should_allow_original_recipients' ) ) {
 	/**
 	 * Determines whether append-mode is active for the current request.
 	 *
@@ -1936,11 +1938,11 @@ if ( ! function_exists( 'cv_should_allow_original_recipients' ) ) {
 	 *
 	 * @return boolean True if append-mode should fire, false otherwise.
 	 */
-	function cv_should_allow_original_recipients() {
+	function checkview_should_allow_original_recipients() {
 		// Keyed by test id so two concurrent tests cannot read each other's
 		// setting. Without a resolvable test id there is nothing to authorise
 		// append-mode against, so fail closed.
-		$cv_test_id = function_exists( 'get_checkview_test_id' ) ? get_checkview_test_id() : '';
+		$cv_test_id = function_exists( 'checkview_get_test_id' ) ? checkview_get_test_id() : '';
 		if ( empty( $cv_test_id ) ) {
 			return false;
 		}
@@ -1957,7 +1959,7 @@ if ( ! function_exists( 'cv_should_allow_original_recipients' ) ) {
 	}
 }
 
-if ( ! function_exists( 'cv_sanitize_crlf' ) ) {
+if ( ! function_exists( 'checkview_sanitize_crlf' ) ) {
 	/**
 	 * Strips CR and LF characters from a string to prevent email header
 	 * injection.
@@ -1976,7 +1978,7 @@ if ( ! function_exists( 'cv_sanitize_crlf' ) ) {
 	 * @param mixed $value Value to sanitize.
 	 * @return mixed Sanitized value (string with CRLF removed, or input as-is).
 	 */
-	function cv_sanitize_crlf( $value ) {
+	function checkview_sanitize_crlf( $value ) {
 		if ( ! is_string( $value ) ) {
 			return $value;
 		}
@@ -1987,25 +1989,25 @@ if ( ! function_exists( 'cv_sanitize_crlf' ) ) {
 	}
 }
 
-if ( ! function_exists( 'cv_recipients_contain_test_email' ) ) {
+if ( ! function_exists( 'checkview_recipients_contain_test_email' ) ) {
 	/**
-	 * Checks whether TEST_EMAIL is already present in a recipient list,
+	 * Checks whether CHECKVIEW_TEST_EMAIL is already present in a recipient list,
 	 * using proper email-address parsing rather than naive substring match.
 	 *
 	 * Splits on commas (or semicolons), extracts the bare email address from
 	 * each entry (handles "Name <addr>" RFC 2822 format and surrounding
-	 * whitespace), and compares case-insensitively against TEST_EMAIL.
+	 * whitespace), and compares case-insensitively against CHECKVIEW_TEST_EMAIL.
 	 *
-	 * Avoids the substring-collision false positive where TEST_EMAIL might
+	 * Avoids the substring-collision false positive where CHECKVIEW_TEST_EMAIL might
 	 * appear within an unrelated address (e.g., `nottest_id@test-mail.checkview.io`
 	 * incorrectly matching `test_id@test-mail.checkview.io`).
 	 *
 	 * @param array|string $recipients Recipients (array of strings, or comma-/semi-separated string).
 	 *
-	 * @return bool True if any entry's email matches TEST_EMAIL, false otherwise.
+	 * @return bool True if any entry's email matches CHECKVIEW_TEST_EMAIL, false otherwise.
 	 */
-	function cv_recipients_contain_test_email( $recipients ) {
-		if ( ! defined( 'TEST_EMAIL' ) ) {
+	function checkview_recipients_contain_test_email( $recipients ) {
+		if ( ! defined( 'CHECKVIEW_TEST_EMAIL' ) ) {
 			return false;
 		}
 
@@ -2015,7 +2017,7 @@ if ( ! function_exists( 'cv_recipients_contain_test_email' ) ) {
 			$entries = preg_split( '/[,;]/', (string) $recipients );
 		}
 
-		$test_email_lower = strtolower( TEST_EMAIL );
+		$test_email_lower = strtolower( CHECKVIEW_TEST_EMAIL );
 
 		foreach ( $entries as $entry ) {
 			if ( ! is_string( $entry ) ) {
@@ -2040,71 +2042,71 @@ if ( ! function_exists( 'cv_recipients_contain_test_email' ) ) {
 	}
 }
 
-if ( ! function_exists( 'cv_append_test_email_string' ) ) {
+if ( ! function_exists( 'checkview_append_test_email_string' ) ) {
 	/**
-	 * Appends TEST_EMAIL to a comma-separated recipient string with dedup.
+	 * Appends CHECKVIEW_TEST_EMAIL to a comma-separated recipient string with dedup.
 	 *
 	 * Matches the existing replace-mode behavior's data shape: returns a string
-	 * of comma-separated addresses. Skips append if TEST_EMAIL is already
+	 * of comma-separated addresses. Skips append if CHECKVIEW_TEST_EMAIL is already
 	 * present (defensive against double-firing filter chains and customer
 	 * misconfiguration).
 	 *
 	 * @param string $recipients Existing comma-separated recipients (may be empty).
 	 *
-	 * @return string Recipients with TEST_EMAIL appended (or unchanged if dedup hit).
+	 * @return string Recipients with CHECKVIEW_TEST_EMAIL appended (or unchanged if dedup hit).
 	 */
-	function cv_append_test_email_string( $recipients ) {
-		if ( ! defined( 'TEST_EMAIL' ) ) {
+	function checkview_append_test_email_string( $recipients ) {
+		if ( ! defined( 'CHECKVIEW_TEST_EMAIL' ) ) {
 			return $recipients;
 		}
 		if ( empty( $recipients ) ) {
-			return TEST_EMAIL;
+			return CHECKVIEW_TEST_EMAIL;
 		}
-		if ( cv_recipients_contain_test_email( $recipients ) ) {
-			return cv_sanitize_crlf( $recipients );
+		if ( checkview_recipients_contain_test_email( $recipients ) ) {
+			return checkview_sanitize_crlf( $recipients );
 		}
 		// Strip CRLF from existing recipient string before concatenation to
 		// prevent header injection if the customer's form data contains
 		// embedded line breaks.
-		$sanitized = cv_sanitize_crlf( $recipients );
-		return rtrim( $sanitized, ", \t" ) . ',' . TEST_EMAIL;
+		$sanitized = checkview_sanitize_crlf( $recipients );
+		return rtrim( $sanitized, ", \t" ) . ',' . CHECKVIEW_TEST_EMAIL;
 	}
 }
 
-if ( ! function_exists( 'cv_append_test_email_array' ) ) {
+if ( ! function_exists( 'checkview_append_test_email_array' ) ) {
 	/**
-	 * Appends TEST_EMAIL to a recipient array with dedup.
+	 * Appends CHECKVIEW_TEST_EMAIL to a recipient array with dedup.
 	 *
 	 * @param mixed $recipients Existing recipients (array or scalar — coerced to array).
 	 *
-	 * @return array Recipients with TEST_EMAIL appended (or unchanged if dedup hit).
+	 * @return array Recipients with CHECKVIEW_TEST_EMAIL appended (or unchanged if dedup hit).
 	 */
-	function cv_append_test_email_array( $recipients ) {
-		if ( ! defined( 'TEST_EMAIL' ) ) {
+	function checkview_append_test_email_array( $recipients ) {
+		if ( ! defined( 'CHECKVIEW_TEST_EMAIL' ) ) {
 			return is_array( $recipients ) ? $recipients : (array) $recipients;
 		}
 		$list = is_array( $recipients ) ? $recipients : (array) $recipients;
 		// Sanitize each entry — if a customer's form data contains embedded
 		// CRLF in a single recipient entry, downstream wp_mail conversion
 		// could inject headers when the array is joined into a comma string.
-		$list = array_map( 'cv_sanitize_crlf', $list );
-		if ( cv_recipients_contain_test_email( $list ) ) {
+		$list = array_map( 'checkview_sanitize_crlf', $list );
+		if ( checkview_recipients_contain_test_email( $list ) ) {
 			return $list;
 		}
-		$list[] = TEST_EMAIL;
+		$list[] = CHECKVIEW_TEST_EMAIL;
 		return $list;
 	}
 }
 
-if ( ! function_exists( 'cv_inject_reply_to_header' ) ) {
+if ( ! function_exists( 'checkview_inject_reply_to_header' ) ) {
 	/**
-	 * Injects `Reply-To: TEST_EMAIL` into a headers structure when append-mode
-	 * is active. Appends to existing Reply-To rather than replacing.
+	 * Injects `Reply-To: CHECKVIEW_TEST_EMAIL` into a headers structure when
+	 * append-mode is active. Appends to existing Reply-To rather than replacing.
 	 *
 	 * Defends against MTA variance: when the customer's mail server splits
-	 * SMTP delivery per RCPT TO, Postmark may not see TEST_EMAIL in the To
-	 * header. Reply-To injection ensures Postmark's webhook payload always
-	 * carries the test_id-bearing address, which the test-runner's regex
+	 * SMTP delivery per RCPT TO, Postmark may not see CHECKVIEW_TEST_EMAIL
+	 * in the To header. Reply-To injection ensures Postmark's webhook payload
+	 * always carries the test_id-bearing address, which the test-runner's regex
 	 * fallback chain extracts.
 	 *
 	 * Handles both array (e.g. WC, Forminator, Fluent Forms) and string
@@ -2114,11 +2116,11 @@ if ( ! function_exists( 'cv_inject_reply_to_header' ) ) {
 	 *
 	 * @return mixed Headers with Reply-To injected, in the same shape as input.
 	 */
-	function cv_inject_reply_to_header( $headers ) {
-		if ( ! cv_should_allow_original_recipients() ) {
+	function checkview_inject_reply_to_header( $headers ) {
+		if ( ! checkview_should_allow_original_recipients() ) {
 			return $headers;
 		}
-		if ( ! defined( 'TEST_EMAIL' ) ) {
+		if ( ! defined( 'CHECKVIEW_TEST_EMAIL' ) ) {
 			return $headers;
 		}
 
@@ -2146,18 +2148,18 @@ if ( ! function_exists( 'cv_inject_reply_to_header' ) ) {
 			}
 		}
 
-		$test_email_lower = strtolower( TEST_EMAIL );
+		$test_email_lower = strtolower( CHECKVIEW_TEST_EMAIL );
 
 		if ( null === $existing_index ) {
-			$list[] = 'Reply-To: ' . TEST_EMAIL;
+			$list[] = 'Reply-To: ' . CHECKVIEW_TEST_EMAIL;
 		} else {
 			$existing = $list[ $existing_index ];
 
 			// Sanitize CRLF unconditionally — neutralize any header injection
 			// in the existing value before we touch it, regardless of whether
 			// dedup hits or we append. Consistent with the other helpers
-			// (cv_append_test_email_string/array always sanitize).
-			$sanitized               = cv_sanitize_crlf( $existing );
+			// (checkview_append_test_email_string/array always sanitize).
+			$sanitized               = checkview_sanitize_crlf( $existing );
 			$list[ $existing_index ] = $sanitized;
 
 			// Extract addresses already in this Reply-To and check via the
@@ -2169,9 +2171,9 @@ if ( ! function_exists( 'cv_inject_reply_to_header' ) ) {
 				// unconditionally when the form maps no reply-to field, and
 				// appending to it would yield a malformed `Reply-To:, addr`.
 				// Replace the whole header rather than append to nothing.
-				$list[ $existing_index ] = 'Reply-To: ' . TEST_EMAIL;
-			} elseif ( ! cv_recipients_contain_test_email( $value ) ) {
-				$list[ $existing_index ] = rtrim( $sanitized, ", \t" ) . ', ' . TEST_EMAIL;
+				$list[ $existing_index ] = 'Reply-To: ' . CHECKVIEW_TEST_EMAIL;
+			} elseif ( ! checkview_recipients_contain_test_email( $value ) ) {
+				$list[ $existing_index ] = rtrim( $sanitized, ", \t" ) . ', ' . CHECKVIEW_TEST_EMAIL;
 			}
 		}
 

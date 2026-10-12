@@ -49,10 +49,10 @@ if ( ! class_exists( 'Checkview_Fluent_Forms_Helper' ) ) {
 		public function __construct() {
 			$this->loader = new Checkview_Loader();
 
-			$cv_test_id = get_checkview_test_id();
+			$cv_test_id = checkview_get_test_id();
 
 			// Change Email address to our test email.
-			if ( defined( 'TEST_EMAIL' ) && ( ! $cv_test_id || 'true' != get_option( 'disable_email_receipt_' . $cv_test_id, false ) ) ) {
+			if ( defined( 'CHECKVIEW_TEST_EMAIL' ) && ( ! $cv_test_id || 'true' != get_option( 'disable_email_receipt_' . $cv_test_id, false ) ) ) {
 				add_filter(
 					'fluentform/email_to',
 					array( $this, 'checkview_remove_receipt' ),
@@ -68,7 +68,7 @@ if ( ! class_exists( 'Checkview_Fluent_Forms_Helper' ) ) {
 			// the disable flag silently dropped the MTA-variance defense for that
 			// combination. The callback is branch-aware and leaves headers
 			// untouched in the disable path.
-			if ( defined( 'TEST_EMAIL' ) ) {
+			if ( defined( 'CHECKVIEW_TEST_EMAIL' ) ) {
 				add_filter(
 					'fluentform/email_template_header',
 					array( $this, 'checkview_remove_email_header' ),
@@ -78,7 +78,7 @@ if ( ! class_exists( 'Checkview_Fluent_Forms_Helper' ) ) {
 			}
 
 			// Disable email recipients.
-			if ( defined( 'TEST_EMAIL' ) && $cv_test_id && 'true' == get_option( 'disable_email_receipt_' . $cv_test_id, false ) ) {
+			if ( defined( 'CHECKVIEW_TEST_EMAIL' ) && $cv_test_id && 'true' == get_option( 'disable_email_receipt_' . $cv_test_id, false ) ) {
 				add_filter(
 					'fluentform/email_to',
 					array( $this, 'checkview_inject_email' ),
@@ -91,7 +91,7 @@ if ( ! class_exists( 'Checkview_Fluent_Forms_Helper' ) ) {
 			// to avoid same-priority dual-callback race. The `email_to` callbacks
 			// (`checkview_remove_receipt` and `checkview_inject_email`) are
 			// internally branch-aware and switch to append-semantics when
-			// `cv_should_allow_original_recipients()` returns true.
+			// `checkview_should_allow_original_recipients()` returns true.
 
 			// Use before_submission_confirmation instead of submission_inserted because
 			// Fluent Forms wraps submission_inserted in a try-catch that silently
@@ -223,7 +223,7 @@ if ( ! class_exists( 'Checkview_Fluent_Forms_Helper' ) ) {
 		/**
 		 * Appends our test email for test form submissions.
 		 *
-		 * Branch-aware: in append-mode (`cv_should_allow_original_recipients()`
+		 * Branch-aware: in append-mode (`checkview_should_allow_original_recipients()`
 		 * returns true), uses dedup-protected append. Otherwise preserves
 		 * existing partial-append behavior.
 		 *
@@ -234,18 +234,18 @@ if ( ! class_exists( 'Checkview_Fluent_Forms_Helper' ) ) {
 		 * @return string|array Email.
 		 */
 		public function checkview_inject_email( $address, $notification, $submitted_data, $form ) {
-			if ( cv_should_allow_original_recipients() ) {
+			if ( checkview_should_allow_original_recipients() ) {
 				$address = is_array( $address )
-					? cv_append_test_email_array( $address )
-					: cv_append_test_email_string( $address );
+					? checkview_append_test_email_array( $address )
+					: checkview_append_test_email_string( $address );
 				Checkview_Admin_Logs::add( 'ip-logs', 'Append-mode submission recipient email address: ' . wp_json_encode( $address ) );
 				return $address;
 			}
 
 			if ( is_array( $address ) ) {
-				$address[] = TEST_EMAIL;
+				$address[] = CHECKVIEW_TEST_EMAIL;
 			} else {
-				$address .= ', ' . TEST_EMAIL;
+				$address .= ', ' . CHECKVIEW_TEST_EMAIL;
 			}
 
 			Checkview_Admin_Logs::add( 'ip-logs', 'Submission recipient email address: ' . wp_json_encode( $address ) );
@@ -266,16 +266,16 @@ if ( ! class_exists( 'Checkview_Fluent_Forms_Helper' ) ) {
 		 * @return string|array Email.
 		 */
 		public function checkview_remove_receipt( $address, $notification, $submitted_data, $form ) {
-			if ( cv_should_allow_original_recipients() ) {
+			if ( checkview_should_allow_original_recipients() ) {
 				$address = is_array( $address )
-					? cv_append_test_email_array( $address )
-					: cv_append_test_email_string( $address );
+					? checkview_append_test_email_array( $address )
+					: checkview_append_test_email_string( $address );
 				Checkview_Admin_Logs::add( 'ip-logs', 'Append-mode submission recipient email address: ' . wp_json_encode( $address ) );
 				return $address;
 			}
 
-			Checkview_Admin_Logs::add( 'ip-logs', 'Submission recipient email address: ' . wp_json_encode( TEST_EMAIL ) );
-			return TEST_EMAIL;
+			Checkview_Admin_Logs::add( 'ip-logs', 'Submission recipient email address: ' . wp_json_encode( CHECKVIEW_TEST_EMAIL ) );
+			return CHECKVIEW_TEST_EMAIL;
 		}
 
 
@@ -293,8 +293,8 @@ if ( ! class_exists( 'Checkview_Fluent_Forms_Helper' ) ) {
 			// configured in the form"). Inject Reply-To here too — single
 			// callback avoids the same-priority race that splitting into
 			// two callbacks would create.
-			if ( cv_should_allow_original_recipients() ) {
-				$headers = cv_inject_reply_to_header( $headers );
+			if ( checkview_should_allow_original_recipients() ) {
+				$headers = checkview_inject_reply_to_header( $headers );
 				Checkview_Admin_Logs::add( 'ip-logs', 'Append-mode submission email headers (CC/BCC preserved): ' . wp_json_encode( $headers ) );
 				return $headers;
 			}
@@ -302,7 +302,7 @@ if ( ! class_exists( 'Checkview_Fluent_Forms_Helper' ) ) {
 			// Disable-receipt path: the email is already being redirected wholesale,
 			// so leave headers alone. Matches the pre-existing behavior from when
 			// this filter was only registered outside the disable branch.
-			$cv_test_id = get_checkview_test_id();
+			$cv_test_id = checkview_get_test_id();
 			if ( $cv_test_id && 'true' == get_option( 'disable_email_receipt_' . $cv_test_id, false ) ) {
 				return $headers;
 			}
@@ -353,7 +353,7 @@ if ( ! class_exists( 'Checkview_Fluent_Forms_Helper' ) ) {
 			Checkview_Admin_Logs::add( 'ip-logs', 'Cloning submission entry [' . $entry_id . ']...' );
 
 			$form_id           = $form->id;
-			$checkview_test_id = get_checkview_test_id();
+			$checkview_test_id = checkview_get_test_id();
 
 			if ( empty( $checkview_test_id ) ) {
 				$checkview_test_id = $form_id . gmdate( 'Ymd' );
@@ -453,7 +453,7 @@ if ( ! class_exists( 'Checkview_Fluent_Forms_Helper' ) ) {
 					->delete();
 			}
 
-			complete_checkview_test( $checkview_test_id );
+			checkview_complete_test( $checkview_test_id );
 		}
 
 		/**
@@ -464,7 +464,7 @@ if ( ! class_exists( 'Checkview_Fluent_Forms_Helper' ) ) {
 		 * @return array
 		 */
 		public function checkview_disable_form_actions( $notifications, $form_id ) {
-			$cv_test_id = get_checkview_test_id();
+			$cv_test_id = checkview_get_test_id();
 			if ( ! $cv_test_id || 'true' !== get_option( 'disable_actions_' . $cv_test_id, false ) ) {
 				return $notifications;
 			}

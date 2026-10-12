@@ -330,6 +330,7 @@ class Checkview_Admin {
 
 		// Disable caching layers for this specific request
 
+		// phpcs:disable WordPress.NamingConventions.PrefixAllGlobals -- WordPress constants
 		if ( ! defined( 'DONOTCACHEPAGE' ) ) {
 			define( 'DONOTCACHEPAGE', true );
 		}
@@ -341,6 +342,7 @@ class Checkview_Admin {
 		if ( ! defined( 'DONOTCACHEDB' ) ) {
 			define( 'DONOTCACHEDB', true );
 		}
+		// phpcs:enable
 
 		// Ignore Redis/Memcached
 
@@ -429,7 +431,7 @@ class Checkview_Admin {
 			return;
 		}
 
-		$cv_test_id = get_checkview_test_id();
+		$cv_test_id = checkview_get_test_id();
 		if ( empty( $cv_test_id ) ) {
 			Checkview_Admin_Logs::add( 'ip-logs', 'Reached test init but could not get test ID.' );
 			return;
@@ -489,12 +491,12 @@ class Checkview_Admin {
 				if ( ! in_array( $visitor_ip, $ect_ip_address_array ) ) {
 					$ect_ip_address .= "\n" . $visitor_ip;
 
-					cv_update_option( 'ecft_ip_address', $ect_ip_address );
+					checkview_update_option( 'ecft_ip_address', $ect_ip_address );
 				}
 			} else {
 				$ect_ip_address = $visitor_ip;
 
-				cv_update_option( 'ecft_ip_address', $ect_ip_address );
+				checkview_update_option( 'ecft_ip_address', $ect_ip_address );
 			}
 		}
 
@@ -511,7 +513,7 @@ class Checkview_Admin {
 				$captcha_ip_range[] = $visitor_ip;
 
 				// Save the updated list back to the database.
-				cv_update_option( 'captcha_ip_range_opt', implode( ',', $captcha_ip_range ) );
+				checkview_update_option( 'captcha_ip_range_opt', implode( ',', $captcha_ip_range ) );
 			}
 		}
 
@@ -532,9 +534,9 @@ class Checkview_Admin {
 				$captcha_ip_range[] = $visitor_ip;
 				if ( count( $captcha_ip_range ) > 1 ) {
 					// Save the updated list back to the database.
-					cv_update_option( 'i13_recapcha_ip_to_skip_captcha', implode( ',', $captcha_ip_range ) );
+					checkview_update_option( 'i13_recapcha_ip_to_skip_captcha', implode( ',', $captcha_ip_range ) );
 				} else {
-					cv_update_option( 'i13_recapcha_ip_to_skip_captcha', $visitor_ip );
+					checkview_update_option( 'i13_recapcha_ip_to_skip_captcha', $visitor_ip );
 				}
 			}
 		}
@@ -554,7 +556,7 @@ class Checkview_Admin {
 			// Create session for later use when form submit VIA AJAX.
 			checkview_create_cv_session( $visitor_ip, $cv_test_id );
 
-			cv_update_option( $visitor_ip, 'checkview-saas', true );
+			checkview_update_option( $visitor_ip, 'checkview-saas', true );
 		}
 
 		if ( ! empty( $cv_test_id ) && ! checkview_is_valid_uuid( $cv_test_id ) ) {
@@ -588,7 +590,7 @@ class Checkview_Admin {
 		if ( ! empty( $cv_test_id ) ) {
 			$send_to = $cv_test_id . '@test-mail.checkview.io';
 		} else {
-			$cv_test_id = get_checkview_test_id();
+			$cv_test_id = checkview_get_test_id();
 			if ( ! empty( $cv_test_id ) ) {
 				$send_to = $cv_test_id . '@test-mail.checkview.io';
 			} else {
@@ -608,27 +610,27 @@ class Checkview_Admin {
 				$send_to = $test_form['send_to'];
 			}
 
-			if ( ! defined( 'CV_TEST_ID' ) ) {
-				define( 'CV_TEST_ID', $cv_test_id );
+			if ( ! defined( 'CHECKVIEW_TEST_ID' ) ) {
+				define( 'CHECKVIEW_TEST_ID', $cv_test_id );
 
-				Checkview_Admin_Logs::add( 'ip-logs', 'Defined constant [CV_TEST_ID] as [ ' . CV_TEST_ID . ' ].' );
+				Checkview_Admin_Logs::add( 'ip-logs', 'Defined constant [CHECKVIEW_TEST_ID] as [ ' . CHECKVIEW_TEST_ID . ' ].' );
 			}
 		} else {
 			Checkview_Admin_Logs::add( 'ip-logs', 'The CheckView session was empty, but continuing.' );
 		}
 
-		if ( ! defined( 'TEST_EMAIL' ) ) {
-			define( 'TEST_EMAIL', $send_to );
+		if ( ! defined( 'CHECKVIEW_TEST_EMAIL' ) ) {
+			define( 'CHECKVIEW_TEST_EMAIL', $send_to );
 
-			Checkview_Admin_Logs::add( 'ip-logs', 'Defined constant [TEST_EMAIL] as [ ' . TEST_EMAIL . ' ].' );
+			Checkview_Admin_Logs::add( 'ip-logs', 'Defined constant [CHECKVIEW_TEST_EMAIL] as [ ' . CHECKVIEW_TEST_EMAIL . ' ].' );
 		}
 
-		if ( ! defined( 'CV_DISABLE_EMAIL_RECEIPT' ) && $disable_email_receipt ) {
-			define( 'CV_DISABLE_EMAIL_RECEIPT', 'true' );
+		if ( ! defined( 'CHECKVIEW_DISABLE_EMAIL_RECEIPT' ) && $disable_email_receipt ) {
+			define( 'CHECKVIEW_DISABLE_EMAIL_RECEIPT', 'true' );
 
-			Checkview_Admin_Logs::add( 'ip-logs', 'Defined constant [CV_DISABLE_EMAIL_RECEIPT] as [' . CV_DISABLE_EMAIL_RECEIPT . '].' );
+			Checkview_Admin_Logs::add( 'ip-logs', 'Defined constant [CHECKVIEW_DISABLE_EMAIL_RECEIPT] as [' . CHECKVIEW_DISABLE_EMAIL_RECEIPT . '].' );
 
-			cv_update_option( 'disable_email_receipt_' . $cv_test_id, 'true', false );
+			checkview_update_option( 'disable_email_receipt_' . $cv_test_id, 'true', false );
 		}
 
 		// DURABILITY CONTRACT: the disable_webhooks_<uuid> and
@@ -637,34 +639,34 @@ class Checkview_Admin {
 		// request that carries `?disable_actions=true` / `?disable_webhooks=true`
 		// from the SaaS, and MUST NOT be cleared mid-test on subsequent AJAX
 		// requests that lack the param — downstream gates
-		// (`cv_is_suppressible_test_order`, `checkview_filter_webhooks`,
+		// (`checkview_is_suppressible_test_order`, `checkview_filter_webhooks`,
 		// `checkview_mailchimp_killswitch`) read these options when the
 		// webhook/action fires, which can be many requests later. Only
-		// `complete_checkview_test()` deletes them — called either
+		// `checkview_complete_test()` deletes them — called either
 		// synchronously from form-helper submission hooks, or via
 		// `checkview_complete_test_deferred` on `shutdown` (which is gated
 		// on Woo order-completion `did_action()` checks so options survive
 		// intermediate test requests like cart visits and Store API cart
 		// fetches until the actual order-creating request's shutdown).
-		if ( ! defined( 'CV_DISABLE_WEBHOOKS' ) && $disable_webhooks ) {
-			define( 'CV_DISABLE_WEBHOOKS', 'true' );
+		if ( ! defined( 'CHECKVIEW_DISABLE_WEBHOOKS' ) && $disable_webhooks ) {
+			define( 'CHECKVIEW_DISABLE_WEBHOOKS', 'true' );
 
-			Checkview_Admin_Logs::add( 'ip-logs', 'Defined constant [CV_DISABLE_WEBHOOKS] as [' . CV_DISABLE_WEBHOOKS . '].' );
+			Checkview_Admin_Logs::add( 'ip-logs', 'Defined constant [CHECKVIEW_DISABLE_WEBHOOKS] as [' . CHECKVIEW_DISABLE_WEBHOOKS . '].' );
 
-			cv_update_option( 'disable_webhooks_' . $cv_test_id, 'true', false );
+			checkview_update_option( 'disable_webhooks_' . $cv_test_id, 'true', false );
 		}
 
 		if ( 'true' === $disable_actions ) {
-			cv_update_option( 'disable_actions_' . $cv_test_id, 'true', false );
+			checkview_update_option( 'disable_actions_' . $cv_test_id, 'true', false );
 		}
 
 		// `_set_at` is set ONCE per test-init — do NOT re-set it from form
 		// helpers, that would extend the staleness window the watchdog enforces.
-		// Not autoloaded: a timed-out test never reaches complete_checkview_test()
+		// Not autoloaded: a timed-out test never reaches checkview_complete_test()
 		// and so orphans both keys permanently.
 		if ( 'true' === $allow_original_recipients && ! empty( $cv_test_id ) ) {
-			cv_update_option( 'allow_original_recipients_' . $cv_test_id, 'true', false );
-			cv_update_option( 'allow_original_recipients_set_at_' . $cv_test_id, (string) time(), false );
+			checkview_update_option( 'allow_original_recipients_' . $cv_test_id, 'true', false );
+			checkview_update_option( 'allow_original_recipients_set_at_' . $cv_test_id, (string) time(), false );
 		}
 
 		delete_transient( 'checkview_forms_test_transient' );

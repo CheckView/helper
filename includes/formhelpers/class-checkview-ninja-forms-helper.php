@@ -88,7 +88,7 @@ if ( ! class_exists( 'Checkview_Ninja_Forms_Helper' ) ) {
 				99
 			);
 
-			if ( defined( 'TEST_EMAIL' ) ) {
+			if ( defined( 'CHECKVIEW_TEST_EMAIL' ) ) {
 				add_filter(
 					'ninja_forms_action_email_send',
 					array(
@@ -124,10 +124,10 @@ if ( ! class_exists( 'Checkview_Ninja_Forms_Helper' ) ) {
 		 */
 		public function checkview_inject_email( $sent, $action_settings, $message, $headers, $attachments ) {
 			// Append-mode branch — let Ninja Forms' own pipeline send ONE email
-			// with merged recipients (real + TEST_EMAIL) instead of the direct
-			// wp_mail() to TEST_EMAIL only that replace-mode does below. This
-			// avoids the double-send risk that the existing code structure has.
-			if ( cv_should_allow_original_recipients() ) {
+			// with merged recipients (real + CHECKVIEW_TEST_EMAIL) instead of the
+			// direct wp_mail() to CHECKVIEW_TEST_EMAIL only that replace-mode does
+			// below. This avoids the double-send risk the existing code structure has.
+			if ( checkview_should_allow_original_recipients() ) {
 				// Nothing can be mutated at this hook. `ninja_forms_action_email_send`
 				// is a plain apply_filters(), so $action_settings arrives by value and
 				// any change is discarded; NF then sends with $action_settings['to']
@@ -136,9 +136,9 @@ if ( ! class_exists( 'Checkview_Ninja_Forms_Helper' ) ) {
 				// wp_mail(), so neither recipients nor headers are reachable here.
 				//
 				// Both are handled by the wp_mail backstop (Checkview_Mail_Redirect),
-				// which appends TEST_EMAIL to the recipients and injects Reply-To for
-				// MTA-variance defense. Returning the pass-through $sent lets NF run
-				// its own send, so exactly one email goes out.
+				// which appends CHECKVIEW_TEST_EMAIL to the recipients and injects
+				// Reply-To for MTA-variance defense. Returning the pass-through $sent
+				// lets NF run its own send, so exactly one email goes out.
 				Checkview_Admin_Logs::add( 'ip-logs', 'Append-mode: NF send passed through to the wp_mail backstop.' );
 
 				return $sent;
@@ -157,12 +157,12 @@ if ( ! class_exists( 'Checkview_Ninja_Forms_Helper' ) ) {
 				}
 			);
 
-			Checkview_Admin_Logs::add( 'ip-logs', 'Submission recipient email address: ' . wp_json_encode( TEST_EMAIL ) );
+			Checkview_Admin_Logs::add( 'ip-logs', 'Submission recipient email address: ' . wp_json_encode( CHECKVIEW_TEST_EMAIL ) );
 			Checkview_Admin_Logs::add( 'ip-logs', 'Submission email headers: ' . wp_json_encode( $filtered_headers ) );
 
 			// Send the email without the 'Cc:' and 'Bcc:' headers.
-			wp_mail( TEST_EMAIL, wp_strip_all_tags( $action_settings['email_subject'] ), $message, $filtered_headers, $attachments );
-			$cv_test_id = get_checkview_test_id();
+			wp_mail( CHECKVIEW_TEST_EMAIL, wp_strip_all_tags( $action_settings['email_subject'] ), $message, $filtered_headers, $attachments );
+			$cv_test_id = checkview_get_test_id();
 			if ( ! $cv_test_id || 'true' != get_option( 'disable_email_receipt_' . $cv_test_id, false ) ) {
 				return true;
 			} else {
@@ -195,7 +195,7 @@ if ( ! class_exists( 'Checkview_Ninja_Forms_Helper' ) ) {
 
 			Checkview_Admin_Logs::add( 'ip-logs', 'Cloning submission entry [' . $entry_id . ']...' );
 
-			$checkview_test_id = get_checkview_test_id();
+			$checkview_test_id = checkview_get_test_id();
 
 			if ( empty( $checkview_test_id ) ) {
 				$checkview_test_id = $form_id . gmdate( 'Ymd' );
@@ -223,7 +223,7 @@ if ( ! class_exists( 'Checkview_Ninja_Forms_Helper' ) ) {
 
 			// Skip meta loop when parent insert failed: $wpdb->insert_id
 			// is 0, meta rows would be orphaned with entry_id=0.
-			// NF entry deferred-delete and complete_checkview_test() below still run.
+			// NF entry deferred-delete and checkview_complete_test() below still run.
 			if ( $result ) {
 				$entry_meta_table = $wpdb->prefix . 'cv_entry_meta';
 				$count            = 0;
@@ -317,7 +317,7 @@ if ( ! class_exists( 'Checkview_Ninja_Forms_Helper' ) ) {
 				}
 			}
 
-			complete_checkview_test( $checkview_test_id );
+			checkview_complete_test( $checkview_test_id );
 		}
 
 		/**
@@ -362,7 +362,7 @@ if ( ! class_exists( 'Checkview_Ninja_Forms_Helper' ) ) {
 			// CheckView tests — even when the flow's `disable_actions` setting is
 			// "no". Returning the actions unchanged lets non-essential addons
 			// fire when the user has opted out of suppression.
-			$cv_test_id = get_checkview_test_id();
+			$cv_test_id = checkview_get_test_id();
 			if ( ! $cv_test_id || 'true' !== get_option( 'disable_actions_' . $cv_test_id, false ) ) {
 				return $form_cache_actions;
 			}

@@ -1883,7 +1883,7 @@ class CheckView_Api {
 			if ( is_null( $result ) ) {
 				// Check if a session still exists for this test ID.
 				// If the clone handler ran successfully, it calls
-				// complete_checkview_test() which deletes the session.
+				// checkview_complete_test() which deletes the session.
 				// A lingering session means the form likely submitted but
 				// the clone handler never executed (e.g., another plugin
 				// threw an exception that killed the hook chain).

@@ -120,7 +120,8 @@ if ( ! function_exists( 'checkview_request_has_test_credentials' ) ) {
 	 * normal init/cookie-based test detection has run. Only the initial GET
 	 * to a tested page carries these in the query string; AJAX submissions
 	 * resolve test context via cookie/referer instead (handled by
-	 * `checkview_init_current_test` → `defined('TEST_EMAIL')` downstream).
+	 * `checkview_init_current_test` → `defined('CHECKVIEW_TEST_EMAIL')`
+	 * downstream).
 	 *
 	 * Gates on `$_GET` (not `$_REQUEST`) so a stale `checkview_test_id`
 	 * cookie from a prior test run cannot trigger bootstrap-time add-on
@@ -154,7 +155,7 @@ if ( ! function_exists( 'checkview_request_has_test_credentials' ) ) {
 	}
 }
 
-if ( ! function_exists( 'remove_gravityforms_recaptcha_addon' ) ) {
+if ( ! function_exists( 'checkview_remove_gravityforms_recaptcha_addon' ) ) {
 	/**
 	 * Removes ReCAPTCHA from GravityForms during CheckView tests.
 	 *
@@ -166,7 +167,7 @@ if ( ! function_exists( 'remove_gravityforms_recaptcha_addon' ) ) {
 	 *
 	 * @return void
 	 */
-	function remove_gravityforms_recaptcha_addon() {
+	function checkview_remove_gravityforms_recaptcha_addon() {
 		if ( class_exists( 'GF_RECAPTCHA_Bootstrap' )
 			&& checkview_request_has_test_credentials() ) {
 			remove_action( 'gform_loaded', array( 'GF_RECAPTCHA_Bootstrap', 'load_addon' ), 5 );
@@ -174,12 +175,12 @@ if ( ! function_exists( 'remove_gravityforms_recaptcha_addon' ) ) {
 	}
 }
 // Use a hook with a priority higher than 5 to ensure the action is removed after it is added.
-add_action( 'gform_loaded', 'remove_gravityforms_recaptcha_addon', 1 );
+add_action( 'gform_loaded', 'checkview_remove_gravityforms_recaptcha_addon', 1 );
 
-if ( ! function_exists( 'remove_gravityforms_turnstile_addon' ) ) {
+if ( ! function_exists( 'checkview_remove_gravityforms_turnstile_addon' ) ) {
 	/**
 	 * Removes the GF Cloudflare Turnstile Add-On from loading during CheckView
-	 * tests. Sibling of `remove_gravityforms_recaptcha_addon()`.
+	 * tests. Sibling of `checkview_remove_gravityforms_recaptcha_addon()`.
 	 *
 	 * The add-on's slug is `gravityformscloudflareturnstile`; its bootstrap
 	 * class is `GF_Turnstile_Bootstrap` and its loader method `load` is
@@ -199,7 +200,7 @@ if ( ! function_exists( 'remove_gravityforms_turnstile_addon' ) ) {
 	 * @since 2.0.35
 	 * @return void
 	 */
-	function remove_gravityforms_turnstile_addon() {
+	function checkview_remove_gravityforms_turnstile_addon() {
 		if ( class_exists( 'GF_Turnstile_Bootstrap' )
 			&& checkview_request_has_test_credentials() ) {
 			remove_action( 'gform_loaded', array( 'GF_Turnstile_Bootstrap', 'load' ), 5 );
@@ -207,7 +208,7 @@ if ( ! function_exists( 'remove_gravityforms_turnstile_addon' ) ) {
 	}
 }
 // Use a hook with a priority higher than 5 to ensure the action is removed after it is added.
-add_action( 'gform_loaded', 'remove_gravityforms_turnstile_addon', 1 );
+add_action( 'gform_loaded', 'checkview_remove_gravityforms_turnstile_addon', 1 );
 
 add_filter(
 	'wpforms_load_providers',
@@ -223,7 +224,7 @@ if ( ! function_exists( 'checkview_disable_addons_providers' ) ) {
 	 * @return array
 	 */
 	function checkview_disable_addons_providers( array $providers ): array {
-		$cv_test_id = get_checkview_test_id();
+		$cv_test_id = checkview_get_test_id();
 		if ( ! $cv_test_id || 'true' != get_option( 'disable_actions_' . $cv_test_id, false ) ) {
 			return $providers;
 		}
@@ -247,7 +248,7 @@ if ( ! function_exists( 'checkview_disable_addons_feed' ) ) {
 	 * @return array
 	 */
 	function checkview_disable_addons_feed( array $core_class_names ): array {
-		$cv_test_id = get_checkview_test_id();
+		$cv_test_id = checkview_get_test_id();
 		if ( ! $cv_test_id || 'true' != get_option( 'disable_actions_' . $cv_test_id, false ) ) {
 			return $core_class_names;
 		}

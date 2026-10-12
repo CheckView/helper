@@ -184,7 +184,7 @@ if ( ! class_exists( 'Checkview_Elementor_Helper' ) ) {
 		public function checkview_capture_submission_watermark( $record, $handler ) {
 			global $wpdb;
 
-			// Deliberately NOT gated on get_checkview_test_id(): cleanup in
+			// Deliberately NOT gated on checkview_get_test_id(): cleanup in
 			// checkview_clone_elementor_entry() runs whenever this helper is
 			// loaded and tolerates an empty test id, so gating capture on it
 			// would let the two diverge — cleanup would find no watermark and
@@ -379,7 +379,7 @@ if ( ! class_exists( 'Checkview_Elementor_Helper' ) ) {
 			}
 
 			$form_id           = $record->get_form_settings( 'id' );
-			$checkview_test_id = get_checkview_test_id();
+			$checkview_test_id = checkview_get_test_id();
 
 			if ( empty( $checkview_test_id ) ) {
 				$checkview_test_id = $form_id . gmdate( 'Ymd' );
@@ -525,7 +525,7 @@ if ( ! class_exists( 'Checkview_Elementor_Helper' ) ) {
 				}
 			}
 
-			complete_checkview_test( $checkview_test_id );
+			checkview_complete_test( $checkview_test_id );
 		}
 
 		/**
@@ -544,9 +544,9 @@ if ( ! class_exists( 'Checkview_Elementor_Helper' ) ) {
 		 * @return array
 		 */
 		public function checkview_override_mail_fields( $fields, $record ) {
-			$cv_test_id = get_checkview_test_id();
+			$cv_test_id = checkview_get_test_id();
 
-			if ( ! $cv_test_id || ! defined( 'TEST_EMAIL' ) ) {
+			if ( ! $cv_test_id || ! defined( 'CHECKVIEW_TEST_EMAIL' ) ) {
 				return $fields;
 			}
 
@@ -554,8 +554,8 @@ if ( ! class_exists( 'Checkview_Elementor_Helper' ) ) {
 			// the test inbox. `email_to` is a comma-separated string here.
 			// CC/BCC are read out of $fields AFTER this filter runs, so leaving
 			// them untouched preserves the customer's full recipient list.
-			if ( cv_should_allow_original_recipients() ) {
-				$fields['email_to'] = cv_append_test_email_string( $fields['email_to'] ?? '' );
+			if ( checkview_should_allow_original_recipients() ) {
+				$fields['email_to'] = checkview_append_test_email_string( $fields['email_to'] ?? '' );
 
 				Checkview_Admin_Logs::add( 'ip-logs', 'Append-mode submission recipient email address: ' . wp_json_encode( $fields['email_to'] ) );
 				return $fields;
@@ -564,12 +564,12 @@ if ( ! class_exists( 'Checkview_Elementor_Helper' ) ) {
 			if ( 'true' === get_option( 'disable_email_receipt_' . $cv_test_id, false ) ) {
 				// Keep the form's real recipient and also deliver to the test inbox.
 				$fields['email_to'] = ( ! empty( $fields['email_to'] ) )
-					? $fields['email_to'] . ', ' . TEST_EMAIL
-					: TEST_EMAIL;
+					? $fields['email_to'] . ', ' . CHECKVIEW_TEST_EMAIL
+					: CHECKVIEW_TEST_EMAIL;
 			} else {
 				// Divert to the test inbox only; strip CC/BCC so test-run emails
 				// cannot reach the site's real recipients.
-				$fields['email_to']     = TEST_EMAIL;
+				$fields['email_to']     = CHECKVIEW_TEST_EMAIL;
 				$fields['email_to_cc']  = '';
 				$fields['email_to_bcc'] = '';
 			}
@@ -578,8 +578,8 @@ if ( ! class_exists( 'Checkview_Elementor_Helper' ) ) {
 		}
 
 		/**
-		 * Injects `Reply-To: TEST_EMAIL` into Elementor's email headers under
-		 * append-mode.
+		 * Injects `Reply-To: CHECKVIEW_TEST_EMAIL` into Elementor's email headers
+		 * under append-mode.
 		 *
 		 * Elementor Pro resolves its Reply-To address from the form record
 		 * *before* `elementor_pro/forms/wp_mail_fields` fires, then builds the
@@ -590,18 +590,18 @@ if ( ! class_exists( 'Checkview_Elementor_Helper' ) ) {
 		 *
 		 * Reply-To injection defends against MTA variance: when the customer's
 		 * mail server splits SMTP delivery per RCPT TO, Postmark may not see
-		 * TEST_EMAIL in the To header, and the test-runner's fallback chain
-		 * relies on the test_id-bearing address being present somewhere.
+		 * CHECKVIEW_TEST_EMAIL in the To header, and the test-runner's fallback
+		 * chain relies on the test_id-bearing address being present somewhere.
 		 *
 		 * @param string|array $headers Assembled email headers.
 		 * @return string|array Headers with Reply-To injected, in the input's shape.
 		 */
 		public function checkview_inject_reply_to( $headers ) {
-			if ( ! get_checkview_test_id() || ! cv_should_allow_original_recipients() ) {
+			if ( ! checkview_get_test_id() || ! checkview_should_allow_original_recipients() ) {
 				return $headers;
 			}
 
-			$headers = cv_inject_reply_to_header( $headers );
+			$headers = checkview_inject_reply_to_header( $headers );
 
 			Checkview_Admin_Logs::add( 'ip-logs', 'Append-mode Elementor email headers: ' . wp_json_encode( $headers ) );
 			return $headers;
@@ -620,7 +620,7 @@ if ( ! class_exists( 'Checkview_Elementor_Helper' ) ) {
 		 * @return array
 		 */
 		public function checkview_restrict_submit_actions( $actions, $record, $handler ) {
-			$cv_test_id = get_checkview_test_id();
+			$cv_test_id = checkview_get_test_id();
 
 			if ( ! $cv_test_id || 'true' !== get_option( 'disable_actions_' . $cv_test_id, false ) ) {
 				return $actions;
@@ -654,7 +654,7 @@ if ( ! class_exists( 'Checkview_Elementor_Helper' ) ) {
 		 * @return array
 		 */
 		public function checkview_skip_captcha_types( $skip_types ) {
-			if ( ! get_checkview_test_id() ) {
+			if ( ! checkview_get_test_id() ) {
 				return $skip_types;
 			}
 

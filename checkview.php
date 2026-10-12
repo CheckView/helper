@@ -103,7 +103,7 @@ function checkview_invalidate_opcache( $reason = '' ) {
 /**
  * Handles CheckView activation.
  */
-function activate_checkview() {
+function checkview_activate() {
 	// checkview-functions.php is normally loaded on plugins_loaded, which
 	// hasn't fired yet during activation. Pull it in so the activator can
 	// call checkview_dbdelta_or_query().
@@ -112,16 +112,16 @@ function activate_checkview() {
 	Checkview_Activator::activate();
 	checkview_invalidate_opcache( 'plugin activation' );
 }
-register_activation_hook( __FILE__, 'activate_checkview' );
+register_activation_hook( __FILE__, 'checkview_activate' );
 
 /**
  * Handles CheckView deactivation.
  */
-function deactivate_checkview() {
+function checkview_deactivate() {
 	require_once plugin_dir_path( __FILE__ ) . 'includes/class-checkview-deactivator.php';
 	Checkview_Deactivator::deactivate();
 }
-register_deactivation_hook( __FILE__, 'deactivate_checkview' );
+register_deactivation_hook( __FILE__, 'checkview_deactivate' );
 
 if ( ! function_exists( 'is_plugin_active' ) ) {
 	require_once ABSPATH . 'wp-admin/includes/plugin.php';
@@ -140,7 +140,7 @@ require plugin_dir_path( __FILE__ ) . 'includes/class-checkview.php';
  * `cv_suppression_kill_switch` to `'true'` via WP-CLI to bypass all
  * webhook/action suppression on a customer site, even on stamped test
  * orders. The option is read on every webhook delivery
- * (`cv_is_suppressible_test_order`), so we want it autoloaded for cache-hit
+ * (`checkview_is_suppressible_test_order`), so we want it autoloaded for cache-hit
  * reads instead of a DB query per webhook.
  *
  * Registers on `init` (priority 1) instead of `register_activation_hook`
@@ -161,11 +161,11 @@ add_action( 'init', 'checkview_seed_kill_switch', 1 );
  *
  * @since 1.0.0
  */
-function run_checkview() {
+function checkview_run() {
 	$plugin = CheckView::get_instance();
 	$plugin->run();
 }
-add_action( 'plugins_loaded', 'run_checkview', 10 );
+add_action( 'plugins_loaded', 'checkview_run', 10 );
 
 /**
  * Invalidate OPcache when the plugin version changes.

@@ -2,16 +2,17 @@
 /**
  * Checkview_Mail_Redirect class
  *
- * Form-plugin-agnostic backstop that rewrites wp_mail recipients to TEST_EMAIL
- * during a CheckView test. Catches notification paths that bypass the per-
- * plugin filters (gform_pre_send_email, wpforms_email_send_*, etc.) — e.g.,
- * when a transactional-email plugin (Postmark, FluentSMTP, SendGrid) overrides
- * wp_mail, or when a third-party integration sends notifications outside the
- * form plugin's standard chain.
+ * Form-plugin-agnostic backstop that rewrites wp_mail recipients to
+ * CHECKVIEW_TEST_EMAIL during a CheckView test. Catches notification
+ * paths that bypass the per-plugin filters (gform_pre_send_email,
+ * wpforms_email_send_*, etc.) — e.g., when a transactional-email plugin
+ * (Postmark, FluentSMTP, SendGrid) overrides wp_mail, or when a
+ * third-party integration sends notifications outside the form
+ * plugin's standard chain.
  *
- * Runs only when TEST_EMAIL is defined (i.e., inside a verified test session),
- * at wp_mail filter priority 999 so transport plugins have already applied
- * their own modifications before we rewrite the recipient.
+ * Runs only when CHECKVIEW_TEST_EMAIL is defined (i.e., inside a verified
+ * test session), at wp_mail filter priority 999 so transport plugins
+ * have already applied their own modifications before we rewrite the recipient.
  *
  * @since 2.0.35
  * @package Checkview
@@ -25,7 +26,7 @@ if ( ! defined( 'WPINC' ) ) {
 if ( ! class_exists( 'Checkview_Mail_Redirect' ) ) {
 
 	/**
-	 * Rewrites wp_mail recipients to TEST_EMAIL during a CheckView test.
+	 * Rewrites wp_mail recipients to CHECKVIEW_TEST_EMAIL during a CheckView test.
 	 *
 	 * Acts as a backstop for cases where form-plugin-specific filters
 	 * (gform_pre_send_email, wpforms_*, etc.) do not fire — for example, when a
@@ -40,7 +41,7 @@ if ( ! class_exists( 'Checkview_Mail_Redirect' ) ) {
 		 * Constructor — registers the wp_mail filter when in test context.
 		 */
 		public function __construct() {
-			if ( ! defined( 'TEST_EMAIL' ) || '' === (string) TEST_EMAIL ) {
+			if ( ! defined( 'CHECKVIEW_TEST_EMAIL' ) || '' === (string) CHECKVIEW_TEST_EMAIL ) {
 				return;
 			}
 
@@ -54,16 +55,16 @@ if ( ! class_exists( 'Checkview_Mail_Redirect' ) ) {
 		 * Rewrites the wp_mail recipient to the CheckView test inbox.
 		 *
 		 * Mirrors Checkview_Gforms_Helper::checkview_inject_email() behavior:
-		 * - Default (REPLACE): replace `to` with TEST_EMAIL and strip Cc/Bcc.
+		 * - Default (REPLACE): replace `to` with CHECKVIEW_TEST_EMAIL and strip Cc/Bcc.
 		 * - When `disable_email_receipt_<test_id>` is 'true' or the site-scoped
 		 *   allow_original_recipients_<test_id> window is active (APPEND):
-		 *   append TEST_EMAIL to the existing recipients rather than replacing,
-		 *   and inject Reply-To: TEST_EMAIL for MTA-variance defense.
+		 *   append CHECKVIEW_TEST_EMAIL to the existing recipients rather than replacing,
+		 *   and inject Reply-To: CHECKVIEW_TEST_EMAIL for MTA-variance defense.
 		 *
 		 * Two skip conditions avoid double-work when an earlier filter
 		 * (e.g. gform_pre_send_email at priority 99) already did the rewrite:
-		 * - REPLACE mode: skip if $to is already exactly TEST_EMAIL.
-		 * - APPEND mode: skip if $to already contains TEST_EMAIL.
+		 * - REPLACE mode: skip if $to is already exactly CHECKVIEW_TEST_EMAIL.
+		 * - APPEND mode: skip if $to already contains CHECKVIEW_TEST_EMAIL.
 		 *
 		 * @param mixed $atts wp_mail compact args (to/subject/message/headers/attachments).
 		 * @return mixed Modified args (or original if not applicable).
@@ -73,14 +74,13 @@ if ( ! class_exists( 'Checkview_Mail_Redirect' ) ) {
 				return $atts;
 			}
 
-			$cv_test_id = get_checkview_test_id();
+			$cv_test_id = checkview_get_test_id();
 			// Append mode is signaled two ways: the legacy per-test option, or the
 			// per-test allow_original_recipients_<test_id> option the SaaS sets at
 			// test-init.
 			$append_mode = ( $cv_test_id
 				&& 'true' === get_option( 'disable_email_receipt_' . $cv_test_id, false ) )
-				|| ( function_exists( 'cv_should_allow_original_recipients' )
-					&& cv_should_allow_original_recipients() );
+				|| ( function_exists( 'checkview_should_allow_original_recipients' ) && checkview_should_allow_original_recipients() );
 
 			if ( $append_mode ) {
 				// Injected before the recipient short-circuit below, because it is
@@ -88,10 +88,10 @@ if ( ! class_exists( 'Checkview_Mail_Redirect' ) ) {
 				// no filter in between (Ninja Forms assembles them in
 				// Actions/Email.php and hands them straight to wp_mail), so this
 				// backstop is the only place the MTA-variance defense can reach
-				// them. cv_inject_reply_to_header() dedups and preserves the input
+				// them. checkview_inject_reply_to_header() dedups and preserves the input
 				// type, so helpers that already injected are left unchanged.
-				if ( function_exists( 'cv_inject_reply_to_header' ) ) {
-					$atts['headers'] = cv_inject_reply_to_header( $atts['headers'] ?? '' );
+				if ( function_exists( 'checkview_inject_reply_to_header' ) ) {
+					$atts['headers'] = checkview_inject_reply_to_header( $atts['headers'] ?? '' );
 				}
 
 				if ( $this->contains_test_email( $atts['to'] ) ) {
@@ -99,16 +99,16 @@ if ( ! class_exists( 'Checkview_Mail_Redirect' ) ) {
 				}
 				$original_to = $atts['to'];
 				if ( is_array( $atts['to'] ) ) {
-					$atts['to'][] = TEST_EMAIL;
+					$atts['to'][] = CHECKVIEW_TEST_EMAIL;
 				} else {
-					$atts['to'] .= ', ' . TEST_EMAIL;
+					$atts['to'] .= ', ' . CHECKVIEW_TEST_EMAIL;
 				}
 			} else {
 				if ( $this->is_only_test_email( $atts['to'] ) ) {
 					return $atts;
 				}
 				$original_to     = $atts['to'];
-				$atts['to']      = TEST_EMAIL;
+				$atts['to']      = CHECKVIEW_TEST_EMAIL;
 				$atts['headers'] = $this->strip_cc_bcc_headers( $atts['headers'] ?? '' );
 			}
 
@@ -121,10 +121,10 @@ if ( ! class_exists( 'Checkview_Mail_Redirect' ) ) {
 		}
 
 		/**
-		 * True if any address in $to is exactly TEST_EMAIL (case-insensitive).
+		 * True if any address in $to is exactly CHECKVIEW_TEST_EMAIL (case-insensitive).
 		 *
 		 * Tokenises the recipient by comma/whitespace and compares each token
-		 * for exact equality with TEST_EMAIL — avoids substring false-positives
+		 * for exact equality with CHECKVIEW_TEST_EMAIL — avoids substring false-positives
 		 * like "abc@test-mail.checkview.io.attacker.com".
 		 *
 		 * @param array|string $to Current recipient(s).
@@ -136,7 +136,7 @@ if ( ! class_exists( 'Checkview_Mail_Redirect' ) ) {
 				if ( ! is_string( $addr ) ) {
 					continue;
 				}
-				if ( 0 === strcasecmp( trim( $addr ), TEST_EMAIL ) ) {
+				if ( 0 === strcasecmp( trim( $addr ), CHECKVIEW_TEST_EMAIL ) ) {
 					return true;
 				}
 			}
@@ -144,10 +144,10 @@ if ( ! class_exists( 'Checkview_Mail_Redirect' ) ) {
 		}
 
 		/**
-		 * True if $to is exactly one address and that address is TEST_EMAIL.
+		 * True if $to is exactly one address and that address is CHECKVIEW_TEST_EMAIL.
 		 *
 		 * Used to skip rewriting in REPLACE mode when an earlier filter already
-		 * set $to to TEST_EMAIL — prevents a redundant log line.
+		 * set $to to CHECKVIEW_TEST_EMAIL — prevents a redundant log line.
 		 *
 		 * @param array|string $to Current recipient(s).
 		 * @return bool
@@ -157,11 +157,11 @@ if ( ! class_exists( 'Checkview_Mail_Redirect' ) ) {
 				$tokens = preg_split( '/[,\s]+/', $to, -1, PREG_SPLIT_NO_EMPTY );
 				return is_array( $tokens )
 					&& count( $tokens ) === 1
-					&& 0 === strcasecmp( $tokens[0], TEST_EMAIL );
+					&& 0 === strcasecmp( $tokens[0], CHECKVIEW_TEST_EMAIL );
 			}
 			if ( is_array( $to ) && 1 === count( $to ) ) {
 				$only = reset( $to );
-				return is_string( $only ) && 0 === strcasecmp( trim( $only ), TEST_EMAIL );
+				return is_string( $only ) && 0 === strcasecmp( trim( $only ), CHECKVIEW_TEST_EMAIL );
 			}
 			return false;
 		}

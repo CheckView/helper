@@ -197,7 +197,7 @@ class CheckView {
 		// Fallback: plugin-set cookie persists test type across deep navigations
 		// (e.g. WooCommerce redirects, multi-step forms) where URL params and
 		// referer are both lost.
-		$cv_test_id = get_checkview_test_id();
+		$cv_test_id = checkview_get_test_id();
 		if ( ! empty( $cv_test_id ) && isset( $_COOKIE[ self::PARAM_TEST_TYPE ] ) ) {
 			$cookie_type = sanitize_text_field( wp_unslash( $_COOKIE[ self::PARAM_TEST_TYPE ] ) );
 			if ( ! empty( $cookie_type ) ) {

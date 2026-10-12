@@ -97,7 +97,7 @@ if ( ! class_exists( 'Checkview_Wpforms_Helper' ) ) {
 				'__return_false'
 			);
 
-			if ( defined( 'TEST_EMAIL' ) ) {
+			if ( defined( 'CHECKVIEW_TEST_EMAIL' ) ) {
 				// change email to send to our test account.
 				add_filter(
 					'wpforms_entry_email_atts',
@@ -190,7 +190,7 @@ if ( ! class_exists( 'Checkview_Wpforms_Helper' ) ) {
 		 * @return void
 		 */
 		public function checkview_wpforms_disable_addons( $fields, $entry, $form_data ) {
-			$cv_test_id = get_checkview_test_id();
+			$cv_test_id = checkview_get_test_id();
 			if ( ! $cv_test_id || 'true' !== get_option( 'disable_actions_' . $cv_test_id, false ) ) {
 				return;
 			}
@@ -266,29 +266,29 @@ if ( ! class_exists( 'Checkview_Wpforms_Helper' ) ) {
 		/**
 		 * Injects testing email address.
 		 *
-		 * Append-mode (when `cv_should_allow_original_recipients()` is true):
-		 * adds TEST_EMAIL to the existing recipient list so both the real
+		 * Append-mode (when `checkview_should_allow_original_recipients()` is true):
+		 * adds CHECKVIEW_TEST_EMAIL to the existing recipient list so both the real
 		 * recipient and CheckView's test inbox receive the email. Also injects
-		 * Reply-To to defend against MTA variance — Postmark sees TEST_EMAIL in
-		 * the ReplyTo header even if the customer's MTA strips it from To.
+		 * Reply-To to defend against MTA variance — Postmark sees CHECKVIEW_TEST_EMAIL
+		 * in the ReplyTo header even if the customer's MTA strips it from To.
 		 *
 		 * Replace-mode (default): preserves existing behavior of routing to
-		 * TEST_EMAIL only.
+		 * CHECKVIEW_TEST_EMAIL only.
 		 *
 		 * @param array $email Email address details.
 		 * @return array
 		 */
 		public function checkview_inject_email( $email ) {
 			// New: append-mode branch — deliver to BOTH real recipient and test inbox.
-			if ( cv_should_allow_original_recipients() ) {
-				$email['address'] = cv_append_test_email_array( $email['address'] );
+			if ( checkview_should_allow_original_recipients() ) {
+				$email['address'] = checkview_append_test_email_array( $email['address'] );
 				$email['replyto'] = $this->cv_append_replyto( $email['replyto'] ?? '' );
 				// Sanitize CC entries to prevent header injection if the
 				// customer's form data contains embedded CRLF in CC addresses.
 				$cc                  = $email['carboncopy'] ?? array();
 				$email['carboncopy'] = is_array( $cc )
-					? array_map( 'cv_sanitize_crlf', $cc )
-					: cv_sanitize_crlf( $cc );
+					? array_map( 'checkview_sanitize_crlf', $cc )
+					: checkview_sanitize_crlf( $cc );
 
 				Checkview_Admin_Logs::add( 'ip-logs', 'Append-mode submission recipient email address: ' . wp_json_encode( $email['address'] ) );
 
@@ -296,17 +296,17 @@ if ( ! class_exists( 'Checkview_Wpforms_Helper' ) ) {
 			}
 
 			// Existing replace-mode behavior (preserved unchanged).
-			$cv_test_id = get_checkview_test_id();
+			$cv_test_id = checkview_get_test_id();
 			if ( ! $cv_test_id || 'true' != get_option( 'disable_email_receipt_' . $cv_test_id, false ) ) {
 				$count = count( $email['address'] );
 				for ( $i = 0; $i < $count; $i++ ) {
-					$email['address'][ $i ]    = TEST_EMAIL;
+					$email['address'][ $i ]    = CHECKVIEW_TEST_EMAIL;
 					$email['carboncopy'][ $i ] = '';
 				}
 			} elseif ( is_array( $email['address'] ) ) {
-				$email['address'][] = TEST_EMAIL;
+				$email['address'][] = CHECKVIEW_TEST_EMAIL;
 			} else {
-				$email['address'] .= ', ' . TEST_EMAIL;
+				$email['address'] .= ', ' . CHECKVIEW_TEST_EMAIL;
 			}
 
 			Checkview_Admin_Logs::add( 'ip-logs', 'Submission recipient email address: ' . wp_json_encode( $email['address'] ?? null ) );
@@ -315,26 +315,26 @@ if ( ! class_exists( 'Checkview_Wpforms_Helper' ) ) {
 		}
 
 		/**
-		 * Appends TEST_EMAIL to a Reply-To string with dedup.
+		 * Appends CHECKVIEW_TEST_EMAIL to a Reply-To string with dedup.
 		 *
 		 * WPForms' `replyto` is a single string (not array). Append rather
 		 * than replace so existing form-configured Reply-To is preserved.
 		 *
 		 * @param string $existing Existing reply-to value (may be empty).
-		 * @return string Reply-To with TEST_EMAIL appended.
+		 * @return string Reply-To with CHECKVIEW_TEST_EMAIL appended.
 		 */
 		private function cv_append_replyto( $existing ) {
-			if ( ! defined( 'TEST_EMAIL' ) ) {
+			if ( ! defined( 'CHECKVIEW_TEST_EMAIL' ) ) {
 				return $existing;
 			}
 			if ( empty( $existing ) ) {
-				return TEST_EMAIL;
+				return CHECKVIEW_TEST_EMAIL;
 			}
-			if ( cv_recipients_contain_test_email( $existing ) ) {
-				return cv_sanitize_crlf( $existing );
+			if ( checkview_recipients_contain_test_email( $existing ) ) {
+				return checkview_sanitize_crlf( $existing );
 			}
-			$sanitized = cv_sanitize_crlf( $existing );
-			return rtrim( $sanitized, ", \t" ) . ', ' . TEST_EMAIL;
+			$sanitized = checkview_sanitize_crlf( $existing );
+			return rtrim( $sanitized, ", \t" ) . ', ' . CHECKVIEW_TEST_EMAIL;
 		}
 		/**
 		 * Stores the test results and finishes the testing session.
@@ -357,7 +357,7 @@ if ( ! class_exists( 'Checkview_Wpforms_Helper' ) ) {
 			}
 
 			$form_id           = $form_data['id'];
-			$checkview_test_id = get_checkview_test_id();
+			$checkview_test_id = checkview_get_test_id();
 
 			if ( empty( $checkview_test_id ) ) {
 				$checkview_test_id = $form_id . gmdate( 'Ymd' );
@@ -384,7 +384,7 @@ if ( ! class_exists( 'Checkview_Wpforms_Helper' ) ) {
 
 			// Skip meta loop when parent insert failed: $wpdb->insert_id
 			// is 0, meta rows would be orphaned with entry_id=0.
-			// WPForms entry delete and complete_checkview_test() below still run.
+			// WPForms entry delete and checkview_complete_test() below still run.
 			if ( $result ) {
 				$inserted_entry_id = $wpdb->insert_id;
 				$entry_meta_table  = $wpdb->prefix . 'cv_entry_meta';
@@ -544,7 +544,7 @@ if ( ! class_exists( 'Checkview_Wpforms_Helper' ) ) {
 				);
 			}
 
-			complete_checkview_test( $checkview_test_id );
+			checkview_complete_test( $checkview_test_id );
 		}
 		/**
 		 * Disable Custom CAPTCHA in WPForms.

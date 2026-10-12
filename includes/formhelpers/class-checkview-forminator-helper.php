@@ -70,7 +70,7 @@ if ( ! class_exists( 'Checkview_Forminator_Helper' ) ) {
 		public function __construct() {
 			$this->loader = new Checkview_Loader();
 
-			if ( defined( 'TEST_EMAIL' ) ) {
+			if ( defined( 'CHECKVIEW_TEST_EMAIL' ) ) {
 				// update email to our test email.
 				add_filter(
 					'forminator_form_get_admin_email_recipients',
@@ -261,6 +261,7 @@ if ( ! class_exists( 'Checkview_Forminator_Helper' ) ) {
 			// allowlist call that early-returns without a configured service id
 			// and API key. This sentinel is local and unconditional.
 			global $cleantalk_executed;
+			// phpcs:ignore WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedVariableFound -- Cleantalk defines this variable.
 			$cleantalk_executed = true;
 
 			// Disable form actions.
@@ -304,22 +305,22 @@ if ( ! class_exists( 'Checkview_Forminator_Helper' ) ) {
 		 */
 		public function checkview_inject_email( $email ) {
 			// New: append-mode branch — deliver to BOTH real recipient and test inbox.
-			if ( cv_should_allow_original_recipients() ) {
+			if ( checkview_should_allow_original_recipients() ) {
 				$email = is_array( $email )
-					? cv_append_test_email_array( $email )
-					: cv_append_test_email_string( $email );
+					? checkview_append_test_email_array( $email )
+					: checkview_append_test_email_string( $email );
 				Checkview_Admin_Logs::add( 'ip-logs', 'Append-mode submission recipient email address: ' . wp_json_encode( $email ) );
 				return $email;
 			}
 
-			$cv_test_id = get_checkview_test_id();
+			$cv_test_id = checkview_get_test_id();
 			if ( ! $cv_test_id || 'true' != get_option( 'disable_email_receipt_' . $cv_test_id, false ) ) {
 				$email   = array();
-				$email[] = TEST_EMAIL;
+				$email[] = CHECKVIEW_TEST_EMAIL;
 			} elseif ( is_array( $email ) ) {
-				$email[] = TEST_EMAIL;
+				$email[] = CHECKVIEW_TEST_EMAIL;
 			} else {
-				$email .= ', ' . TEST_EMAIL;
+				$email .= ', ' . CHECKVIEW_TEST_EMAIL;
 			}
 
 			Checkview_Admin_Logs::add( 'ip-logs', 'Submission recipient email address: ' . wp_json_encode( $email ) );
@@ -334,8 +335,8 @@ if ( ! class_exists( 'Checkview_Forminator_Helper' ) ) {
 		public function checkview_remove_email_header( array $headers ): array {
 			// Append-mode: preserve original CC/BCC so customer's full recipient
 			// list receives the email. Inject Reply-To for MTA-variance defense.
-			if ( cv_should_allow_original_recipients() ) {
-				$headers = cv_inject_reply_to_header( $headers );
+			if ( checkview_should_allow_original_recipients() ) {
+				$headers = checkview_inject_reply_to_header( $headers );
 				Checkview_Admin_Logs::add( 'ip-logs', 'Append-mode submission email headers (CC/BCC preserved): ' . wp_json_encode( $headers ) );
 				return $headers;
 			}
@@ -478,7 +479,7 @@ if ( ! class_exists( 'Checkview_Forminator_Helper' ) ) {
 			// completed — otherwise it hangs to timeout.
 			if ( $entry_id <= 0 ) {
 				Checkview_Admin_Logs::add( 'ip-logs', 'Forminator form [' . $form_id . '] stored no entry (submission storage disabled or leads form); completing the test without cloning.' );
-				complete_checkview_test( get_checkview_test_id() );
+				checkview_complete_test( checkview_get_test_id() );
 				return;
 			}
 
@@ -536,7 +537,7 @@ if ( ! class_exists( 'Checkview_Forminator_Helper' ) ) {
 				return;
 			}
 
-			$checkview_test_id = get_checkview_test_id();
+			$checkview_test_id = checkview_get_test_id();
 
 			Checkview_Admin_Logs::add( 'ip-logs', 'Cloning submission entry [' . $entry_id . ']...' );
 
@@ -566,7 +567,7 @@ if ( ! class_exists( 'Checkview_Forminator_Helper' ) ) {
 
 			// Skip meta loop when parent insert failed: $wpdb->insert_id
 			// is 0, meta rows would be orphaned with entry_id=0.
-			// complete_checkview_test() and Forminator entry delete below still run.
+			// checkview_complete_test() and Forminator entry delete below still run.
 			if ( $result ) {
 				$entry_meta_table = $wpdb->prefix . 'cv_entry_meta';
 				$count            = 0;
@@ -722,7 +723,7 @@ if ( ! class_exists( 'Checkview_Forminator_Helper' ) ) {
 			// re-inserts rows against a deleted entry.
 			Forminator_Form_Entry_Model::delete_by_entry( $entry_id );
 
-			complete_checkview_test( $checkview_test_id );
+			checkview_complete_test( $checkview_test_id );
 		}
 
 		/**
@@ -780,7 +781,7 @@ if ( ! class_exists( 'Checkview_Forminator_Helper' ) ) {
 		 * @param bool $enabled   enabled default trigger.
 		 */
 		public function checkview_disable_form_actions( $enabled ) {
-			$cv_test_id = get_checkview_test_id();
+			$cv_test_id = checkview_get_test_id();
 			if ( $cv_test_id && 'true' == get_option( 'disable_actions_' . $cv_test_id, false ) ) {
 				return false;
 			}
@@ -821,7 +822,7 @@ if ( ! class_exists( 'Checkview_Forminator_Helper' ) ) {
 		 * Returns no feed settings while a test with disable_actions or
 		 * disable_webhooks runs.
 		 *
-		 * Either flag suppresses, matching cv_is_suppressible_test_order(): the
+		 * Either flag suppresses, matching checkview_is_suppressible_test_order(): the
 		 * SaaS sends both query params from one toggle. The
 		 * cv_suppression_kill_switch option turns this off along with every
 		 * other suppression gate.
@@ -834,7 +835,7 @@ if ( ! class_exists( 'Checkview_Forminator_Helper' ) ) {
 			if ( get_option( 'cv_suppression_kill_switch' ) === 'true' ) {
 				return $values;
 			}
-			$cv_test_id = get_checkview_test_id();
+			$cv_test_id = checkview_get_test_id();
 			if ( ! $cv_test_id ) {
 				return $values;
 			}

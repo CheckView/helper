@@ -40,7 +40,7 @@ if ( ! class_exists( 'Checkview_Gforms_Helper' ) ) {
 		 */
 		public function __construct() {
 			$this->loader = new Checkview_Loader();
-			if ( defined( 'TEST_EMAIL' ) ) {
+			if ( defined( 'CHECKVIEW_TEST_EMAIL' ) ) {
 				// Change email address to our test email.
 				add_filter(
 					'gform_pre_send_email',
@@ -77,12 +77,12 @@ if ( ! class_exists( 'Checkview_Gforms_Helper' ) ) {
 				// GF 2.10+ ships "Background Notifications" (queued via the
 				// GF_Notifications_Processor admin-ajax task). That separate
 				// request doesn't carry the CheckView test context, so
-				// TEST_EMAIL is never defined for it and gform_pre_send_email
-				// above never fires — the notification goes to the original
-				// recipient. Forcing sync during the test keeps the dispatch
-				// inside the form-submission request where our filters are
-				// already registered. Customers' non-test traffic is
-				// unaffected.
+				// CHECKVIEW_TEST_EMAIL is never defined for it and
+				// gform_pre_send_email above never fires — the notification
+				// goes to the original recipient. Forcing sync during the
+				// test keeps the dispatch inside the form-submission request
+				// where our filters are already registered. Customers'
+				// non-test traffic is unaffected.
 				add_filter(
 					'gform_is_asynchronous_notifications_enabled',
 					'__return_false',
@@ -146,6 +146,7 @@ if ( ! class_exists( 'Checkview_Gforms_Helper' ) ) {
 				// `remove_filter('gform_entry_is_spam', ...)` on the
 				// add-on's callback.
 				global $cleantalk_executed;
+				// phpcs:ignore WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedVariableFound -- Cleantalk defines this variable.
 				$cleantalk_executed = true;
 				Checkview_Admin_Logs::add(
 					'ip-logs',
@@ -500,7 +501,7 @@ if ( ! class_exists( 'Checkview_Gforms_Helper' ) ) {
 		 * hooks both `gform_validation` (response token check) and
 		 * `gform_entry_is_spam` (low-score → spam) at default priority 10.
 		 *
-		 * Complements `remove_gravityforms_recaptcha_addon()` in
+		 * Complements `checkview_remove_gravityforms_recaptcha_addon()` in
 		 * `includes/checkview-helper-functions.php`, which removes the
 		 * add-on's bootstrap from `gform_loaded` on the initial GET request
 		 * (when `$_REQUEST['checkview_test_id']` is present). That early
@@ -589,7 +590,7 @@ if ( ! class_exists( 'Checkview_Gforms_Helper' ) ) {
 		 */
 		public function checkview_clone_entry( $entry, $form ) {
 			$form_id           = rgar( $form, 'id' );
-			$checkview_test_id = get_checkview_test_id();
+			$checkview_test_id = checkview_get_test_id();
 
 			if ( empty( $checkview_test_id ) ) {
 				$checkview_test_id = $form_id . gmdate( 'Ymd' );
@@ -615,7 +616,7 @@ if ( ! class_exists( 'Checkview_Gforms_Helper' ) ) {
 				}
 			}
 
-			complete_checkview_test( $checkview_test_id );
+			checkview_complete_test( $checkview_test_id );
 		}
 		/**
 		 * Modifies the submission recipient email addreesss.
@@ -625,18 +626,18 @@ if ( ! class_exists( 'Checkview_Gforms_Helper' ) ) {
 		 */
 		public function checkview_inject_email( $email ) {
 			// New: append-mode branch — deliver to BOTH real recipient and test inbox.
-			if ( cv_should_allow_original_recipients() ) {
+			if ( checkview_should_allow_original_recipients() ) {
 				$email['to']      = is_array( $email['to'] )
-					? cv_append_test_email_array( $email['to'] )
-					: cv_append_test_email_string( $email['to'] );
-				$email['headers'] = cv_inject_reply_to_header( $email['headers'] ?? array() );
+					? checkview_append_test_email_array( $email['to'] )
+					: checkview_append_test_email_string( $email['to'] );
+				$email['headers'] = checkview_inject_reply_to_header( $email['headers'] ?? array() );
 				Checkview_Admin_Logs::add( 'ip-logs', 'Append-mode submission recipient email address: ' . wp_json_encode( $email['to'] ) );
 				return $email;
 			}
 
-			$cv_test_id = get_checkview_test_id();
+			$cv_test_id = checkview_get_test_id();
 			if ( ! $cv_test_id || 'true' != get_option( 'disable_email_receipt_' . $cv_test_id, false ) ) {
-				$email['to'] = TEST_EMAIL;
+				$email['to'] = CHECKVIEW_TEST_EMAIL;
 				$headers     = $email['headers'];
 				if ( ! is_array( $headers ) ) {
 					$headers = explode( "\r\n", $headers );
@@ -650,9 +651,9 @@ if ( ! class_exists( 'Checkview_Gforms_Helper' ) ) {
 				);
 				$email['headers'] = $filtered_headers;
 			} elseif ( is_array( $email['to'] ) ) {
-				$email['to'][] = TEST_EMAIL;
+				$email['to'][] = CHECKVIEW_TEST_EMAIL;
 			} else {
-				$email['to'] .= ', ' . TEST_EMAIL;
+				$email['to'] .= ', ' . CHECKVIEW_TEST_EMAIL;
 			}
 
 			Checkview_Admin_Logs::add( 'ip-logs', 'Submission recipient email address: ' . wp_json_encode( $email['to'] ?? null ) );
@@ -668,13 +669,13 @@ if ( ! class_exists( 'Checkview_Gforms_Helper' ) ) {
 		 * @return array
 		 */
 		public function checkview_modify_sendgrid_email( array $email ): array {
-			$cv_test_id = get_checkview_test_id();
+			$cv_test_id = checkview_get_test_id();
 			if ( ! $cv_test_id || 'true' != get_option( 'disable_email_receipt_' . $cv_test_id, false ) ) {
-				$email['personalizations'][0]['to']  = TEST_EMAIL;
+				$email['personalizations'][0]['to']  = CHECKVIEW_TEST_EMAIL;
 				$email['personalizations'][0]['cc']  = '';
 				$email['personalizations'][0]['bcc'] = '';
 			} else {
-				$email['personalizations'][0]['to'][] = TEST_EMAIL;
+				$email['personalizations'][0]['to'][] = CHECKVIEW_TEST_EMAIL;
 			}
 
 			Checkview_Admin_Logs::add( 'ip-logs', 'Submission recipient email address: ' . wp_json_encode( $email['to'] ?? null ) );
@@ -689,9 +690,9 @@ if ( ! class_exists( 'Checkview_Gforms_Helper' ) ) {
 		 * @return array
 		 */
 		public function checkview_modify_postmark_email( array $email ): array {
-			$cv_test_id = get_checkview_test_id();
+			$cv_test_id = checkview_get_test_id();
 			if ( ! $cv_test_id || 'true' != get_option( 'disable_email_receipt_' . $cv_test_id, false ) ) {
-				$email['To'] = TEST_EMAIL;
+				$email['To'] = CHECKVIEW_TEST_EMAIL;
 				$headers     = $email['Headers'];
 				if ( ! is_array( $headers ) ) {
 					$headers = explode( "\r\n", $headers );
@@ -707,9 +708,9 @@ if ( ! class_exists( 'Checkview_Gforms_Helper' ) ) {
 				$email['Bcc']     = '';
 				$email['CC']      = '';
 			} elseif ( is_array( $email['To'] ) ) {
-				$email['To'][] = TEST_EMAIL;
+				$email['To'][] = CHECKVIEW_TEST_EMAIL;
 			} else {
-				$email['To'] .= ', ' . TEST_EMAIL;
+				$email['To'] .= ', ' . CHECKVIEW_TEST_EMAIL;
 			}
 
 			Checkview_Admin_Logs::add( 'ip-logs', 'Submission recipient email address: ' . wp_json_encode( $email['to'] ?? null ) );
@@ -836,7 +837,7 @@ if ( ! class_exists( 'Checkview_Gforms_Helper' ) ) {
 		 * @return array
 		 */
 		public function checkview_disable_addons_feed( $feeds, $entry, $form ) {
-			$cv_test_id = get_checkview_test_id();
+			$cv_test_id = checkview_get_test_id();
 			if ( $cv_test_id && 'true' == get_option( 'disable_actions_' . $cv_test_id, false ) ) {
 				if ( is_array( $feeds ) ) {
 					foreach ( $feeds as $feed ) {

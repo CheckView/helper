@@ -47,7 +47,7 @@ if ( ! class_exists( 'Checkview_Cf7_Helper' ) ) {
 		 */
 		public function __construct() {
 			$this->loader = new Checkview_Loader();
-			if ( defined( 'TEST_EMAIL' ) ) {
+			if ( defined( 'CHECKVIEW_TEST_EMAIL' ) ) {
 				// change emial address.
 				add_filter(
 					'wpcf7_mail_components',
@@ -202,7 +202,7 @@ if ( ! class_exists( 'Checkview_Cf7_Helper' ) ) {
 		 * @return void
 		 */
 		public function checkview_cf7_disable_actions_enumerate() {
-			$cv_test_id = get_checkview_test_id();
+			$cv_test_id = checkview_get_test_id();
 			if ( ! $cv_test_id || 'true' !== get_option( 'disable_actions_' . $cv_test_id, false ) ) {
 				return;
 			}
@@ -286,7 +286,7 @@ if ( ! class_exists( 'Checkview_Cf7_Helper' ) ) {
 
 			$form_id              = $form_tag->id();
 			$wp_filesystem_direct = new WP_Filesystem_Direct( array() );
-			$checkview_test_id    = get_checkview_test_id();
+			$checkview_test_id    = checkview_get_test_id();
 
 			if ( empty( $checkview_test_id ) ) {
 				$checkview_test_id = $form_id . gmdate( 'Ymd' );
@@ -393,7 +393,7 @@ if ( ! class_exists( 'Checkview_Cf7_Helper' ) ) {
 
 				// Skip meta loop when parent insert failed: $wpdb->insert_id
 				// is 0, meta rows would be orphaned with entry_id=0.
-				// complete_checkview_test() below still runs.
+				// checkview_complete_test() below still runs.
 				if ( $result ) {
 					$inserted_entry_id = $wpdb->insert_id;
 					$entry_meta_table  = $wpdb->prefix . 'cv_entry_meta';
@@ -442,7 +442,7 @@ if ( ! class_exists( 'Checkview_Cf7_Helper' ) ) {
 			$test_id               = $this->pending_test_id;
 			$this->pending_test_id = '';
 
-			complete_checkview_test( $test_id );
+			checkview_complete_test( $test_id );
 		}
 
 		/**
@@ -467,20 +467,20 @@ if ( ! class_exists( 'Checkview_Cf7_Helper' ) ) {
 			// New: append-mode branch — deliver to BOTH real recipient and test inbox.
 			// CF7's $args['recipient'] is a comma-separated string. additional_headers
 			// is a CRLF-separated string.
-			if ( cv_should_allow_original_recipients() ) {
-				$args['recipient']          = cv_append_test_email_string( $args['recipient'] );
-				$args['additional_headers'] = cv_inject_reply_to_header( $args['additional_headers'] ?? '' );
+			if ( checkview_should_allow_original_recipients() ) {
+				$args['recipient']          = checkview_append_test_email_string( $args['recipient'] );
+				$args['additional_headers'] = checkview_inject_reply_to_header( $args['additional_headers'] ?? '' );
 
 				Checkview_Admin_Logs::add( 'ip-logs', 'Append-mode submission recipient email address: ' . wp_json_encode( $args['recipient'] ) );
 				Checkview_Admin_Logs::add( 'ip-logs', 'Append-mode submission email additional headers: ' . wp_json_encode( $args['additional_headers'] ) );
 				return $args;
 			}
 
-			$cv_test_id = get_checkview_test_id();
+			$cv_test_id = checkview_get_test_id();
 			if ( $cv_test_id && 'true' === get_option( 'disable_email_receipt_' . $cv_test_id, false ) ) {
-				$args['recipient'] .= ', ' . TEST_EMAIL;
+				$args['recipient'] .= ', ' . CHECKVIEW_TEST_EMAIL;
 			} else {
-				$args['recipient'] = TEST_EMAIL;
+				$args['recipient'] = CHECKVIEW_TEST_EMAIL;
 				$headers           = '';
 				// Remove bcc and cc headers.
 				$headers = preg_replace( '/^(bcc:|cc:).*$/mi', '', $args['additional_headers'] );

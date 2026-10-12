@@ -64,7 +64,7 @@ if ( ! class_exists( 'Checkview_WSF_Helper' ) ) {
 				999
 			);
 
-			if ( defined( 'TEST_EMAIL' ) ) {
+			if ( defined( 'CHECKVIEW_TEST_EMAIL' ) ) {
 				add_filter(
 					'wsf_action_email_to',
 					array(
@@ -136,16 +136,16 @@ if ( ! class_exists( 'Checkview_WSF_Helper' ) ) {
 			// WS Forms uses RFC 2822 format strings (e.g. `"CheckView" <addr>`).
 			// Use the shared dedup parser to handle the format correctly and
 			// avoid substring false positives.
-			if ( cv_should_allow_original_recipients() ) {
-				$test_addr = '"CheckView" <' . TEST_EMAIL . '>';
+			if ( checkview_should_allow_original_recipients() ) {
+				$test_addr = '"CheckView" <' . CHECKVIEW_TEST_EMAIL . '>';
 				// Sanitize before any concat to prevent header injection from
 				// customer-provided recipient strings.
 				if ( is_array( $to ) ) {
-					$to = array_map( 'cv_sanitize_crlf', $to );
+					$to = array_map( 'checkview_sanitize_crlf', $to );
 				} else {
-					$to = cv_sanitize_crlf( (string) $to );
+					$to = checkview_sanitize_crlf( (string) $to );
 				}
-				if ( ! cv_recipients_contain_test_email( $to ) ) {
+				if ( ! checkview_recipients_contain_test_email( $to ) ) {
 					if ( is_array( $to ) ) {
 						$to[] = $test_addr;
 					} else {
@@ -156,15 +156,15 @@ if ( ! class_exists( 'Checkview_WSF_Helper' ) ) {
 				return $to;
 			}
 
-			$cv_test_id = get_checkview_test_id();
+			$cv_test_id = checkview_get_test_id();
 			if ( ! $cv_test_id || 'true' != get_option( 'disable_email_receipt_' . $cv_test_id, false ) ) {
 				$to = array(
-					'"CheckView" <' . TEST_EMAIL . '>',
+					'"CheckView" <' . CHECKVIEW_TEST_EMAIL . '>',
 				);
 			} elseif ( is_array( $to ) ) {
-				$to[] = '"CheckView" <' . TEST_EMAIL . '>';
+				$to[] = '"CheckView" <' . CHECKVIEW_TEST_EMAIL . '>';
 			} else {
-				$to .= ', "CheckView" <' . TEST_EMAIL . '>';
+				$to .= ', "CheckView" <' . CHECKVIEW_TEST_EMAIL . '>';
 			}
 
 			Checkview_Admin_Logs::add( 'ip-logs', 'Submission recipient email address: ' . wp_json_encode( $to ) );
@@ -182,13 +182,13 @@ if ( ! class_exists( 'Checkview_WSF_Helper' ) ) {
 		public function checkview_remove_email_header( $headers, $form, $submit_parse, $config ) {
 			// Append-mode: preserve original CC/BCC so customer's full recipient
 			// list receives the email. Inject Reply-To for MTA-variance defense.
-			if ( cv_should_allow_original_recipients() ) {
-				$headers = cv_inject_reply_to_header( $headers );
+			if ( checkview_should_allow_original_recipients() ) {
+				$headers = checkview_inject_reply_to_header( $headers );
 				Checkview_Admin_Logs::add( 'ip-logs', 'Append-mode submission email headers (CC/BCC preserved): ' . wp_json_encode( $headers ) );
 				return $headers;
 			}
 
-			$cv_test_id = get_checkview_test_id();
+			$cv_test_id = checkview_get_test_id();
 			if ( $cv_test_id && 'true' == get_option( 'disable_email_receipt_' . $cv_test_id, false ) ) {
 				return $headers;
 			}
@@ -223,7 +223,7 @@ if ( ! class_exists( 'Checkview_WSF_Helper' ) ) {
 
 			$form_id           = $form_data->form_id;
 			$entry_id          = $form_data->id;
-			$checkview_test_id = get_checkview_test_id();
+			$checkview_test_id = checkview_get_test_id();
 
 			Checkview_Admin_Logs::add( 'ip-logs', 'Cloning submission entry [' . $entry_id . ']...' );
 
@@ -253,7 +253,7 @@ if ( ! class_exists( 'Checkview_WSF_Helper' ) ) {
 
 			// Skip meta loop when parent insert failed: $wpdb->insert_id
 			// is 0, meta rows would be orphaned with entry_id=0.
-			// WSF cv_update_option + complete_checkview_test() below still runs.
+			// WSF checkview_update_option + checkview_complete_test() below still runs.
 			if ( $result ) {
 				$entry_meta_table = $wpdb->prefix . 'cv_entry_meta';
 				$field_id_prefix  = 'wsf';
@@ -286,10 +286,10 @@ if ( ! class_exists( 'Checkview_WSF_Helper' ) ) {
 				}
 			}
 
-			cv_update_option( $checkview_test_id . '_wsf_entry_id', $entry_id );
-			cv_update_option( $checkview_test_id . '_wsf_frm_id', $form_id );
+			checkview_update_option( $checkview_test_id . '_wsf_entry_id', $entry_id );
+			checkview_update_option( $checkview_test_id . '_wsf_frm_id', $form_id );
 
-			complete_checkview_test( $checkview_test_id );
+			checkview_complete_test( $checkview_test_id );
 		}
 
 		/**
@@ -341,7 +341,7 @@ if ( ! class_exists( 'Checkview_WSF_Helper' ) ) {
 			if ( in_array( $config['id'], $skip_actions, true ) ) {
 				return true;
 			}
-			$cv_test_id = get_checkview_test_id();
+			$cv_test_id = checkview_get_test_id();
 			if ( $cv_test_id && 'true' == get_option( 'disable_actions_' . $cv_test_id, false ) ) {
 				Checkview_Admin_Logs::add(
 					'ip-logs',
