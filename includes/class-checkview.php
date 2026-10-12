@@ -399,16 +399,7 @@ class CheckView {
 
 		$this->loader = new Checkview_Loader();
 
-		// Current visitor IP.
-		$visitor_ip = checkview_get_visitor_ip();
 		$woo_helper = '';
-		// Check view Bot IP.
-		$cv_bot_ip = checkview_get_api_ip();
-
-		// TODO: What is this for?
-		if ( ( 'checkview-saas' === get_option( $visitor_ip ) || isset( $_REQUEST[ self::PARAM_TEST_ID ] ) || ( is_array( $cv_bot_ip ) && in_array( $visitor_ip, $cv_bot_ip ) ) ) ) {
-			update_option( $visitor_ip, 'checkview-saas', true );
-		}
 
 		if ( class_exists( 'WooCommerce' ) ) {
 			require_once plugin_dir_path( __DIR__ ) . 'includes/woocommercehelper/class-checkview-woo-automated-testing.php';
