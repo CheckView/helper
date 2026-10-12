@@ -499,7 +499,7 @@ if ( ! class_exists( 'Checkview_Fluent_Forms_Helper' ) ) {
 		/**
 		 * Replace IDs for checkbox/radio inputs & labels with static IDs based on incremental counter.
 		 *
-		 * @param $html Input's HTML.
+		 * @param string $html Input's HTML.
 		 *
 		 * @return string Modified HTML.
 		 */

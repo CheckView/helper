@@ -77,6 +77,8 @@ if ( ! defined( 'CHECKVIEW_URI' ) ) {
  *
  * @since 2.3.0
  *
+ * @param string $reason Cache invalidation reasoning.
+ *
  * @return void
  */
 function checkview_invalidate_opcache( $reason = '' ) {

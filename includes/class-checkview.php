@@ -119,8 +119,8 @@ class CheckView {
 	/**
 	 * Extract a query parameter from a given URL.
 	 *
-	 * @param $url string URL.
-	 * @param $param string Parameter's key.
+	 * @param string $url URL.
+	 * @param string $param Parameter's key.
 	 *
 	 * @return string|null Parameter's value,
 	 */
@@ -133,7 +133,7 @@ class CheckView {
 	/**
 	 * Gets a query parameter from the current referrer.
 	 *
-	 * @param $param string Parameter's key.
+	 * @param string $param Parameter's key.
 	 *
 	 * @return string|null Parameter's value, or null if not found.
 	 */

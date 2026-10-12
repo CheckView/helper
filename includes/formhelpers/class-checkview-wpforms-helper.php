@@ -247,7 +247,7 @@ if ( ! class_exists( 'Checkview_Wpforms_Helper' ) ) {
 		/**
 		 * Disable WP Forms frontend CAPTCHA API.
 		 *
-		 * @param $captcha_api string CAPTCHA API.
+		 * @param string $captcha_api CAPTCHA API.
 		 *
 		 * @return string
 		 *

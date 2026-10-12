@@ -192,13 +192,15 @@ if ( ! class_exists( 'Checkview_Formidable_Helper' ) ) {
 			Checkview_Admin_Logs::add( 'ip-logs', 'Submission email headers: ' . wp_json_encode( $array_values ) );
 			return $array_values;
 		}
+
 		/**
 		 * Stores the test results and finishes the testing session.
 		 *
 		 * Deletes test submission from Formidable database table.
 		 *
-		 * @param int $entry_id Form's ID.
-		 * @param int $form_id Form entry ID.
+		 * @param int   $entry_id Form entry ID.
+		 * @param int   $form_id Form's ID.
+		 * @param array $args Hook args. is_child set for repeater/embedded child entries.
 		 * @return void
 		 */
 		public function checkview_log_form_test_entry( $entry_id, $form_id, $args = array() ) {

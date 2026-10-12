@@ -2272,7 +2272,7 @@ class CheckView_Api {
 	 * @param WP_REST_Request $request wp request object.
 	 * @return WP_REST_Response|WP_Error
 	 */
-	public function checkview_saas_set_helper_status( \WP_REST_Request $request ) {
+	public function checkview_saas_set_helper_status( WP_REST_Request $request ) {
 		// Get the status from the request parameters.
 		$checkview_status = $request->get_param( '_checkview_status' );
 		$checkview_status = sanitize_text_field( $checkview_status );
@@ -2304,7 +2304,7 @@ class CheckView_Api {
 	 * @param WP_REST_Request $request wp request object.
 	 * @return WP_REST_Response|WP_Error
 	 */
-	public function checkview_saas_set_test_product_status( \WP_REST_Request $request ) {
+	public function checkview_saas_set_test_product_status( WP_REST_Request $request ) {
 		if ( ! class_exists( 'WooCommerce' ) ) {
 			Checkview_Admin_Logs::add( 'api-logs', 'WooCommerce not found.' );
 			return new WP_REST_Response(
@@ -2363,7 +2363,7 @@ class CheckView_Api {
 	 * @param WP_REST_Request $request request data with the api call.
 	 * @return WP_Error|array
 	 */
-	public function checkview_get_items_permissions_check( \WP_REST_Request $request ) {
+	public function checkview_get_items_permissions_check( WP_REST_Request $request ) {
 		nocache_headers();
 		// Get the Authorization header.
 		$auth_header = $request->get_header( 'Authorization' );

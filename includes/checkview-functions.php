@@ -1773,9 +1773,9 @@ if ( ! function_exists( 'checkview_update_option' ) ) {
 	 * @see update_option()
 	 * @see get_option()
 	 *
-	 * @param $option string Name of the option to update.
-	 * @param $value mixed Option value.
-	 * @param $autoload boolean|null Optional. Whether to load the option when WordPress starts up.
+	 * @param string       $option Name of the option to update.
+	 * @param mixed        $value Option value.
+	 * @param boolean|null $autoload Optional. Whether to load the option when WordPress starts up.
 	 *
 	 * @return boolean True if the value was updated, false otherwise.
 	 */
@@ -1803,7 +1803,7 @@ if ( ! function_exists( 'checkview_delete_option' ) ) {
 	 * @see delete_option()
 	 * @see get_option()
 	 *
-	 * @param $option string Name of the option to delete.
+	 * @param string $option Name of the option to delete.
 	 *
 	 * @return boolean True if the value was deleted, false otherwise.
 	 */
