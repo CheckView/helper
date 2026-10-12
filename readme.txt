@@ -7,7 +7,7 @@ Tested up to: 7.1
 Requires PHP: 8.0
 License: GPLv2 or later
 License URI: http://www.gnu.org/licenses/gpl-2.0.html
-Stable tag: 2.5.1
+Stable tag: 2.5.2-beta
 
 [CheckView](https://checkview.io/) automates WordPress form and WooCommerce testing, monitoring key flows to catch failures early before they cost you leads or sales everyday.
 
@@ -205,7 +205,7 @@ Support and test configuration are handled through the CheckView platform. Pleas
 
 == Changelog ==
 
-= 2.5.2 =
+= 2.5.2-beta =
 * Elementor: Find forms inside a saved template that a page embeds with the Template widget or the [elementor-template] shortcode, including templates nested in templates, and list them against the pages that embed them. Also list a page once per form when the same form appears on it more than once.
 
 = 2.5.1 =
