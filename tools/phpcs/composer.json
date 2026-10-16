@@ -1,0 +1,17 @@
+{
+  "name": "checkview/phpcs-tools",
+  "description": "Dev-only PHPCS tooling for CheckView. Kept separate so it never touches the shipped autoloader in includes/vendor.",
+  "type": "project",
+  "license": "GPL-2.0-or-later",
+  "require": {
+    "squizlabs/php_codesniffer": "^3.13.6",
+    "wp-coding-standards/wpcs": "^3.1",
+    "dealerdirect/phpcodesniffer-composer-installer": "^1.0",
+    "phpcompatibility/phpcompatibility-wp": "^2.1"
+  },
+  "config": {
+    "allow-plugins": {
+      "dealerdirect/phpcodesniffer-composer-installer": true
+    }
+  }
+}
