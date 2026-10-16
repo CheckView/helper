@@ -814,22 +814,22 @@ if ( ! function_exists( 'checkview_whitelist_api_ip' ) ) {
 					// If host name is not set, request to add it.
 					checkview_add_to_cleantalk( $user_token, 'spamfirewall', $current_ip . '/32', 6, $service_id );
 				} elseif ( is_array( $spamfirewall_ips[ $host_name ] ) ) {
-						$has_current_ip = array_find(
-							$spamfirewall_ips[ $host_name ],
-							function ( $value ) use ( $current_ip ) {
-								$position = strpos( $value, $current_ip );
+					$has_current_ip = array_find(
+						$spamfirewall_ips[ $host_name ],
+						function ( $value ) use ( $current_ip ) {
+							$position = strpos( $value, $current_ip );
 
-								return false !== $position;
-							}
-						);
+							return false !== $position;
+						}
+					);
 
 					if ( ! $has_current_ip ) {
 						checkview_add_to_cleantalk( $user_token, 'spamfirewall', $current_ip, 6, $service_id );
 					}
 				} else {
 					// phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log -- Desired production debug logging.
-					error_log( sprintf( 'Value for spam firewall IPs at hostname [%1$s] is unexpected type [%2$s], expected array.', $host_name, gettype( $antispam_ips[ $host_name ] ) ) );
-					Checkview_Admin_Logs::add( 'ip-logs', sprintf( 'Value for spam firewall IPs at hostname [%1$s] is unexpected type [%2$s], expected array.', $host_name, gettype( $antispam_ips[ $host_name ] ) ) );
+					error_log( sprintf( 'Value for spam firewall IPs at hostname [%1$s] is unexpected type [%2$s], expected array.', $host_name, gettype( $spamfirewall_ips[ $host_name ] ) ) );
+					Checkview_Admin_Logs::add( 'ip-logs', sprintf( 'Value for spam firewall IPs at hostname [%1$s] is unexpected type [%2$s], expected array.', $host_name, gettype( $spamfirewall_ips[ $host_name ] ) ) );
 				}
 			}
 		}
