@@ -732,7 +732,7 @@ if ( ! class_exists( 'Checkview_Gforms_Helper' ) ) {
 			Checkview_Admin_Logs::add( 'ip-logs', 'Cloning submission entry [' . $entry_id . '] with unique ID [' . $uid . ']...' );
 
 			$tablename        = $wpdb->prefix . 'gf_entry_meta';
-			$rows             = $wpdb->get_results( $wpdb->prepare( 'Select * from ' . $tablename . ' where entry_id=%d and form_id=%d order by id ASC', $entry_id, $form_id ) );
+			$rows             = $wpdb->get_results( $wpdb->prepare( 'Select * from %i where entry_id=%d and form_id=%d order by id ASC', $tablename, $entry_id, $form_id ) );
 			$entry_meta_table = $wpdb->prefix . 'cv_entry_meta';
 			$count            = 0;
 
@@ -759,7 +759,7 @@ if ( ! class_exists( 'Checkview_Gforms_Helper' ) ) {
 			}
 
 			$tablename = $wpdb->prefix . 'gf_entry';
-			$row       = $wpdb->get_row( $wpdb->prepare( 'Select * from ' . $tablename . ' where id=%d and form_id=%d LIMIT 1', $entry_id, $form_id ), ARRAY_A );
+			$row       = $wpdb->get_row( $wpdb->prepare( 'Select * from %i where id=%d and form_id=%d LIMIT 1', $tablename, $entry_id, $form_id ), ARRAY_A );
 
 			unset( $row['id'] );
 			unset( $row['source_id'] );

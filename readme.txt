@@ -2,7 +2,7 @@
 Contributors: checkview, inspry
 Donate link: https://checkview.io/
 Tags: form testing, form monitoring, wordpress testing, woocommerce testing, site monitoring
-Requires at least: 5.0.1
+Requires at least: 6.2
 Tested up to: 7.1
 Requires PHP: 8.0
 License: GPLv2 or later

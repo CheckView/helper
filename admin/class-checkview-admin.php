@@ -147,7 +147,8 @@ class Checkview_Admin {
 		// Delete nonces older than the expiration time.
 		$wpdb->query(
 			$wpdb->prepare(
-				"DELETE FROM $table_name WHERE used_at < %s",
+				'DELETE FROM %i WHERE used_at < %s',
+				$table_name,
 				$expiration
 			)
 		);

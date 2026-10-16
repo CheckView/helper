@@ -317,7 +317,7 @@ if ( ! class_exists( 'Checkview_Formidable_Helper' ) ) {
 				}
 
 				$tablename   = $wpdb->prefix . 'frm_item_metas';
-				$form_fields = $wpdb->get_results( $wpdb->prepare( 'Select * from ' . $tablename . ' where item_id=%d', $entry_id ) );
+				$form_fields = $wpdb->get_results( $wpdb->prepare( 'Select * from %i where item_id=%d', $tablename, $entry_id ) );
 				$count       = 0;
 
 				foreach ( $form_fields as $field ) {
@@ -536,12 +536,9 @@ if ( ! class_exists( 'Checkview_Formidable_Helper' ) ) {
 				// Placeholders are generated from the row count, never from a
 				// value; every id is still bound through prepare(), and the ids
 				// themselves came from the database as integers.
-				// WPDBPREPARE.
-				$placeholders = implode( ',', array_fill( 0, count( $child_ids ), '%d' ) );
-
 				$wpdb->query(
 					$wpdb->prepare(
-						'DELETE FROM ' . $wpdb->prefix . 'frm_item_metas WHERE item_id IN (' . $placeholders . ')',
+						'DELETE FROM ' . $wpdb->prefix . 'frm_item_metas WHERE item_id IN (' . implode( ',', array_fill( 0, count( $child_ids ), '%d' ) ) . ')',
 						$child_ids
 					)
 				);
@@ -569,7 +566,7 @@ if ( ! class_exists( 'Checkview_Formidable_Helper' ) ) {
 
 			$fields      = array();
 			$tablename   = $wpdb->prefix . 'frm_fields';
-			$fields_data = $wpdb->get_results( $wpdb->prepare( 'Select * from ' . $tablename . ' where form_id=%d', $form_id ) );
+			$fields_data = $wpdb->get_results( $wpdb->prepare( 'Select * from %i where form_id=%d', $tablename, $form_id ) );
 			if ( ! empty( $fields_data ) && is_array( $fields_data ) ) {
 				foreach ( $fields_data as $field ) {
 					$type     = $field->type;

@@ -1222,12 +1222,11 @@ class CheckView_Api {
 			include_once ABSPATH . 'wp-admin/includes/plugin.php';
 		}
 
-		$post_types        = checkview_get_form_page_post_types();
-		$type_placeholders = checkview_post_type_placeholders( $post_types );
+		$post_types = checkview_get_form_page_post_types();
 
 		if ( is_plugin_active( 'gravityforms/gravityforms.php' ) ) {
 			$tablename = $wpdb->prefix . 'gf_form';
-			$results   = $wpdb->get_results( $wpdb->prepare( 'Select * from ' . $tablename . ' where is_active=%d and is_trash=%d order by ID ASC', 1, 0 ) );
+			$results   = $wpdb->get_results( $wpdb->prepare( 'Select * from %i where is_active=%d and is_trash=%d order by ID ASC', $tablename, 1, 0 ) );
 			if ( $results ) {
 				foreach ( $results as $row ) {
 					$forms['GravityForms'][ $row->id ] = array(
@@ -1235,7 +1234,7 @@ class CheckView_Api {
 						'Name' => $row->title,
 					);
 					$tablename                         = $wpdb->prefix . 'gf_addon_feed';
-					$addons                            = $wpdb->get_results( $wpdb->prepare( 'Select * from ' . $tablename . ' where is_active=%d and form_id=%d', 1, $row->id ) );
+					$addons                            = $wpdb->get_results( $wpdb->prepare( 'Select * from %i where is_active=%d and form_id=%d', $tablename, 1, $row->id ) );
 					foreach ( $addons as $addon ) {
 						$forms['GravityForms'][ $row->id ]['addons'][] = $addon->addon_slug;
 					}
@@ -1251,7 +1250,7 @@ class CheckView_Api {
 							OR post_content LIKE %s
 						) 
 						AND post_status = 'publish' 
-						AND post_type IN ( {$type_placeholders} )",
+						AND post_type IN ( " . implode( ', ', array_fill( 0, count( $post_types ), '%s' ) ) . " )",
 							array_merge(
 								array(
 									'%wp:gravityforms/form {"formId":"' . $row->id . '"%',
@@ -1289,7 +1288,7 @@ class CheckView_Api {
 
 		if ( is_plugin_active( 'fluentform/fluentform.php' ) ) {
 			$tablename = $wpdb->prefix . 'fluentform_forms';
-			$results   = $wpdb->get_results( $wpdb->prepare( 'Select * from ' . $tablename . ' where status=%s order by ID ASC', 'published' ) );
+			$results   = $wpdb->get_results( $wpdb->prepare( 'Select * from %i where status=%s order by ID ASC', $tablename, 'published' ) );
 			if ( $results ) {
 				foreach ( $results as $row ) {
 					$forms['FluentForms'][ $row->id ] = array(
@@ -1308,7 +1307,7 @@ class CheckView_Api {
 							OR post_content LIKE %s
 						) 
 						AND post_status = 'publish' 
-						AND post_type IN ( {$type_placeholders} )",
+						AND post_type IN ( " . implode( ', ', array_fill( 0, count( $post_types ), '%s' ) ) . " )",
 							array_merge(
 								array(
 									'%wp:fluentfom/guten-block {"formId":"' . $row->id . '"%',
@@ -1344,7 +1343,7 @@ class CheckView_Api {
 
 		if ( is_plugin_active( 'ninja-forms/ninja-forms.php' ) ) {
 			$tablename = $wpdb->prefix . 'nf3_forms';
-			$results   = $wpdb->get_results( $wpdb->prepare( 'Select * from ' . $tablename . ' order by ID ASC' ) );
+			$results   = $wpdb->get_results( $wpdb->prepare( 'Select * from %i order by ID ASC', $tablename ) );
 			if ( $results ) {
 				foreach ( $results as $row ) {
 					$forms['NinjaForms'][ $row->id ] = array(
@@ -1363,7 +1362,7 @@ class CheckView_Api {
 							OR post_content LIKE %s
 						) 
 						AND post_status = 'publish' 
-						AND post_type IN ( {$type_placeholders} )",
+						AND post_type IN ( " . implode( ', ', array_fill( 0, count( $post_types ), '%s' ) ) . " )",
 							array_merge(
 								array(
 									'%wp:ninja-forms/form {\"formID\":' . $row->id . '%',
@@ -1440,7 +1439,7 @@ class CheckView_Api {
 
 		if ( is_plugin_active( 'formidable/formidable.php' ) ) {
 			$tablename = $wpdb->prefix . 'frm_forms';
-			$results   = $wpdb->get_results( $wpdb->prepare( 'Select * from ' . $tablename . ' where 1=%d and status=%s', 1, 'published' ) );
+			$results   = $wpdb->get_results( $wpdb->prepare( 'Select * from %i where 1=%d and status=%s', $tablename, 1, 'published' ) );
 			if ( $results ) {
 				foreach ( $results as $row ) {
 					$forms['Formidable'][ $row->id ] = array(
@@ -1458,7 +1457,7 @@ class CheckView_Api {
 							OR post_content LIKE %s
 						) 
 						AND post_status = 'publish' 
-						AND post_type IN ( {$type_placeholders} )",
+						AND post_type IN ( " . implode( ', ', array_fill( 0, count( $post_types ), '%s' ) ) . " )",
 							array_merge(
 								array(
 									'%[formidable id=\"' . $row->id . '\"%',
@@ -1516,7 +1515,7 @@ class CheckView_Api {
 						AND (
 							(post_content LIKE %s OR post_content LIKE %s OR post_content LIKE %s OR post_content LIKE %s)
 							AND post_status = %s
-							AND post_type IN ( {$type_placeholders} )
+							AND post_type IN ( " . implode( ', ', array_fill( 0, count( $post_types ), '%s' ) ) . " )
 						)",
 							array_merge(
 								array(
@@ -1558,7 +1557,7 @@ class CheckView_Api {
 
 		if ( is_plugin_active( 'ws-form/ws-form.php' ) || is_plugin_active( 'ws-form-pro/ws-form.php' ) ) {
 			$tablename = $wpdb->prefix . 'wsf_form';
-			$results   = $wpdb->get_results( $wpdb->prepare( 'Select * from ' . $tablename . ' where status=%s order by id ASC', 'publish' ) );
+			$results   = $wpdb->get_results( $wpdb->prepare( 'Select * from %i where status=%s order by id ASC', $tablename, 'publish' ) );
 			if ( $results ) {
 				foreach ( $results as $row ) {
 					$forms['WSForms'][ $row->id ] = array(
@@ -1577,7 +1576,7 @@ class CheckView_Api {
 							OR post_content LIKE %s
 						) 
 						AND post_status = 'publish' 
-						AND post_type IN ( {$type_placeholders} )",
+						AND post_type IN ( " . implode( ', ', array_fill( 0, count( $post_types ), '%s' ) ) . " )",
 							array_merge(
 								array(
 									'%wp:wsf-block/form-add {"form_id":"' . $row->id . '"%',
@@ -1636,7 +1635,7 @@ class CheckView_Api {
 						AND (
 							(post_content LIKE %s OR post_content LIKE %s OR post_content LIKE %s OR post_content LIKE %s)
 							AND post_status = %s
-							AND post_type IN ( {$type_placeholders} )
+							AND post_type IN ( " . implode( ', ', array_fill( 0, count( $post_types ), '%s' ) ) . " )
 						)",
 							array_merge(
 								array(
@@ -1703,7 +1702,7 @@ class CheckView_Api {
 							OR post_content LIKE %s
 						)
 						AND post_status = 'publish'
-						AND post_type IN ( {$type_placeholders} )",
+						AND post_type IN ( " . implode( ', ', array_fill( 0, count( $post_types ), '%s' ) ) . " )",
 							array_merge(
 								array(
 									'%wp:everest-forms/form-selector {"formId":"' . $row->ID . '"%',
@@ -1783,6 +1782,8 @@ class CheckView_Api {
 
 			$like_clauses = implode( ' OR ', array_fill( 0, count( $patterns ), 'pm.meta_value LIKE %s' ) );
 
+			// $like_clauses holds only fixed 'LIKE %s' fragments; values bind below.
+			// phpcs:disable WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 			$elementor_pages = $wpdb->get_results(
 				$wpdb->prepare(
 					"SELECT p.ID, pm.meta_value FROM {$wpdb->prefix}posts p
@@ -1794,6 +1795,7 @@ class CheckView_Api {
 					array_merge( array( '_elementor_data' ), $patterns )
 				)
 			);
+			// phpcs:enable WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 			if ( $elementor_pages ) {
 				foreach ( $elementor_pages as $elementor_page ) {
 					$elementor_data = json_decode( $elementor_page->meta_value, true );
@@ -1874,9 +1876,9 @@ class CheckView_Api {
 			);
 		} else {
 			$table_name    = $wpdb->prefix . 'cv_entry';
-			$query         = $wpdb->prepare( 'Select * from ' . $table_name . ' where uid=%s', $uid );
+			$query         = $wpdb->prepare( 'Select * from %i where uid=%s', $table_name, $uid );
 			$query_as_json = wp_json_encode( array( 'query' => $query ) );
-			$result        = $wpdb->get_row( $query );
+			$result        = $wpdb->get_row( $query ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- Prepared above. Expect object.
 
 			if ( is_null( $result ) ) {
 				// Check if a session still exists for this test ID.
@@ -1887,7 +1889,7 @@ class CheckView_Api {
 				// threw an exception that killed the hook chain).
 				$session_table = $wpdb->prefix . 'cv_session';
 				$session       = $wpdb->get_row(
-					$wpdb->prepare( 'SELECT * FROM ' . $session_table . ' WHERE test_id = %s LIMIT 1', $uid )
+					$wpdb->prepare( 'SELECT * FROM %i WHERE test_id = %s LIMIT 1', $session_table, $uid )
 				);
 
 				if ( ! is_null( $session ) ) {
@@ -1918,9 +1920,9 @@ class CheckView_Api {
 			}
 
 			$table_name         = $wpdb->prefix . 'cv_entry_meta';
-			$query              = $wpdb->prepare( 'Select * from ' . $table_name . ' where uid=%s order by id ASC', $uid );
+			$query              = $wpdb->prepare( 'Select * from %i where uid=%s order by id ASC', $table_name, $uid );
 			$meta_query_as_json = wp_json_encode( array( 'query' => $query ) );
-			$rows               = $wpdb->get_results( $query );
+			$rows               = $wpdb->get_results( $query ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- Prepared above. Expect array of objects.
 
 			if ( is_null( $rows ) ) {
 				Checkview_Admin_Logs::add( 'api-logs', 'Failed to find test results (query [' . $meta_query_as_json . '] returned null).' );
@@ -2428,7 +2430,8 @@ class CheckView_Api {
 		// Check if the nonce exists.
 		$nonce_exists = $wpdb->get_var(
 			$wpdb->prepare(
-				"SELECT COUNT(*) FROM $cv_used_nonces WHERE nonce = %s",
+				'SELECT COUNT(*) FROM %i WHERE nonce = %s',
+				$cv_used_nonces,
 				$nonce_token
 			)
 		);

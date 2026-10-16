@@ -207,7 +207,8 @@ if ( ! class_exists( 'Checkview_Elementor_Helper' ) ) {
 
 			$this->submission_watermarks[ $element_id ] = (int) $wpdb->get_var(
 				$wpdb->prepare(
-					'SELECT COALESCE(MAX(id), 0) FROM ' . $submissions_table . ' WHERE element_id = %s',
+					'SELECT COALESCE(MAX(id), 0) FROM %i WHERE element_id = %s',
+					$submissions_table,
 					$element_id
 				)
 			);
@@ -491,7 +492,8 @@ if ( ! class_exists( 'Checkview_Elementor_Helper' ) ) {
 					// Only rows created after the watermark can belong to this test.
 					$candidates = $wpdb->get_results(
 						$wpdb->prepare(
-							'SELECT id, user_ip FROM ' . $submissions_table . ' WHERE element_id = %s AND id > %d ORDER BY id ASC',
+							'SELECT id, user_ip FROM %i WHERE element_id = %s AND id > %d ORDER BY id ASC',
+							$submissions_table,
 							$element_id,
 							$watermark
 						)

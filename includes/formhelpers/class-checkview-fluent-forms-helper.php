@@ -361,7 +361,7 @@ if ( ! class_exists( 'Checkview_Fluent_Forms_Helper' ) ) {
 
 			// Clone entry to check view tables.
 			$tablename        = $wpdb->prefix . 'fluentform_entry_details';
-			$rows             = $wpdb->get_results( $wpdb->prepare( 'Select * from ' . $tablename . ' where submission_id=%d and form_id=%d order by id ASC', $entry_id, $form_id ) );
+			$rows             = $wpdb->get_results( $wpdb->prepare( 'Select * from %i where submission_id=%d and form_id=%d order by id ASC', $tablename, $entry_id, $form_id ) );
 			$count            = 0;
 			$entry_meta_table = $wpdb->prefix . 'cv_entry_meta';
 
@@ -394,7 +394,7 @@ if ( ! class_exists( 'Checkview_Fluent_Forms_Helper' ) ) {
 			}
 
 			$tablename   = $wpdb->prefix . 'fluentform_submissions';
-			$row         = $wpdb->get_row( $wpdb->prepare( 'Select * from ' . $tablename . ' where id=%d and form_id=%d LIMIT 1', $entry_id, $form_id ), ARRAY_A );
+			$row         = $wpdb->get_row( $wpdb->prepare( 'Select * from %i where id=%d and form_id=%d LIMIT 1', $tablename, $entry_id, $form_id ), ARRAY_A );
 			$entry_table = $wpdb->prefix . 'cv_entry';
 			$data        = array(
 				'uid'            => $checkview_test_id,

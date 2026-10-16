@@ -258,7 +258,7 @@ if ( ! class_exists( 'Checkview_WSF_Helper' ) ) {
 				$entry_meta_table = $wpdb->prefix . 'cv_entry_meta';
 				$field_id_prefix  = 'wsf';
 				$tablename        = $wpdb->prefix . 'wsf_submit_meta';
-				$form_fields      = $wpdb->get_results( $wpdb->prepare( 'Select * from ' . $tablename . ' where parent_id=%d', $entry_id ) );
+				$form_fields      = $wpdb->get_results( $wpdb->prepare( 'Select * from %i where parent_id=%d', $tablename, $entry_id ) );
 				$count            = 0;
 
 				foreach ( $form_fields as $field ) {

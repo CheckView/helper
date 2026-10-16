@@ -1047,10 +1047,11 @@ if ( ! function_exists( 'checkview_get_cv_session' ) ) {
 
 		$result = $wpdb->get_results(
 			$wpdb->prepare(
-				"SELECT * FROM {$session_table}
+				'SELECT * FROM %i
 				WHERE visitor_ip = %s
 				AND test_id = %s
-				LIMIT 1",
+				LIMIT 1',
+				$session_table,
 				$ip,
 				$test_id
 			),
@@ -1142,20 +1143,6 @@ if ( ! function_exists( 'checkview_get_form_page_post_types' ) ) {
 	}
 }
 
-if ( ! function_exists( 'checkview_post_type_placeholders' ) ) {
-	/**
-	 * Builds the `%s, %s, ...` placeholder list for a post type IN clause.
-	 *
-	 * @since 1.0.0
-	 *
-	 * @param string[] $post_types Post type slugs.
-	 * @return string Comma separated placeholders.
-	 */
-	function checkview_post_type_placeholders( $post_types ) {
-		return implode( ', ', array_fill( 0, count( $post_types ), '%s' ) );
-	}
-}
-
 if ( ! function_exists( 'checkview_get_wp_block_pages' ) ) {
 	/**
 	 * Retrieves a list of pages that contain at least one Gutenberg block.
@@ -1171,7 +1158,7 @@ if ( ! function_exists( 'checkview_get_wp_block_pages' ) ) {
 		// WPDBPREPARE.
 		return $wpdb->get_results(
 			$wpdb->prepare(
-				"SELECT * FROM {$wpdb->prefix}posts WHERE 1=1 AND (post_content LIKE %s) AND post_status=%s AND post_type IN ( " . checkview_post_type_placeholders( $post_types ) . ' )',
+				"SELECT * FROM {$wpdb->prefix}posts WHERE 1=1 AND (post_content LIKE %s) AND post_status=%s AND post_type IN ( " . implode( ', ', array_fill( 0, count( $post_types ), '%s' ) ) . ' )',
 				array_merge(
 					array(
 						'%wp:block {\"ref\":' . $block_id . '}%',
@@ -1529,22 +1516,29 @@ if ( ! function_exists( 'checkview_delete_tables_data' ) ) {
 
 		Checkview_Admin_Logs::add( 'ip-logs', 'Running scheduled deletion of CheckView rows...' );
 
-		$table_entry      = esc_sql( $wpdb->prefix . 'cv_entry' );
-		$table_entry_meta = esc_sql( $wpdb->prefix . 'cv_entry_meta' );
+		$table_entry      = $wpdb->prefix . 'cv_entry';
+		$table_entry_meta = $wpdb->prefix . 'cv_entry_meta';
 
 		// Delete entries older than 1 day from 'cv_entry_meta' table.
 		$wpdb->query(
-			"DELETE FROM $table_entry_meta
-			WHERE entry_id IN (
-				SELECT id FROM $table_entry
-				WHERE date_created < DATE_SUB(NOW(), INTERVAL 1 DAY)
-			)"
+			$wpdb->prepare(
+				'DELETE FROM %i
+				WHERE entry_id IN (
+					SELECT id FROM %i
+					WHERE date_created < DATE_SUB(NOW(), INTERVAL 1 DAY)
+				)',
+				$table_entry_meta,
+				$table_entry
+			)
 		);
 
 		// Delete entries older than 1 day from 'cv_entry' table.
 		$wpdb->query(
-			"DELETE FROM $table_entry
-			WHERE date_created < DATE_SUB(NOW(), INTERVAL 1 DAY)"
+			$wpdb->prepare(
+				'DELETE FROM %i
+				WHERE date_created < DATE_SUB(NOW(), INTERVAL 1 DAY)',
+				$table_entry
+			)
 		);
 
 		Checkview_Admin_Logs::add( 'ip-logs', 'Done.' );
