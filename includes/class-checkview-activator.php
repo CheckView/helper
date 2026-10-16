@@ -43,6 +43,7 @@ class Checkview_Activator {
 
 		$cv_entry_table = $wpdb->prefix . 'cv_entry';
 		if ( $wpdb->get_var( $wpdb->prepare( 'show tables like %s', $cv_entry_table ) ) !== $cv_entry_table ) {
+			// phpcs:ignore WordPress.DB.DirectDatabaseQuery.SchemaChange -- Plugin-owned table.
 			$sql  = "CREATE TABLE IF NOT EXISTS `$cv_entry_table` (";
 			$sql .= '`id` int(10) unsigned NOT NULL AUTO_INCREMENT,';
 			$sql .= '`form_id` mediumint(10) unsigned NOT NULL,';
@@ -74,6 +75,7 @@ class Checkview_Activator {
 		}
 		$cv_entry_meta_table = $wpdb->prefix . 'cv_entry_meta';
 		if ( $wpdb->get_var( $wpdb->prepare( 'show tables like %s', $cv_entry_meta_table ) ) !== $cv_entry_meta_table ) {
+			// phpcs:ignore WordPress.DB.DirectDatabaseQuery.SchemaChange -- Plugin-owned table.
 			$sql  = "CREATE TABLE IF NOT EXISTS `$cv_entry_meta_table` (";
 			$sql .= '`id` bigint(10) unsigned NOT NULL AUTO_INCREMENT,';
 			$sql .= '`form_id` mediumint(10) unsigned NOT NULL DEFAULT 0,';
@@ -92,6 +94,7 @@ class Checkview_Activator {
 
 		$cv_session_table = $wpdb->prefix . 'cv_session';
 		if ( $wpdb->get_var( $wpdb->prepare( 'show tables like %s', $cv_session_table ) ) !== $cv_session_table ) {
+			// phpcs:ignore WordPress.DB.DirectDatabaseQuery.SchemaChange -- Plugin-owned table.
 			$sql  = "CREATE TABLE IF NOT EXISTS `$cv_session_table` (";
 			$sql .= '`visitor_ip` varchar(255) DEFAULT NULL,';
 			$sql .= '`test_key` varchar(255) DEFAULT NULL,';
@@ -104,6 +107,7 @@ class Checkview_Activator {
 
 		$charset_collate = $wpdb->get_charset_collate();
 		if ( $wpdb->get_var( $wpdb->prepare( 'show tables like %s', $cv_used_nonces ) ) !== $cv_used_nonces ) {
+				// phpcs:ignore WordPress.DB.DirectDatabaseQuery.SchemaChange -- Plugin-owned table.
 				$sql = "CREATE TABLE IF NOT EXISTS $cv_used_nonces (
 				id BIGINT(20) NOT NULL AUTO_INCREMENT,
 				nonce VARCHAR(255) NOT NULL,

@@ -29,12 +29,15 @@ if ( $checkview_delete_all ) {
 	delete_site_option( 'checkview_admin_menu_title' );
 
 	$checkview_entry_table = $wpdb->prefix . 'cv_entry';
+	// phpcs:ignore WordPress.DB.DirectDatabaseQuery.SchemaChange -- Plugin-owned table.
 	$wpdb->query( $wpdb->prepare( 'DROP TABLE IF EXISTS %s', $checkview_entry_table ) );
 
 	$checkview_entry_meta_table = $wpdb->prefix . 'cv_entry_meta';
+	// phpcs:ignore WordPress.DB.DirectDatabaseQuery.SchemaChange -- Plugin-owned table.
 	$wpdb->query( $wpdb->prepare( 'DROP TABLE IF EXISTS %s', $checkview_entry_meta_table ) );
 
 	$checkview_session_table = $wpdb->prefix . 'cv_session';
+	// phpcs:ignore WordPress.DB.DirectDatabaseQuery.SchemaChange -- Plugin-owned table.
 	$wpdb->query( $wpdb->prepare( 'DROP TABLE IF EXISTS %s', $checkview_session_table ) );
 
 	$checkview_wp_options_table = $wpdb->prefix . 'options';

@@ -586,6 +586,7 @@ class CheckView {
 
 					$charset_collate = $wpdb->get_charset_collate();
 					if ( $wpdb->get_var( "SHOW TABLES LIKE '{$cv_used_nonces}'" ) !== $cv_used_nonces ) {
+						// phpcs:ignore WordPress.DB.DirectDatabaseQuery.SchemaChange -- Plugin-owned table.
 						$sql = "CREATE TABLE IF NOT EXISTS $cv_used_nonces (
 								id BIGINT(20) NOT NULL AUTO_INCREMENT,
 								nonce VARCHAR(255) NOT NULL,
