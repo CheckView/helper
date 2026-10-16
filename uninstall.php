@@ -28,18 +28,16 @@ if ( $checkview_delete_all ) {
 	delete_option( 'checkview_logs_folder_version' );
 	delete_site_option( 'checkview_admin_menu_title' );
 
-	$checkview_entry_table = $wpdb->prefix . 'cv_entry';
-	// phpcs:ignore WordPress.DB.DirectDatabaseQuery.SchemaChange -- Plugin-owned table.
-	$wpdb->query( $wpdb->prepare( 'DROP TABLE IF EXISTS %s', $checkview_entry_table ) );
+	$checkview_tables = array( 'cv_entry', 'cv_entry_meta', 'cv_session', 'cv_used_nonces' );
+	foreach ( $checkview_tables as $checkview_table ) {
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.SchemaChange -- Plugin-owned table.
+		$wpdb->query( $wpdb->prepare( 'DROP TABLE IF EXISTS %i', $wpdb->prefix . $checkview_table ) );
+	}
 
-	$checkview_entry_meta_table = $wpdb->prefix . 'cv_entry_meta';
-	// phpcs:ignore WordPress.DB.DirectDatabaseQuery.SchemaChange -- Plugin-owned table.
-	$wpdb->query( $wpdb->prepare( 'DROP TABLE IF EXISTS %s', $checkview_entry_meta_table ) );
-
-	$checkview_session_table = $wpdb->prefix . 'cv_session';
-	// phpcs:ignore WordPress.DB.DirectDatabaseQuery.SchemaChange -- Plugin-owned table.
-	$wpdb->query( $wpdb->prepare( 'DROP TABLE IF EXISTS %s', $checkview_session_table ) );
-
-	$checkview_wp_options_table = $wpdb->prefix . 'options';
-	$wpdb->query( $wpdb->prepare( 'Delete from %s where option_name like %s', $checkview_wp_options_table, '%CF_TEST_%' ) );
+	$wpdb->query(
+		$wpdb->prepare(
+			"DELETE FROM {$wpdb->options} WHERE option_name LIKE %s",
+			'%' . $wpdb->esc_like( 'CF_TEST_' ) . '%'
+		)
+	);
 }
