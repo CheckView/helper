@@ -278,7 +278,7 @@ class CheckView {
 			if ( $cli ) {
 				$headers[] = 'CLI=[' . $cli . ']';
 			}
-			$headers[] = 'RA=[' . ( $ra ?: 'not set' ) . ']';
+			$headers[] = 'RA=[' . ( $ra ? $ra : 'not set' ) . ']';
 
 			Checkview_Admin_Logs::add(
 				'ip-logs',
@@ -286,7 +286,7 @@ class CheckView {
 					'Bot check %s [%s]: detected=[%s], %s, ip_ok=[%s], sig_ok=[%s], mode=[%s], whitelist=[%d IPs]%s',
 					$result ? 'PASSED' : 'FAILED',
 					$test_id,
-					$safe_visitor_ip ?: 'empty',
+					$safe_visitor_ip ? $safe_visitor_ip : 'empty',
 					implode( ', ', $headers ),
 					$ip_verified ? 'yes' : 'no',
 					$sig_verified ? 'yes' : 'no',

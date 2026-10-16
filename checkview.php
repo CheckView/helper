@@ -100,7 +100,7 @@ function checkview_invalidate_opcache( $reason = '' ) {
 	}
 
 	// phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log -- Desired production debug logging.
-	error_log( sprintf( '[CheckView] OPcache invalidated %d PHP files in %s (reason: %s)', $count, $dir, $reason ?: 'unspecified' ) );
+	error_log( sprintf( '[CheckView] OPcache invalidated %d PHP files in %s (reason: %s)', $count, $dir, $reason ? $reason : 'unspecified' ) );
 }
 
 /**
@@ -181,7 +181,7 @@ add_action( 'plugins_loaded', 'checkview_run', 10 );
 function checkview_maybe_invalidate_opcache() {
 	$stored = get_option( 'checkview_version' );
 	if ( $stored !== CHECKVIEW_VERSION ) {
-		checkview_invalidate_opcache( sprintf( 'version change %s -> %s', $stored ?: 'none', CHECKVIEW_VERSION ) );
+		checkview_invalidate_opcache( sprintf( 'version change %s -> %s', $stored ? $stored : 'none', CHECKVIEW_VERSION ) );
 		update_option( 'checkview_version', CHECKVIEW_VERSION );
 	}
 }
