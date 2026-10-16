@@ -1250,7 +1250,7 @@ class CheckView_Api {
 							OR post_content LIKE %s
 						) 
 						AND post_status = 'publish' 
-						AND post_type IN ( " . implode( ', ', array_fill( 0, count( $post_types ), '%s' ) ) . " )",
+						AND post_type IN ( " . implode( ', ', array_fill( 0, count( $post_types ), '%s' ) ) . ' )',
 							array_merge(
 								array(
 									'%wp:gravityforms/form {"formId":"' . $row->id . '"%',
@@ -1307,7 +1307,7 @@ class CheckView_Api {
 							OR post_content LIKE %s
 						) 
 						AND post_status = 'publish' 
-						AND post_type IN ( " . implode( ', ', array_fill( 0, count( $post_types ), '%s' ) ) . " )",
+						AND post_type IN ( " . implode( ', ', array_fill( 0, count( $post_types ), '%s' ) ) . ' )',
 							array_merge(
 								array(
 									'%wp:fluentfom/guten-block {"formId":"' . $row->id . '"%',
@@ -1362,7 +1362,7 @@ class CheckView_Api {
 							OR post_content LIKE %s
 						) 
 						AND post_status = 'publish' 
-						AND post_type IN ( " . implode( ', ', array_fill( 0, count( $post_types ), '%s' ) ) . " )",
+						AND post_type IN ( " . implode( ', ', array_fill( 0, count( $post_types ), '%s' ) ) . ' )',
 							array_merge(
 								array(
 									'%wp:ninja-forms/form {\"formID\":' . $row->id . '%',
@@ -1457,7 +1457,7 @@ class CheckView_Api {
 							OR post_content LIKE %s
 						) 
 						AND post_status = 'publish' 
-						AND post_type IN ( " . implode( ', ', array_fill( 0, count( $post_types ), '%s' ) ) . " )",
+						AND post_type IN ( " . implode( ', ', array_fill( 0, count( $post_types ), '%s' ) ) . ' )',
 							array_merge(
 								array(
 									'%[formidable id=\"' . $row->id . '\"%',
@@ -1515,8 +1515,8 @@ class CheckView_Api {
 						AND (
 							(post_content LIKE %s OR post_content LIKE %s OR post_content LIKE %s OR post_content LIKE %s)
 							AND post_status = %s
-							AND post_type IN ( " . implode( ', ', array_fill( 0, count( $post_types ), '%s' ) ) . " )
-						)",
+							AND post_type IN ( " . implode( ', ', array_fill( 0, count( $post_types ), '%s' ) ) . ' )
+						)',
 							array_merge(
 								array(
 									'%wp:contact-form-7/contact-form-selector {"id":"' . $hash . '%',
@@ -1576,7 +1576,7 @@ class CheckView_Api {
 							OR post_content LIKE %s
 						) 
 						AND post_status = 'publish' 
-						AND post_type IN ( " . implode( ', ', array_fill( 0, count( $post_types ), '%s' ) ) . " )",
+						AND post_type IN ( " . implode( ', ', array_fill( 0, count( $post_types ), '%s' ) ) . ' )',
 							array_merge(
 								array(
 									'%wp:wsf-block/form-add {"form_id":"' . $row->id . '"%',
@@ -1635,8 +1635,8 @@ class CheckView_Api {
 						AND (
 							(post_content LIKE %s OR post_content LIKE %s OR post_content LIKE %s OR post_content LIKE %s)
 							AND post_status = %s
-							AND post_type IN ( " . implode( ', ', array_fill( 0, count( $post_types ), '%s' ) ) . " )
-						)",
+							AND post_type IN ( " . implode( ', ', array_fill( 0, count( $post_types ), '%s' ) ) . ' )
+						)',
 							array_merge(
 								array(
 									'%wp:forminator/forms {"id":"' . $row->ID . '%',
@@ -1702,7 +1702,7 @@ class CheckView_Api {
 							OR post_content LIKE %s
 						)
 						AND post_status = 'publish'
-						AND post_type IN ( " . implode( ', ', array_fill( 0, count( $post_types ), '%s' ) ) . " )",
+						AND post_type IN ( " . implode( ', ', array_fill( 0, count( $post_types ), '%s' ) ) . ' )',
 							array_merge(
 								array(
 									'%wp:everest-forms/form-selector {"formId":"' . $row->ID . '"%',

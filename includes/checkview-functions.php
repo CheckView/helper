@@ -1000,7 +1000,7 @@ if ( ! function_exists( 'checkview_create_cv_session' ) ) {
 			'test_id'    => $test_id,
 		);
 
-		$result = $wpdb->insert( $session_table, $session_data );
+		$result    = $wpdb->insert( $session_table, $session_data );
 		$safe_ip   = preg_replace( '/[^0-9a-fA-F.:,]/', '', substr( $ip, 0, 45 ) );
 		$safe_test = substr( $test_id, 0, 8 );
 
