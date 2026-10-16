@@ -786,17 +786,17 @@ if ( ! class_exists( 'Checkview_Gforms_Helper' ) ) {
 		/**
 		 * Returns false.
 		 *
-		 * Variadic on purpose: Zero Spam fires this filter with a varying
-		 * number of arguments. `gf_apply_filters()` passes 3 (value, form,
+		 * Takes no parameters on purpose: Zero Spam fires this filter with a
+		 * varying number of arguments. `gf_apply_filters()` passes 3 (value, form,
 		 * entry) because the form-id modifier is consumed by GF itself, while
 		 * three call sites use a plain `apply_filters()` that passes only 2. A
 		 * fixed 4-parameter signature therefore threw an uncaught
-		 * ArgumentCountError and 500'd the whole page render.
+		 * ArgumentCountError and 500'd the whole page render. PHP ignores
+		 * extra arguments passed to userland callbacks, so none are declared.
 		 *
-		 * @param mixed ...$args Ignored; the answer is always false.
 		 * @return bool
 		 */
-		public function checkview_disable_zero_spam_addon( ...$args ) {
+		public function checkview_disable_zero_spam_addon() {
 			return false;
 		}
 
@@ -807,7 +807,7 @@ if ( ! class_exists( 'Checkview_Gforms_Helper' ) ) {
 		 * @param int   $form_id ID of the form submitted.
 		 * @return array
 		 */
-		public function checkview_disable_pdf_addon( $settings, $form_id ) {
+		public function checkview_disable_pdf_addon( $settings, $form_id ) { // phpcs:ignore Generic.CodeAnalysis.UnusedFunctionParameter.FoundAfterLastUsed -- Hook signature.
 
 			$settings['notification']       = '';
 			$settings['conditional']        = 1;
@@ -836,7 +836,7 @@ if ( ! class_exists( 'Checkview_Gforms_Helper' ) ) {
 		 * @param object $form Form object.
 		 * @return array
 		 */
-		public function checkview_disable_addons_feed( $feeds, $entry, $form ) {
+		public function checkview_disable_addons_feed( $feeds, $entry, $form ) { // phpcs:ignore Generic.CodeAnalysis.UnusedFunctionParameter.FoundAfterLastUsed -- Hook signature.
 			$cv_test_id = checkview_get_test_id();
 			if ( $cv_test_id && 'true' == get_option( 'disable_actions_' . $cv_test_id, false ) ) {
 				if ( is_array( $feeds ) ) {

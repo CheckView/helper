@@ -543,7 +543,7 @@ if ( ! class_exists( 'Checkview_Elementor_Helper' ) ) {
 		 * @param \ElementorPro\Modules\Forms\Classes\Form_Record $record Form record.
 		 * @return array
 		 */
-		public function checkview_override_mail_fields( $fields, $record ) {
+		public function checkview_override_mail_fields( $fields, $record ) { // phpcs:ignore Generic.CodeAnalysis.UnusedFunctionParameter.FoundAfterLastUsed -- Hook signature.
 			$cv_test_id = checkview_get_test_id();
 
 			if ( ! $cv_test_id || ! defined( 'CHECKVIEW_TEST_EMAIL' ) ) {
@@ -619,7 +619,7 @@ if ( ! class_exists( 'Checkview_Elementor_Helper' ) ) {
 		 * @param \ElementorPro\Modules\Forms\Classes\Ajax_Handler $handler Ajax handler.
 		 * @return array
 		 */
-		public function checkview_restrict_submit_actions( $actions, $record, $handler ) {
+		public function checkview_restrict_submit_actions( $actions, $record, $handler ) { // phpcs:ignore Generic.CodeAnalysis.UnusedFunctionParameter.FoundAfterLastUsed -- Hook signature.
 			$cv_test_id = checkview_get_test_id();
 
 			if ( ! $cv_test_id || 'true' !== get_option( 'disable_actions_' . $cv_test_id, false ) ) {

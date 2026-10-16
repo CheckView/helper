@@ -383,7 +383,7 @@ if ( ! class_exists( 'Checkview_Forminator_Helper' ) ) {
 		 *                            hook reads the persisted entry instead).
 		 * @return void
 		 */
-		public function checkview_capture_entry_id( $entry, $form_id, $form_fields = array() ) {
+		public function checkview_capture_entry_id( $entry, $form_id, $form_fields = array() ) { // phpcs:ignore Generic.CodeAnalysis.UnusedFunctionParameter.FoundAfterLastUsed -- Hook signature.
 			// Reaching this hook at all means validation passed and the entry was
 			// persisted — see checkview_log_unfinished_submission().
 			$this->submission_reached_save = true;
@@ -447,7 +447,7 @@ if ( ! class_exists( 'Checkview_Forminator_Helper' ) ) {
 		 * @param array $response Submission response (the id is NOT in here — see below).
 		 * @return void
 		 */
-		public function checkview_log_form_test_entry( $form_id, $response = array() ) {
+		public function checkview_log_form_test_entry( $form_id, $response = array() ) { // phpcs:ignore Generic.CodeAnalysis.UnusedFunctionParameter.FoundAfterLastUsed -- Hook signature.
 			$form_id = (int) $form_id;
 
 			// DO NOT read the entry id from $response.
@@ -749,7 +749,7 @@ if ( ! class_exists( 'Checkview_Forminator_Helper' ) ) {
 		 * @param array $fields Array of fields.
 		 * @param array $form_id Form id.
 		 */
-		public function remove_recaptcha_field_from_list( $fields, $form_id ) {
+		public function remove_recaptcha_field_from_list( $fields, $form_id ) { // phpcs:ignore Generic.CodeAnalysis.UnusedFunctionParameter.FoundAfterLastUsed -- Hook signature.
 
 			// Iterate and remove captcha fields.
 			// Iterate through the form data.
@@ -831,7 +831,7 @@ if ( ! class_exists( 'Checkview_Forminator_Helper' ) ) {
 		 * @param int   $module_id Form id.
 		 * @return array
 		 */
-		public function checkview_empty_addon_feed( $values, $module_id ) {
+		public function checkview_empty_addon_feed( $values, $module_id ) { // phpcs:ignore Generic.CodeAnalysis.UnusedFunctionParameter.FoundAfterLastUsed -- Hook signature.
 			if ( get_option( 'cv_suppression_kill_switch' ) === 'true' ) {
 				return $values;
 			}

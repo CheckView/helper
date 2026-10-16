@@ -331,7 +331,7 @@ if ( is_plugin_active( 'defender-security/wp-defender.php' ) ) {
 if ( is_plugin_active( 'wp-force-login/wp-force-login.php' ) ) {
 	add_filter(
 		'v_forcelogin_bypass',
-		function ( $bypass, $visited_url ) {
+		function ( $bypass, $visited_url ) { // phpcs:ignore Generic.CodeAnalysis.UnusedFunctionParameter.FoundAfterLastUsed -- Hook signature.
 			if ( CheckView::is_bot() ) {
 				return true;
 			}

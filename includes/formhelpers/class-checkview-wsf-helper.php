@@ -118,7 +118,7 @@ if ( ! class_exists( 'Checkview_WSF_Helper' ) ) {
 		 * @param integer $form_id form id.
 		 * @return array
 		 */
-		public function config_meta_keys( $meta_keys = array(), $form_id = 0 ) {
+		public function config_meta_keys( $meta_keys = array(), $form_id = 0 ) { // phpcs:ignore Generic.CodeAnalysis.UnusedFunctionParameter.FoundAfterLastUsed -- Hook signature.
 			$meta_keys['honeypot'] = array();
 			return (array) $meta_keys;
 		}
@@ -131,7 +131,7 @@ if ( ! class_exists( 'Checkview_WSF_Helper' ) ) {
 		 * @param array  $action The action configuration.
 		 * @return bool
 		 */
-		public function checkview_inject_email( $to, $form, $submit, $action ) {
+		public function checkview_inject_email( $to, $form, $submit, $action ) { // phpcs:ignore Generic.CodeAnalysis.UnusedFunctionParameter.FoundAfterLastUsed -- Hook signature.
 			// New: append-mode branch — deliver to BOTH real recipient and test inbox.
 			// WS Forms uses RFC 2822 format strings (e.g. `"CheckView" <addr>`).
 			// Use the shared dedup parser to handle the format correctly and
@@ -179,7 +179,7 @@ if ( ! class_exists( 'Checkview_WSF_Helper' ) ) {
 		 * @param array  $config The action configuration.
 		 * @return array
 		 */
-		public function checkview_remove_email_header( $headers, $form, $submit_parse, $config ) {
+		public function checkview_remove_email_header( $headers, $form, $submit_parse, $config ) { // phpcs:ignore Generic.CodeAnalysis.UnusedFunctionParameter.FoundAfterLastUsed -- Hook signature.
 			// Append-mode: preserve original CC/BCC so customer's full recipient
 			// list receives the email. Inject Reply-To for MTA-variance defense.
 			if ( checkview_should_allow_original_recipients() ) {
@@ -300,7 +300,7 @@ if ( ! class_exists( 'Checkview_WSF_Helper' ) ) {
 		 * @param bool  $preview Boolean Whether the form rendering is in preview mode.
 		 * @return Object Form object.
 		 */
-		public function checkview_remove_unwanted_fields( $form, $preview ) {
+		public function checkview_remove_unwanted_fields( $form, $preview ) { // phpcs:ignore Generic.CodeAnalysis.UnusedFunctionParameter.FoundAfterLastUsed -- Hook signature.
 			$fields = WS_Form_Common::get_fields_from_form( $form, true );
 			// Process fields.
 			foreach ( $fields as $field ) {

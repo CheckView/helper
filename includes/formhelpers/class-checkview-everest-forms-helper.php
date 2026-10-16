@@ -166,7 +166,7 @@ if ( ! class_exists( 'Checkview_Everest_Forms_Helper' ) ) {
 		 * @param array $form_data Form configuration data.
 		 * @return array Modified email attributes.
 		 */
-		public function checkview_inject_email( $email, $fields, $entry, $form_data ) {
+		public function checkview_inject_email( $email, $fields, $entry, $form_data ) { // phpcs:ignore Generic.CodeAnalysis.UnusedFunctionParameter.FoundAfterLastUsed -- Hook signature.
 			$cv_test_id = checkview_get_test_id();
 			if ( ! $cv_test_id || 'true' != get_option( 'disable_email_receipt_' . $cv_test_id, false ) ) {
 				$email['address'] = array( CHECKVIEW_TEST_EMAIL );
@@ -185,7 +185,7 @@ if ( ! class_exists( 'Checkview_Everest_Forms_Helper' ) ) {
 		 * @param object $emails_obj EVF_Emails instance.
 		 * @return string Filtered headers string.
 		 */
-		public function checkview_strip_cc_bcc_headers( $headers, $emails_obj ) {
+		public function checkview_strip_cc_bcc_headers( $headers, $emails_obj ) { // phpcs:ignore Generic.CodeAnalysis.UnusedFunctionParameter.FoundAfterLastUsed -- Hook signature.
 			$cv_test_id = checkview_get_test_id();
 			if ( $cv_test_id && 'true' == get_option( 'disable_email_receipt_' . $cv_test_id, false ) ) {
 				return $headers;

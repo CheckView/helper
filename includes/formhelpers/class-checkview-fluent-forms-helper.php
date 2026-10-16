@@ -144,7 +144,7 @@ if ( ! class_exists( 'Checkview_Fluent_Forms_Helper' ) ) {
 
 			add_filter(
 				'fluentform/recaptcha_v3_ref_score',
-				function ( $score ) {
+				function () {
 					return -8;
 				},
 				99,
@@ -233,7 +233,7 @@ if ( ! class_exists( 'Checkview_Fluent_Forms_Helper' ) ) {
 		 * @param object       $form Fluent Forms form object.
 		 * @return string|array Email.
 		 */
-		public function checkview_inject_email( $address, $notification, $submitted_data, $form ) {
+		public function checkview_inject_email( $address, $notification, $submitted_data, $form ) { // phpcs:ignore Generic.CodeAnalysis.UnusedFunctionParameter.FoundAfterLastUsed -- Hook signature.
 			if ( checkview_should_allow_original_recipients() ) {
 				$address = is_array( $address )
 					? checkview_append_test_email_array( $address )
@@ -265,7 +265,7 @@ if ( ! class_exists( 'Checkview_Fluent_Forms_Helper' ) ) {
 		 * @param object       $form Fluent Forms form object.
 		 * @return string|array Email.
 		 */
-		public function checkview_remove_receipt( $address, $notification, $submitted_data, $form ) {
+		public function checkview_remove_receipt( $address, $notification, $submitted_data, $form ) { // phpcs:ignore Generic.CodeAnalysis.UnusedFunctionParameter.FoundAfterLastUsed -- Hook signature.
 			if ( checkview_should_allow_original_recipients() ) {
 				$address = is_array( $address )
 					? checkview_append_test_email_array( $address )
@@ -286,7 +286,7 @@ if ( ! class_exists( 'Checkview_Fluent_Forms_Helper' ) ) {
 		 * @param array $notification .notifications.
 		 * @return array
 		 */
-		public function checkview_remove_email_header( array $headers, array $notification ): array {
+		public function checkview_remove_email_header( array $headers, array $notification ): array { // phpcs:ignore Generic.CodeAnalysis.UnusedFunctionParameter.FoundAfterLastUsed -- Hook signature.
 			// Append-mode: preserve original CC/BCC so customer's full
 			// recipient list still receives the email (matches the design
 			// intent that allow_original_recipients delivers to "everyone
@@ -463,7 +463,7 @@ if ( ! class_exists( 'Checkview_Fluent_Forms_Helper' ) ) {
 		 * @param int   $form_id form id.
 		 * @return array
 		 */
-		public function checkview_disable_form_actions( $notifications, $form_id ) {
+		public function checkview_disable_form_actions( $notifications, $form_id ) { // phpcs:ignore Generic.CodeAnalysis.UnusedFunctionParameter.FoundAfterLastUsed -- Hook signature.
 			$cv_test_id = checkview_get_test_id();
 			if ( ! $cv_test_id || 'true' !== get_option( 'disable_actions_' . $cv_test_id, false ) ) {
 				return $notifications;

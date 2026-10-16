@@ -434,7 +434,7 @@ if ( ! class_exists( 'Checkview_Cf7_Helper' ) ) {
 		 * @param array              $result       Submission result (unused).
 		 * @return void
 		 */
-		public function checkview_cf7_complete_after_submit( $contact_form = null, $result = array() ) {
+		public function checkview_cf7_complete_after_submit( $contact_form = null, $result = array() ) { // phpcs:ignore Generic.CodeAnalysis.UnusedFunctionParameter.FoundAfterLastUsed -- Hook signature.
 			if ( '' === $this->pending_test_id ) {
 				return;
 			}
@@ -528,7 +528,7 @@ if ( ! class_exists( 'Checkview_Cf7_Helper' ) ) {
 		 *
 		 * @return array|mixed|string
 		 */
-		public function checkview_handled_cf7_piped_data( $value, $value_orig, $tag ) {
+		public function checkview_handled_cf7_piped_data( $value, $value_orig, $tag ) { // phpcs:ignore Generic.CodeAnalysis.UnusedFunctionParameter.FoundAfterLastUsed -- Hook signature.
 			if ( ! is_array( $value ) || ! is_string( $value[0] ) || ! is_string( $value_orig ) ) {
 				return $value;
 			}

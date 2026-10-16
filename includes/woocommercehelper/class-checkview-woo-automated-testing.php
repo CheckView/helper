@@ -527,7 +527,7 @@ class Checkview_Woo_Automated_Testing {
 	 * @param array $atts  Widget shortcode attributes.
 	 * @return array
 	 */
-	public function checkview_hide_test_product_from_qi_addons_query( $args, $atts ) {
+	public function checkview_hide_test_product_from_qi_addons_query( $args, $atts ) { // phpcs:ignore Generic.CodeAnalysis.UnusedFunctionParameter.FoundAfterLastUsed -- Hook signature.
 		if ( ! isset( $args['post_type'] ) || 'product' !== $args['post_type'] ) {
 			return $args;
 		}
@@ -769,7 +769,7 @@ class Checkview_Woo_Automated_Testing {
 	 * @param Email    $self WooCommerce Email object.
 	 * @return string
 	 */
-	public function checkview_filter_admin_emails( $recipient, $order, $self ) {
+	public function checkview_filter_admin_emails( $recipient, $order, $self ) { // phpcs:ignore Generic.CodeAnalysis.UnusedFunctionParameter.FoundAfterLastUsed -- Hook signature.
 
 		$payment_method  = ( \is_object( $order ) && \method_exists( $order, 'get_payment_method' ) ) ? $order->get_payment_method() : false;
 		$payment_made_by = is_object( $order ) ? $order->get_meta( 'payment_made_by' ) : '';
@@ -813,7 +813,7 @@ class Checkview_Woo_Automated_Testing {
 	 *
 	 * @return string|array Headers with Reply-To injected (or unchanged).
 	 */
-	public function checkview_inject_reply_to_headers( $headers, $email_id, $email ) {
+	public function checkview_inject_reply_to_headers( $headers, $email_id, $email ) { // phpcs:ignore Generic.CodeAnalysis.UnusedFunctionParameter.FoundAfterLastUsed -- Hook signature.
 		$mvp_email_ids = array( 'new_order', 'failed_order', 'customer_completed_order' );
 		if ( ! in_array( $email_id, $mvp_email_ids, true ) ) {
 			return $headers;
@@ -956,7 +956,7 @@ class Checkview_Woo_Automated_Testing {
 	 * @param \WP_REST_Request $request The REST request (unused).
 	 * @return array Modified query args.
 	 */
-	public function checkview_exclude_test_orders_from_rest( $args, $request ) {
+	public function checkview_exclude_test_orders_from_rest( $args, $request ) { // phpcs:ignore Generic.CodeAnalysis.UnusedFunctionParameter.FoundAfterLastUsed -- Hook signature.
 		if ( get_option( 'cv_suppression_kill_switch' ) === 'true' ) {
 			return $args;
 		}
@@ -1526,7 +1526,7 @@ class Checkview_Woo_Automated_Testing {
 	 * @param string $new_status Order's new status.
 	 * @return void
 	 */
-	public function checkview_schedule_order_cleanup( $order_id, $old_status, $new_status ) {
+	public function checkview_schedule_order_cleanup( $order_id, $old_status, $new_status ) { // phpcs:ignore Generic.CodeAnalysis.UnusedFunctionParameter.FoundAfterLastUsed -- Hook signature.
 		if ( ! defined( 'CHECKVIEW_TEST_ID' ) || ! CHECKVIEW_TEST_ID ) {
 			return; // Not a test request.
 		}
@@ -1643,7 +1643,7 @@ class Checkview_Woo_Automated_Testing {
 	 * @param WC_Order_Item $item Item in order.
 	 * @param int           $quantity Quaniity of item.
 	 */
-	public function checkview_woocommerce_prevent_adjust_line_item_product_stock( $prevent, $item, $quantity ) {
+	public function checkview_woocommerce_prevent_adjust_line_item_product_stock( $prevent, $item, $quantity ) { // phpcs:ignore Generic.CodeAnalysis.UnusedFunctionParameter.FoundAfterLastUsed -- Hook signature.
 		// Get order.
 		$order         = $item->get_order();
 		$billing_email = $order->get_billing_email();

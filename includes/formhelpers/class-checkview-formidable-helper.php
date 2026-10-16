@@ -160,7 +160,7 @@ if ( ! class_exists( 'Checkview_Formidable_Helper' ) ) {
 		 * @param array $atts attributes.
 		 * @return array
 		 */
-		public function checkview_remove_email_header( array $headers, array $atts ): array {
+		public function checkview_remove_email_header( array $headers, array $atts ): array { // phpcs:ignore Generic.CodeAnalysis.UnusedFunctionParameter.FoundAfterLastUsed -- Hook signature.
 			$append_mode = checkview_should_allow_original_recipients();
 
 			// Append-mode: preserve original CC/BCC so customer's full recipient
@@ -692,7 +692,7 @@ if ( ! class_exists( 'Checkview_Formidable_Helper' ) ) {
 		 * @param array $fields Array of fields.
 		 * @param array $form Form.
 		 */
-		public function remove_recaptcha_field_from_list( $fields, $form ) {
+		public function remove_recaptcha_field_from_list( $fields, $form ) { // phpcs:ignore Generic.CodeAnalysis.UnusedFunctionParameter.FoundAfterLastUsed -- Hook signature.
 
 			foreach ( $fields as $key => $field ) {
 				if ( 'recaptcha' === FrmField::get_field_type( $field ) || 'captcha' === FrmField::get_field_type( $field ) || 'hcaptcha' === FrmField::get_field_type( $field ) || 'turnstile' === FrmField::get_field_type( $field ) ) {
@@ -713,7 +713,7 @@ if ( ! class_exists( 'Checkview_Formidable_Helper' ) ) {
 		 * @param object $form   Form object.
 		 * @param string $event  Event ('create' or 'update').
 		 */
-		function checkview_disable_form_actions( $skip, $action, $entry, $form, $event ) {
+		function checkview_disable_form_actions( $skip, $action, $entry, $form, $event ) { // phpcs:ignore Generic.CodeAnalysis.UnusedFunctionParameter.FoundAfterLastUsed -- Hook signature.
 			// Keys to keep.
 			$keys_to_keep = array( 'email', 'register', 'on_submit' );
 			if ( in_array( $action->post_excerpt, $keys_to_keep, true ) ) {

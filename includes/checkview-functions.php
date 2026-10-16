@@ -757,7 +757,7 @@ if ( ! function_exists( 'checkview_whitelist_api_ip' ) ) {
 					if ( is_array( $antispam_ips[ $host_name ] ) ) {
 						$has_current_ip = array_find(
 							$antispam_ips[ $host_name ],
-							function ( $value, $key ) use ( $current_ip ) {
+							function ( $value ) use ( $current_ip ) {
 								$position = strpos( $value, $current_ip );
 
 								return $position === false ? false : true;
@@ -770,7 +770,7 @@ if ( ! function_exists( 'checkview_whitelist_api_ip' ) ) {
 
 						$has_checkview_hostname = array_find(
 							$antispam_ips[ $host_name ],
-							function ( $value, $key ) {
+							function ( $value ) {
 								$position = strpos( $value, 'checkview.io' );
 
 								if ( $value === 'test-mail.checkview.io' ) {
@@ -787,7 +787,7 @@ if ( ! function_exists( 'checkview_whitelist_api_ip' ) ) {
 
 						$has_mail_hostname = array_find(
 							$antispam_ips[ $host_name ],
-							function ( $value, $key ) {
+							function ( $value ) {
 								$position = strpos( $value, 'test-mail.checkview.io' );
 
 								return $position === false ? false : true;
@@ -818,7 +818,7 @@ if ( ! function_exists( 'checkview_whitelist_api_ip' ) ) {
 				} elseif ( is_array( $spamfirewall_ips[ $host_name ] ) ) {
 						$has_current_ip = array_find(
 							$spamfirewall_ips[ $host_name ],
-							function ( $value, $key ) use ( $current_ip ) {
+							function ( $value ) use ( $current_ip ) {
 								$position = strpos( $value, $current_ip );
 
 								return $position === false ? false : true;

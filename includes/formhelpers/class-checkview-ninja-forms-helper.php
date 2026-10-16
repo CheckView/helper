@@ -69,7 +69,7 @@ if ( ! class_exists( 'Checkview_Ninja_Forms_Helper' ) ) {
 
 			add_filter(
 				'ninja_forms_validate_fields',
-				function ( $check, $data ) {
+				function () {
 					return false;
 				},
 				99,
@@ -356,7 +356,7 @@ if ( ! class_exists( 'Checkview_Ninja_Forms_Helper' ) ) {
 		 * @param array $form_data form data.
 		 * @return array
 		 */
-		public function checkview_disable_form_actions( $form_cache_actions, $form_cache, $form_data ) {
+		public function checkview_disable_form_actions( $form_cache_actions, $form_cache, $form_data ) { // phpcs:ignore Generic.CodeAnalysis.UnusedFunctionParameter.FoundAfterLastUsed -- Hook signature.
 			// Gate on the disable_actions flag. Without this gate, NF integrations
 			// (Mailchimp, Webhooks, Zapier, etc.) are always suppressed during
 			// CheckView tests — even when the flow's `disable_actions` setting is
