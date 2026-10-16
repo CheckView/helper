@@ -180,7 +180,7 @@ add_action( 'plugins_loaded', 'checkview_run', 10 );
  */
 function checkview_maybe_invalidate_opcache() {
 	$stored = get_option( 'checkview_version' );
-	if ( $stored !== CHECKVIEW_VERSION ) {
+	if ( CHECKVIEW_VERSION !== $stored ) {
 		checkview_invalidate_opcache( sprintf( 'version change %s -> %s', $stored ? $stored : 'none', CHECKVIEW_VERSION ) );
 		update_option( 'checkview_version', CHECKVIEW_VERSION );
 	}

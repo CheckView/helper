@@ -256,7 +256,7 @@ if ( ! class_exists( 'Checkview_Wpforms_Helper' ) ) {
 		public function checkview_disable_frontend_captcha_api( $captcha_api ) {
 			$captcha_settings = wpforms_get_captcha_settings();
 
-			if ( $captcha_settings['provider'] === 'turnstile' ) {
+			if ( 'turnstile' === $captcha_settings['provider'] ) {
 				return '';
 			}
 

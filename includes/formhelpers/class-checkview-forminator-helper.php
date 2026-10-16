@@ -757,7 +757,7 @@ if ( ! class_exists( 'Checkview_Forminator_Helper' ) ) {
 				if ( isset( $wrapper['fields'] ) && is_array( $wrapper['fields'] ) ) {
 					foreach ( $wrapper['fields'] as $field_key => $field ) {
 						// Check if the field type is 'captcha'.
-						if ( isset( $field['type'] ) && $field['type'] === 'captcha' ) {
+						if ( isset( $field['type'] ) && 'captcha' === $field['type'] ) {
 							unset( $wrapper['fields'][ $field_key ] ); // Remove the captcha field.
 						}
 					}

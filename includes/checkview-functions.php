@@ -622,7 +622,7 @@ if ( ! function_exists( 'checkview_get_visitor_ip' ) ) {
 				$ip = trim( $ip );
 				$ip = preg_replace( '/:\d{1,5}$/', '', $ip );
 
-				if ( $ip !== null && checkview_validate_ip( $ip ) && is_array( $cv_bot_ip ) && in_array( $ip, $cv_bot_ip ) ) {
+				if ( null !== $ip && checkview_validate_ip( $ip ) && is_array( $cv_bot_ip ) && in_array( $ip, $cv_bot_ip ) ) {
 					return sanitize_text_field( $ip );
 				}
 			}
@@ -722,7 +722,7 @@ if ( ! function_exists( 'checkview_whitelist_api_ip' ) ) {
 		if ( is_array( $api_ip ) && in_array( $current_ip, $api_ip ) ) {
 			$home_url = parse_url( home_url() ); // Returns `false`, `null`, or an assosiative array.
 
-			if ( $home_url === false || $home_url === null ) {
+			if ( false === $home_url || null === $home_url ) {
 				// phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log -- Desired production debug logging.
 				error_log( sprintf( 'Error parsing the home url [%1$s].', home_url() ) );
 				Checkview_Admin_Logs::add( 'ip-logs', sprintf( 'Error parsing the home url [%1$s].', home_url() ) );
@@ -760,7 +760,7 @@ if ( ! function_exists( 'checkview_whitelist_api_ip' ) ) {
 							function ( $value ) use ( $current_ip ) {
 								$position = strpos( $value, $current_ip );
 
-								return $position === false ? false : true;
+								return false !== $position;
 							}
 						);
 
@@ -773,11 +773,11 @@ if ( ! function_exists( 'checkview_whitelist_api_ip' ) ) {
 							function ( $value ) {
 								$position = strpos( $value, 'checkview.io' );
 
-								if ( $value === 'test-mail.checkview.io' ) {
+								if ( 'test-mail.checkview.io' === $value ) {
 									return false;
 								}
 
-								return $position === false ? false : true;
+								return false !== $position;
 							}
 						);
 
@@ -790,7 +790,7 @@ if ( ! function_exists( 'checkview_whitelist_api_ip' ) ) {
 							function ( $value ) {
 								$position = strpos( $value, 'test-mail.checkview.io' );
 
-								return $position === false ? false : true;
+								return false !== $position;
 							}
 						);
 
@@ -821,7 +821,7 @@ if ( ! function_exists( 'checkview_whitelist_api_ip' ) ) {
 							function ( $value ) use ( $current_ip ) {
 								$position = strpos( $value, $current_ip );
 
-								return $position === false ? false : true;
+								return false !== $position;
 							}
 						);
 
@@ -1953,7 +1953,7 @@ if ( ! function_exists( 'checkview_update_option' ) ) {
 		if ( $result ) {
 			// phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_print_r -- Desired production debug logging.
 			Checkview_Admin_Logs::add( 'ip-logs', 'Updated option [' . $option . '] with value [' . print_r( $value, true ) . '].' );
-		} elseif ( $old_option !== false && $old_option !== $value && maybe_serialize( $old_option ) !== maybe_serialize( $value ) ) {
+		} elseif ( false !== $old_option && $old_option !== $value && maybe_serialize( $old_option ) !== maybe_serialize( $value ) ) {
 			// phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_print_r -- Desired production debug logging.
 			Checkview_Admin_Logs::add( 'ip-logs', 'Failed updating option [' . $option . '] with value [' . print_r( $value, true ) . '].' );
 		}
