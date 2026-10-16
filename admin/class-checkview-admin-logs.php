@@ -451,9 +451,9 @@ class Checkview_Admin_Logs {
 	/**
 	 * Reads the tail of a log file with bounded memory.
 	 *
-	 * get-logs used to file_get_contents() every file whole, so one noisy day
-	 * (Woo checkout sites reach 15 MB a day) pulled tens of MB into memory and
-	 * shipped it, only for the SaaS client to trim to the last few thousand
+	 * The get-logs endpoint used to file_get_contents() every file whole, so one
+	 * noisy day (Woo checkout sites reach 15 MB a day) pulled tens of MB into memory
+	 * and shipped it, only for the SaaS client to trim to the last few thousand
 	 * lines on arrival. This seeks the trailing bytes instead, so the read is
 	 * capped no matter how large the file grew inside the retention window.
 	 *

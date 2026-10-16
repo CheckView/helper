@@ -792,8 +792,8 @@ if ( ! class_exists( 'Checkview_Forminator_Helper' ) ) {
 		 * Hooks every registered add-on's form settings so feeds can be hidden
 		 * from the submit path during a test.
 		 *
-		 * attach_addons_on_form_submit() (front-action.php) resolves connected
-		 * add-ons from each form's settings meta through
+		 * Forminator's attach_addons_on_form_submit() (front-action.php)
+		 * resolves connected add-ons from each form's settings meta through
 		 * Forminator_Integration_Settings::get_settings_values(), which applies
 		 * `forminator_addon_{slug}_get_form_settings_values`. An empty array
 		 * there reads as "not connected", so Mailchimp, webhooks and the rest

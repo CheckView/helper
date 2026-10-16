@@ -186,7 +186,7 @@ if ( ! function_exists( 'checkview_validate_jwt_token' ) ) {
 			return false;
 		}
 
-		// If empty, return false.
+		// Reject tokens without a nonce.
 		if ( empty( $jwt['_checkview_nonce'] ) ) {
 			Checkview_Admin_Logs::add( 'api-logs', 'Nonce Absent.' );
 			return false;
@@ -732,8 +732,8 @@ if ( ! function_exists( 'checkview_whitelist_api_ip' ) ) {
 
 			if ( is_array( $home_url ) && ! isset( $home_url['host'] ) ) {
 				// phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log -- Desired production debug logging.
-				error_log( sprintf( 'Cannot determine host when parsing URL [%1$s].', json_encode( $home_url ) ) );
-				Checkview_Admin_Logs::add( 'ip-logs', sprintf( 'Cannot determine host when parsing URL [%1$s].', json_encode( $home_url ) ) );
+				error_log( sprintf( 'Cannot determine host when parsing URL [%1$s].', wp_json_encode( $home_url ) ) );
+				Checkview_Admin_Logs::add( 'ip-logs', sprintf( 'Cannot determine host when parsing URL [%1$s].', wp_json_encode( $home_url ) ) );
 
 				return null;
 			}
@@ -752,56 +752,54 @@ if ( ! function_exists( 'checkview_whitelist_api_ip' ) ) {
 					checkview_add_to_cleantalk( $user_token, 'antispam', $current_ip, 1, $service_id );
 					checkview_add_to_cleantalk( $user_token, 'antispam', 'checkview.io', 4, $service_id );
 					checkview_add_to_cleantalk( $user_token, 'antispam', 'test-mail.checkview.io', 4, $service_id );
-				} else {
+				} elseif ( is_array( $antispam_ips[ $host_name ] ) ) {
 					// Otherwise, check for our IPs/hosts individually, and request to add them if needed.
-					if ( is_array( $antispam_ips[ $host_name ] ) ) {
-						$has_current_ip = array_find(
-							$antispam_ips[ $host_name ],
-							function ( $value ) use ( $current_ip ) {
-								$position = strpos( $value, $current_ip );
+					$has_current_ip = array_find(
+						$antispam_ips[ $host_name ],
+						function ( $value ) use ( $current_ip ) {
+							$position = strpos( $value, $current_ip );
 
-								return false !== $position;
-							}
-						);
-
-						if ( ! $has_current_ip ) {
-							checkview_add_to_cleantalk( $user_token, 'antispam', $current_ip, 1, $service_id );
+							return false !== $position;
 						}
+					);
 
-						$has_checkview_hostname = array_find(
-							$antispam_ips[ $host_name ],
-							function ( $value ) {
-								$position = strpos( $value, 'checkview.io' );
-
-								if ( 'test-mail.checkview.io' === $value ) {
-									return false;
-								}
-
-								return false !== $position;
-							}
-						);
-
-						if ( ! $has_checkview_hostname ) {
-							checkview_add_to_cleantalk( $user_token, 'antispam', 'checkview.io', 4, $service_id );
-						}
-
-						$has_mail_hostname = array_find(
-							$antispam_ips[ $host_name ],
-							function ( $value ) {
-								$position = strpos( $value, 'test-mail.checkview.io' );
-
-								return false !== $position;
-							}
-						);
-
-						if ( ! $has_mail_hostname ) {
-							checkview_add_to_cleantalk( $user_token, 'antispam', 'test-mail.checkview.io', 4, $service_id );
-						}
-					} else {
-						// phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log -- Desired production debug logging.
-						error_log( sprintf( 'The value for antispam IPs at hostname [%1$s] is not an array.', $host_name ) );
-						Checkview_Admin_Logs::add( 'ip-logs', sprintf( 'The value for antispam IPs at hostname [%1$s] is not an array.', $host_name ) );
+					if ( ! $has_current_ip ) {
+						checkview_add_to_cleantalk( $user_token, 'antispam', $current_ip, 1, $service_id );
 					}
+
+					$has_checkview_hostname = array_find(
+						$antispam_ips[ $host_name ],
+						function ( $value ) {
+							$position = strpos( $value, 'checkview.io' );
+
+							if ( 'test-mail.checkview.io' === $value ) {
+								return false;
+							}
+
+							return false !== $position;
+						}
+					);
+
+					if ( ! $has_checkview_hostname ) {
+						checkview_add_to_cleantalk( $user_token, 'antispam', 'checkview.io', 4, $service_id );
+					}
+
+					$has_mail_hostname = array_find(
+						$antispam_ips[ $host_name ],
+						function ( $value ) {
+							$position = strpos( $value, 'test-mail.checkview.io' );
+
+							return false !== $position;
+						}
+					);
+
+					if ( ! $has_mail_hostname ) {
+						checkview_add_to_cleantalk( $user_token, 'antispam', 'test-mail.checkview.io', 4, $service_id );
+					}
+				} else {
+					// phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log -- Desired production debug logging.
+					error_log( sprintf( 'The value for antispam IPs at hostname [%1$s] is not an array.', $host_name ) );
+					Checkview_Admin_Logs::add( 'ip-logs', sprintf( 'The value for antispam IPs at hostname [%1$s] is not an array.', $host_name ) );
 				}
 			}
 

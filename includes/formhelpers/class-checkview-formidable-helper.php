@@ -504,14 +504,12 @@ if ( ! class_exists( 'Checkview_Formidable_Helper' ) ) {
 
 				if ( $count > 0 ) {
 					Checkview_Admin_Logs::add( 'ip-logs', 'Cloned submission entry meta data (inserted ' . $count . ' rows into ' . $entry_meta_table . ').' );
-				} else {
+				} elseif ( count( $form_fields ) > 0 && ! empty( $fields ) ) {
 					// `! empty( $fields )` keeps this from reporting a database
 					// failure when the real cause was no field definitions —
 					// that case is logged above with its actual reason and would
 					// otherwise print an empty wpdb->last_error.
-					if ( count( $form_fields ) > 0 && ! empty( $fields ) ) {
-						Checkview_Admin_Logs::add( 'ip-logs', 'Failed to clone submission entry meta data. wpdb->last_error=[' . $wpdb->last_error . ']' );
-					}
+					Checkview_Admin_Logs::add( 'ip-logs', 'Failed to clone submission entry meta data. wpdb->last_error=[' . $wpdb->last_error . ']' );
 				}
 			}
 
@@ -710,7 +708,7 @@ if ( ! class_exists( 'Checkview_Formidable_Helper' ) ) {
 		 * @param object $form   Form object.
 		 * @param string $event  Event ('create' or 'update').
 		 */
-		function checkview_disable_form_actions( $skip, $action, $entry, $form, $event ) { // phpcs:ignore Generic.CodeAnalysis.UnusedFunctionParameter.FoundAfterLastUsed -- Hook signature.
+		public function checkview_disable_form_actions( $skip, $action, $entry, $form, $event ) { // phpcs:ignore Generic.CodeAnalysis.UnusedFunctionParameter.FoundAfterLastUsed -- Hook signature.
 			// Keys to keep.
 			$keys_to_keep = array( 'email', 'register', 'on_submit' );
 			if ( in_array( $action->post_excerpt, $keys_to_keep, true ) ) {
