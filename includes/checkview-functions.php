@@ -96,11 +96,11 @@ if ( ! function_exists( 'checkview_ensure_trailing_slash' ) ) {
 	 *
 	 * @since 2.0.13
 	 *
-	 * @param string $string String to ensure trailing slash.
+	 * @param string $value String to ensure trailing slash.
 	 * @return string
 	 */
-	function checkview_ensure_trailing_slash( $string ) {
-		return rtrim( $string, '/' ) . '/';
+	function checkview_ensure_trailing_slash( $value ) {
+		return rtrim( $value, '/' ) . '/';
 	}
 }
 
@@ -662,7 +662,7 @@ if ( ! function_exists( 'checkview_get_cleantalk_whitelisted_ips' ) ) {
 		if ( is_wp_error( $response ) ) {
 			// phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log -- Desired production debug logging.
 			error_log( 'Error fetching whitelisted IPs: ' . $response->get_error_message() );
-			Checkview_Admin_Logs::add( 'ip-logs', esc_html__( 'Error fetching whitelisted IPs: ' . $response->get_error_message(), 'checkview' ) );
+			Checkview_Admin_Logs::add( 'ip-logs', esc_html( 'Error fetching whitelisted IPs: ' . $response->get_error_message() ) );
 
 			return false;
 		}
@@ -1065,7 +1065,7 @@ if ( ! function_exists( 'checkview_get_cv_session' ) ) {
 			$safe_ip   = preg_replace( '/[^0-9a-fA-F.:,]/', '', substr( $ip, 0, 45 ) );
 			$safe_test = substr( $test_id, 0, 8 );
 			$method    = isset( $_SERVER['REQUEST_METHOD'] )
-				? strtoupper( substr( preg_replace( '/[^A-Za-z]/', '', $_SERVER['REQUEST_METHOD'] ), 0, 7 ) )
+				? strtoupper( substr( preg_replace( '/[^A-Za-z]/', '', sanitize_text_field( wp_unslash( $_SERVER['REQUEST_METHOD'] ) ) ), 0, 7 ) )
 				: '?';
 
 			if ( ! empty( $result ) ) {
@@ -1918,7 +1918,7 @@ if ( ! function_exists( 'array_find' ) ) {
 	 * @param callable $callback The callback function to test each element.
 	 * @return mixed The first matching element, or null if none found.
 	 */
-	function array_find( array $array, callable $callback ) { // phpcs:ignore WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedFunctionFound -- PHP parity.
+	function array_find( array $array, callable $callback ) { // phpcs:ignore WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedFunctionFound, Universal.NamingConventions.NoReservedKeywordParameterNames.arrayFound -- PHP parity.
 		foreach ( $array as $key => $value ) {
 			if ( $callback( $value, $key ) ) {
 				return $value;

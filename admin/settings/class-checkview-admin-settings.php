@@ -59,7 +59,7 @@ class Checkview_Admin_Settings {
 		$this->plugin_name = $plugin_name;
 		$this->version     = $version;
 		// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Read-only admin tab routing.
-		$this->page_tab    = isset( $_GET['tab'] ) ? sanitize_text_field( wp_unslash( $_GET['tab'] ) ) : 'general';
+		$this->page_tab = isset( $_GET['tab'] ) ? sanitize_text_field( wp_unslash( $_GET['tab'] ) ) : 'general';
 	}
 
 	/**

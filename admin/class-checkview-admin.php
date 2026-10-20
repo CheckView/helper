@@ -553,7 +553,7 @@ class Checkview_Admin {
 			? sanitize_text_field( wp_unslash( $_REQUEST['allow_original_recipients'] ) )
 			: '';
 		// phpcs:enable WordPress.Security.NonceVerification.Recommended
-		$referrer_url              = sanitize_url( wp_get_raw_referer(), array( 'http', 'https' ) );
+		$referrer_url = sanitize_url( wp_get_raw_referer(), array( 'http', 'https' ) );
 
 		// If not Ajax submission and found test_id.
 		if ( isset( $_SERVER['REQUEST_URI'] ) && strpos( sanitize_url( wp_unslash( $_SERVER['REQUEST_URI'] ) ), 'admin-ajax.php' ) === false && '' !== $cv_test_id ) {
@@ -806,7 +806,7 @@ class Checkview_Admin {
 		}
 
 		foreach ( $plugin_metas as $plugin_key => $plugin_value ) {
-			// phpcs:ignore WordPress.WP.I18n.LowLevelTranslationFunction -- Must match core's own 'View details' string.
+			// phpcs:ignore WordPress.WP.I18n.LowLevelTranslationFunction, WordPress.WP.I18n.MissingArgDomain -- Must match core's own 'View details' string.
 			if ( strpos( $plugin_value, sprintf( '>%s<', translate( 'View details' ) ) ) ) {
 				unset( $plugin_metas[ $plugin_key ] );
 				break;

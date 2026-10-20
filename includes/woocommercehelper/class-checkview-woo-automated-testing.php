@@ -767,10 +767,10 @@ class Checkview_Woo_Automated_Testing {
 	 *
 	 * @param string   $recipient Recipient.
 	 * @param WC_Order $order WooCommerce order.
-	 * @param Email    $self WooCommerce Email object.
+	 * @param Email    $email WooCommerce Email object.
 	 * @return string
 	 */
-	public function checkview_filter_admin_emails( $recipient, $order, $self ) { // phpcs:ignore Generic.CodeAnalysis.UnusedFunctionParameter.FoundAfterLastUsed -- Hook signature.
+	public function checkview_filter_admin_emails( $recipient, $order, $email ) { // phpcs:ignore Generic.CodeAnalysis.UnusedFunctionParameter.FoundAfterLastUsed -- Hook signature.
 
 		$payment_method  = ( \is_object( $order ) && \method_exists( $order, 'get_payment_method' ) ) ? $order->get_payment_method() : false;
 		$payment_made_by = is_object( $order ) ? $order->get_meta( 'payment_made_by' ) : '';

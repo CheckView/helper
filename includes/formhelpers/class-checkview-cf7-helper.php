@@ -242,17 +242,17 @@ if ( ! class_exists( 'Checkview_Cf7_Helper' ) ) {
 		 *   plain function / no class KEEP (unidentifiable, defensive)
 		 *   default                 REMOVE
 		 *
-		 * @param mixed $callable Callback as stored in WP_Hook::callbacks.
+		 * @param mixed $callback Callback as stored in WP_Hook::callbacks.
 		 * @return bool True if the callback should be removed.
 		 */
-		private function should_remove( $callable ) {
+		private function should_remove( $callback ) {
 			$class_name = '';
-			if ( is_array( $callable ) && isset( $callable[0] ) ) {
-				$class_name = is_object( $callable[0] ) ? get_class( $callable[0] ) : (string) $callable[0];
-			} elseif ( is_object( $callable ) ) {
-				$class_name = get_class( $callable );
-			} elseif ( is_string( $callable ) && strpos( $callable, '::' ) !== false ) {
-				list( $class_name, ) = explode( '::', $callable, 2 );
+			if ( is_array( $callback ) && isset( $callback[0] ) ) {
+				$class_name = is_object( $callback[0] ) ? get_class( $callback[0] ) : (string) $callback[0];
+			} elseif ( is_object( $callback ) ) {
+				$class_name = get_class( $callback );
+			} elseif ( is_string( $callback ) && strpos( $callback, '::' ) !== false ) {
+				list( $class_name, ) = explode( '::', $callback, 2 );
 			}
 
 			if ( 'Closure' === $class_name ) {

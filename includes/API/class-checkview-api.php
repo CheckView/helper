@@ -1799,6 +1799,7 @@ class CheckView_Api {
 
 				$embed_like_clauses = implode( ' OR ', array_fill( 0, count( $embed_patterns ), 'pm.meta_value LIKE %s' ) );
 
+				// phpcs:disable WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- Interpolated value is a generated list of %s placeholders.
 				$embedding_template_ids = $wpdb->get_col(
 					$wpdb->prepare(
 						"SELECT p.ID FROM {$wpdb->prefix}posts p
@@ -1810,6 +1811,7 @@ class CheckView_Api {
 						array_merge( array( '_elementor_data' ), $embed_patterns )
 					)
 				);
+				// phpcs:enable WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 				foreach ( (array) $embedding_template_ids as $embedding_template_id ) {
 					$embedding_template_id = (int) $embedding_template_id;
 					if (
@@ -1897,6 +1899,7 @@ class CheckView_Api {
 			 * tested on, so they stay out.
 			 */
 			if ( ! empty( $form_template_ids ) ) {
+				// phpcs:disable WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- Interpolated value is a generated list of %s placeholders.
 				$shortcode_posts = $wpdb->get_results(
 					$wpdb->prepare(
 						"SELECT ID, post_type, post_content FROM {$wpdb->prefix}posts
@@ -1907,6 +1910,7 @@ class CheckView_Api {
 						array_merge( array( $shortcode_pattern ), $post_types )
 					)
 				);
+				// phpcs:enable WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 				foreach ( (array) $shortcode_posts as $shortcode_post ) {
 					$template_forms = array();
 					foreach ( checkview_get_elementor_template_shortcode_ids( $shortcode_post->post_content ) as $template_id ) {
@@ -2012,7 +2016,13 @@ class CheckView_Api {
 
 				return new WP_Error(
 					400,
-					esc_html__( 'Failed to find test results (query [' . $query_as_json . '] returned null).', 'checkview' ),
+					esc_html(
+						sprintf(
+							/* translators: %s: JSON-encoded query. */
+							__( 'Failed to find test results (query [%s] returned null).', 'checkview' ),
+							$query_as_json
+						)
+					),
 				);
 			}
 
@@ -2021,7 +2031,14 @@ class CheckView_Api {
 
 				return new WP_Error(
 					400,
-					esc_html__( 'Failed to find test results (query [' . $query_as_json . '] returned unexpected type [' . gettype( $result ) . ']).', 'checkview' ),
+					esc_html(
+						sprintf(
+							/* translators: 1: JSON-encoded query, 2: PHP type of the result. */
+							__( 'Failed to find test results (query [%1$s] returned unexpected type [%2$s]).', 'checkview' ),
+							$query_as_json,
+							gettype( $result )
+						)
+					),
 				);
 			}
 
@@ -2035,7 +2052,13 @@ class CheckView_Api {
 
 				return new WP_Error(
 					400,
-					esc_html__( 'Failed to find test results (query [' . $meta_query_as_json . '] returned null).', 'checkview' ),
+					esc_html(
+						sprintf(
+							/* translators: %s: JSON-encoded query. */
+							__( 'Failed to find test results (query [%s] returned null).', 'checkview' ),
+							$meta_query_as_json
+						)
+					),
 				);
 			}
 
@@ -2044,7 +2067,14 @@ class CheckView_Api {
 
 				return new WP_Error(
 					400,
-					esc_html__( 'Failed to find test results (query [' . $meta_query_as_json . '] returned unexpected type [' . gettype( $rows ) . ']).', 'checkview' ),
+					esc_html(
+						sprintf(
+							/* translators: 1: JSON-encoded query, 2: PHP type of the result. */
+							__( 'Failed to find test results (query [%1$s] returned unexpected type [%2$s]).', 'checkview' ),
+							$meta_query_as_json,
+							gettype( $rows )
+						)
+					),
 				);
 			}
 

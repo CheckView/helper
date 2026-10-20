@@ -31,7 +31,7 @@ $contents = $real_file && $real_logs_folder && 0 === strpos( $real_file, $real_l
 		<div class="d-flex align-items-center section-header">
 			<input type="hidden" name="action" value="checkview_admin_logs_settings">
 			<?php wp_nonce_field( 'checkview_admin_logs_settings', 'checkview_admin_logs_settings' ); ?>
-			<?php echo str_pad( esc_html__( 'Logs Directory', 'checkview' ) . ':', $pad_spaces ); ?><?php echo $wp_filesystem_direct->is_writable( Checkview_Admin_Logs::get_logs_folder() ) ? 'Writable' : 'Not Writable' . "\n"; ?>
+			<?php echo esc_html( str_pad( __( 'Logs Directory', 'checkview' ) . ':', $pad_spaces ) ); ?><?php echo $wp_filesystem_direct->is_writable( Checkview_Admin_Logs::get_logs_folder() ) ? 'Writable' : 'Not Writable' . "\n"; ?>
 			<div class="alignright ml-auto">
 				<?php do_action( 'checkview_logs_before_select' ); ?>
 				<select name="checkview_log_select" style="" class="mr-3">

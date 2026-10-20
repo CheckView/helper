@@ -31,7 +31,7 @@ class Checkview_Admin_Logs {
 	 * @var array
 	 * @access private
 	 */
-	private static $_handles;
+	private static $handles;
 
 	/**
 	 * Base name of the logs folder, kept as the prefix of the current one.
@@ -51,7 +51,7 @@ class Checkview_Admin_Logs {
 	 * Defines log handles property as an empty array.
 	 */
 	public function __construct() {
-		self::$_handles = array();
+		self::$handles = array();
 	}
 
 	/**
@@ -60,7 +60,7 @@ class Checkview_Admin_Logs {
 	 * Closes file pointers when this class is destroyed.
 	 */
 	public function __destruct() {
-		foreach ( self::$_handles as $handle ) {
+		foreach ( self::$handles as $handle ) {
 			if ( is_resource( $handle ) ) {
 				@fclose( $handle );
 			}
@@ -436,9 +436,9 @@ class Checkview_Admin_Logs {
 		$results = array();
 
 		// Open the file for reading.
-		if ( self::open( $handle, 'r' ) && is_resource( self::$_handles[ $handle ] ) ) {
-			while ( ! feof( self::$_handles[ $handle ] ) ) {
-				$line = fgets( self::$_handles[ $handle ], 4096 );
+		if ( self::open( $handle, 'r' ) && is_resource( self::$handles[ $handle ] ) ) {
+			while ( ! feof( self::$handles[ $handle ] ) ) {
+				$line = fgets( self::$handles[ $handle ], 4096 );
 
 				array_push( $results, $line );
 
@@ -526,8 +526,8 @@ class Checkview_Admin_Logs {
 
 			return false;
 		}
-		self::$_handles[ $handle ] = @fopen( $path . $handle . '.log', $permission );
-		if ( self::$_handles[ $handle ] ) {
+		self::$handles[ $handle ] = @fopen( $path . $handle . '.log', $permission );
+		if ( self::$handles[ $handle ] ) {
 			return true;
 		}
 
@@ -577,10 +577,10 @@ class Checkview_Admin_Logs {
 			$message = strtr( $message, $sanitize_table );
 		}
 		$handle = $handle . '-log-' . gmdate( 'Y-m-d' );
-		if ( self::open( $handle ) && is_resource( self::$_handles[ $handle ] ) ) {
+		if ( self::open( $handle ) && is_resource( self::$handles[ $handle ] ) ) {
 			$time   = self::get_now()->format( 'm-d-Y @ H:i:s -' ); // Grab Time.
-			$result = @fwrite( self::$_handles[ $handle ], $time . ' ' . $message . "\n" );
-			@fclose( self::$_handles[ $handle ] );
+			$result = @fwrite( self::$handles[ $handle ], $time . ' ' . $message . "\n" );
+			@fclose( self::$handles[ $handle ] );
 		}
 
 		do_action( 'checkview_log_add', $handle, $message );
@@ -625,8 +625,8 @@ class Checkview_Admin_Logs {
 	 * @param mixed $handle File handle.
 	 */
 	public function clear( $handle ) {
-		if ( self::open( $handle ) && is_resource( self::$_handles[ $handle ] ) ) {
-			@ftruncate( self::$_handles[ $handle ], 0 );
+		if ( self::open( $handle ) && is_resource( self::$handles[ $handle ] ) ) {
+			@ftruncate( self::$handles[ $handle ], 0 );
 		}
 
 		do_action( 'checkview_log_clear', $handle );

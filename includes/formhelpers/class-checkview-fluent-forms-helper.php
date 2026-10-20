@@ -510,17 +510,17 @@ if ( ! class_exists( 'Checkview_Fluent_Forms_Helper' ) ) {
 
 			// Build map of old IDs to new IDs.
 			preg_match_all( '/\bid=[\'"]([^\'"]+)[\'"]/', $html, $matches );
-			foreach ( $matches[1] as $oldId ) {
-				if ( ! isset( $map[ $oldId ] ) ) {
-					$map[ $oldId ] = 'ff_checkable_' . ( ++self::$counter );
+			foreach ( $matches[1] as $old_id ) {
+				if ( ! isset( $map[ $old_id ] ) ) {
+					$map[ $old_id ] = 'ff_checkable_' . ( ++self::$counter );
 				}
 			}
 
 			// Replace both id= and for= attributes.
-			foreach ( $map as $oldId => $newId ) {
+			foreach ( $map as $old_id => $new_id ) {
 				$html = str_replace(
-					array( 'id="' . $oldId . '"', "id='" . $oldId . "'", 'for="' . $oldId . '"', "for='" . $oldId . "'" ),
-					array( 'id="' . $newId . '"', "id='" . $newId . "'", 'for="' . $newId . '"', "for='" . $newId . "'" ),
+					array( 'id="' . $old_id . '"', "id='" . $old_id . "'", 'for="' . $old_id . '"', "for='" . $old_id . "'" ),
+					array( 'id="' . $new_id . '"', "id='" . $new_id . "'", 'for="' . $new_id . '"', "for='" . $new_id . "'" ),
 					$html
 				);
 			}

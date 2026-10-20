@@ -13,9 +13,9 @@ $delete_all        = ! empty( $checkview_options['checkview_delete_data'] ) ? $c
 $allow_dev         = ! empty( $checkview_options['checkview_allowed_extensions'] ) ? $checkview_options['checkview_allowed_extensions'] : '';
 $hide_me           = get_option( 'checkview_hide_me', false );
 if ( 'true' == $hide_me ) {
-	$title = esc_html__( 'Automated Testing', 'checkview' );
+	$checkview_title = esc_html__( 'Automated Testing', 'checkview' );
 } else {
-	$title = esc_html__( 'CheckView', 'checkview' );
+	$checkview_title = esc_html__( 'CheckView', 'checkview' );
 }
 ?>
 <div id="checkview-general-options" class="card">
@@ -29,7 +29,7 @@ if ( 'true' == $hide_me ) {
 						<label for="checkview_delete_data">
 							<?php esc_html_e( 'Delete data on uninstall', 'checkview' ); ?>
 						</label>
-						<p class="make-lib-description"><?php esc_html_e( 'When selected, this option will remove all data associated with the plugin from WordPress upon uninstallation, without affecting the ' . $title . ' platform.', 'checkview' ); ?></p>
+						<p class="make-lib-description"><?php printf( /* translators: %s: Platform name. */ esc_html__( 'When selected, this option will remove all data associated with the plugin from WordPress upon uninstallation, without affecting the %s platform.', 'checkview' ), esc_html( $checkview_title ) ); ?></p>
 					</th>
 					<td class="checkview-make-cache-box">
 					<label class="switch" for="checkview_delete_data">
@@ -47,7 +47,7 @@ if ( 'true' == $hide_me ) {
 						<label for="checkview_update_cache">
 							<?php esc_html_e( 'Update Cache', 'checkview' ); ?>
 						</label>
-						<p class="make-lib-description"><?php esc_html_e( 'The ' . $title . ' Cache refreshes daily automatically. To update it manually, simply click the "Update Cache" button.', 'checkview' ); ?></p>
+						<p class="make-lib-description"><?php printf( /* translators: %s: Platform name. */ esc_html__( 'The %s Cache refreshes daily automatically. To update it manually, simply click the "Update Cache" button.', 'checkview' ), esc_html( $checkview_title ) ); ?></p>
 					</th>
 					<td class="checkview-make-cache-box">
 						<label class="" for="checkview_update_cache">

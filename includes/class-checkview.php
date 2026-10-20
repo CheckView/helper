@@ -263,11 +263,11 @@ class CheckView {
 
 			// Collect IP headers.
 			$headers = array();
-			$cf      = $sanitize( isset( $_SERVER['HTTP_CF_CONNECTING_IP'] ) ? $_SERVER['HTTP_CF_CONNECTING_IP'] : '', 45 );
-			$xff     = $sanitize( isset( $_SERVER['HTTP_X_FORWARDED_FOR'] ) ? $_SERVER['HTTP_X_FORWARDED_FOR'] : '', 100 );
-			$xri     = $sanitize( isset( $_SERVER['HTTP_X_REAL_IP'] ) ? $_SERVER['HTTP_X_REAL_IP'] : '', 45 );
-			$cli     = $sanitize( isset( $_SERVER['HTTP_CLIENT_IP'] ) ? $_SERVER['HTTP_CLIENT_IP'] : '', 45 );
-			$ra      = $sanitize( isset( $_SERVER['REMOTE_ADDR'] ) ? $_SERVER['REMOTE_ADDR'] : '', 45 );
+			$cf      = $sanitize( isset( $_SERVER['HTTP_CF_CONNECTING_IP'] ) ? sanitize_text_field( wp_unslash( $_SERVER['HTTP_CF_CONNECTING_IP'] ) ) : '', 45 );
+			$xff     = $sanitize( isset( $_SERVER['HTTP_X_FORWARDED_FOR'] ) ? sanitize_text_field( wp_unslash( $_SERVER['HTTP_X_FORWARDED_FOR'] ) ) : '', 100 );
+			$xri     = $sanitize( isset( $_SERVER['HTTP_X_REAL_IP'] ) ? sanitize_text_field( wp_unslash( $_SERVER['HTTP_X_REAL_IP'] ) ) : '', 45 );
+			$cli     = $sanitize( isset( $_SERVER['HTTP_CLIENT_IP'] ) ? sanitize_text_field( wp_unslash( $_SERVER['HTTP_CLIENT_IP'] ) ) : '', 45 );
+			$ra      = $sanitize( isset( $_SERVER['REMOTE_ADDR'] ) ? sanitize_text_field( wp_unslash( $_SERVER['REMOTE_ADDR'] ) ) : '', 45 );
 
 			if ( $cf ) {
 				$headers[] = 'CF=[' . $cf . ']';
@@ -355,6 +355,7 @@ class CheckView {
 			return false;
 		}
 
+		// phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized -- JWT; validated by checkview_validate_jwt_token() below.
 		$header = trim( wp_unslash( $_SERVER['HTTP_X_CHECKVIEW_SIGNATURE'] ) );
 		if ( '' === $header ) {
 			return false;
