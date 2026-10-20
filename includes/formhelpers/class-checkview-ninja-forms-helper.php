@@ -236,7 +236,9 @@ if ( ! class_exists( 'Checkview_Ninja_Forms_Helper' ) ) {
 				// The raw $_POST['formData'] JSON contains the original
 				// values submitted by the browser.
 				$raw_fields = array();
+				// phpcs:ignore WordPress.Security.NonceVerification.Missing -- Runs in ninja_forms_after_submission; NF verified the request.
 				if ( isset( $_POST['formData'] ) && is_string( $_POST['formData'] ) ) {
+					// phpcs:ignore WordPress.Security.NonceVerification.Missing, WordPress.Security.ValidatedSanitizedInput.InputNotSanitized -- Raw JSON; sanitizing would corrupt field values.
 					$raw_form = json_decode( wp_unslash( $_POST['formData'] ), true );
 					if ( is_array( $raw_form ) && ! empty( $raw_form['fields'] ) && is_array( $raw_form['fields'] ) ) {
 						$raw_fields = $raw_form['fields'];
@@ -273,7 +275,7 @@ if ( ! class_exists( 'Checkview_Ninja_Forms_Helper' ) ) {
 						}
 
 						if ( is_array( $value ) ) {
-							$value = serialize( $value );
+							$value = maybe_serialize( $value );
 						} else {
 							$value = (string) $value;
 						}

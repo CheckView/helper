@@ -58,6 +58,7 @@ class Checkview_Admin_Settings {
 	public function __construct( $plugin_name, $version ) {
 		$this->plugin_name = $plugin_name;
 		$this->version     = $version;
+		// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Read-only admin tab routing.
 		$this->page_tab    = isset( $_GET['tab'] ) ? sanitize_text_field( wp_unslash( $_GET['tab'] ) ) : 'general';
 	}
 
@@ -297,6 +298,7 @@ class Checkview_Admin_Settings {
 	public function checkview_add_footer_admin( $footer_text ) {
 		// Routing check only (which admin page is showing); nothing is
 		// processed from the value, so no nonce applies.
+		// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Read-only admin tab routing.
 		$page = isset( $_GET['page'] ) ? sanitize_key( wp_unslash( $_GET['page'] ) ) : '';
 		if ( 'checkview-options' !== $page ) {
 			return $footer_text;

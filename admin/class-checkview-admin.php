@@ -229,7 +229,9 @@ class Checkview_Admin {
 			$this->version,
 			true
 		);
+		// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Read-only admin tab routing.
 		if ( isset( $_GET['tab'] ) ) {
+			// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Read-only admin tab routing.
 			$tab = sanitize_text_field( wp_unslash( $_GET['tab'] ) );
 		} else {
 			$tab = '';
@@ -541,6 +543,7 @@ class Checkview_Admin {
 			}
 		}
 
+		// phpcs:disable WordPress.Security.NonceVerification.Recommended -- Read-only CheckView test options from SaaS request; no nonce possible.
 		$disable_email_receipt     = isset( $_REQUEST['disable_email_receipt'] ) ? sanitize_text_field( wp_unslash( $_REQUEST['disable_email_receipt'] ) ) : false;
 		$disable_webhooks          = isset( $_REQUEST['disable_webhooks'] ) ? sanitize_text_field( wp_unslash( $_REQUEST['disable_webhooks'] ) ) : false;
 		$disable_actions           = isset( $_REQUEST['disable_actions'] )
@@ -549,6 +552,7 @@ class Checkview_Admin {
 		$allow_original_recipients = isset( $_REQUEST['allow_original_recipients'] )
 			? sanitize_text_field( wp_unslash( $_REQUEST['allow_original_recipients'] ) )
 			: '';
+		// phpcs:enable WordPress.Security.NonceVerification.Recommended
 		$referrer_url              = sanitize_url( wp_get_raw_referer(), array( 'http', 'https' ) );
 
 		// If not Ajax submission and found test_id.
@@ -802,6 +806,7 @@ class Checkview_Admin {
 		}
 
 		foreach ( $plugin_metas as $plugin_key => $plugin_value ) {
+			// phpcs:ignore WordPress.WP.I18n.LowLevelTranslationFunction -- Must match core's own 'View details' string.
 			if ( strpos( $plugin_value, sprintf( '>%s<', translate( 'View details' ) ) ) ) {
 				unset( $plugin_metas[ $plugin_key ] );
 				break;

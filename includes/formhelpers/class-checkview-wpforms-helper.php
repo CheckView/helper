@@ -396,7 +396,7 @@ if ( ! class_exists( 'Checkview_Wpforms_Helper' ) ) {
 						continue;
 					}
 
-					$field_value = is_array( $field['value'] ) ? serialize( $field['value'] ) : $field['value'];
+					$field_value = is_array( $field['value'] ) ? maybe_serialize( $field['value'] ) : $field['value'];
 					$type        = isset( $field['type'] ) ? $field['type'] : '';
 
 					switch ( $type ) {

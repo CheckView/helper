@@ -327,6 +327,7 @@ class Checkview_Woo_Automated_Testing {
 		// Check if WooCommerce is active.
 		if ( class_exists( 'WooCommerce' ) ) {
 			// Check if the parameter exists in the URL.
+			// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- CheckView test param; gated on is_bot() above.
 			if ( isset( $_GET['checkview_empty_cart'] ) && 'true' === $_GET['checkview_empty_cart'] && ( is_product() || is_shop() ) ) {
 				// Get WooCommerce cart instance.
 				$woocommerce_instance = WC();
@@ -1305,7 +1306,9 @@ class Checkview_Woo_Automated_Testing {
 			$args   = array(
 				'limit'        => -1,
 				'type'         => 'shop_order',
+				// phpcs:ignore WordPress.DB.SlowDBQuery.slow_db_query_meta_key -- Test order cleanup cron only.
 				'meta_key'     => 'payment_made_by', // Postmeta key field.
+				// phpcs:ignore WordPress.DB.SlowDBQuery.slow_db_query_meta_value -- Test order cleanup cron only.
 				'meta_value'   => 'checkview',       // Postmeta value field.
 				'meta_compare' => '=',
 				'return'       => 'ids',

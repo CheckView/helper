@@ -181,6 +181,7 @@ class CheckView {
 	 * @return string|false Validated param value, or false.
 	 */
 	public static function test_type() {
+		// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Read-only CheckView test param from SaaS request; no nonce possible.
 		$test_type = sanitize_text_field( wp_unslash( $_REQUEST[ self::PARAM_TEST_TYPE ] ?? '' ) );
 		if ( ! empty( $test_type ) ) {
 			return $test_type;
@@ -244,6 +245,7 @@ class CheckView {
 		$result    = $test_type && $verified;
 
 		// Only log during actual tests.
+		// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Read-only CheckView test param from SaaS request; no nonce possible.
 		if ( isset( $_REQUEST[ self::PARAM_TEST_ID ] ) && self::should_log_bot_check( $result ) ) {
 			// Sanitize for logging: remove control chars, limit length.
 			$sanitize = function ( $val, $max_len = 200 ) {
@@ -255,6 +257,7 @@ class CheckView {
 				return ( strlen( $str ) > $max_len ) ? substr( $str, 0, $max_len ) . '...' : $str;
 			};
 
+			// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Read-only CheckView test param from SaaS request; no nonce possible.
 			$test_id         = substr( sanitize_text_field( wp_unslash( $_REQUEST[ self::PARAM_TEST_ID ] ) ), 0, 36 );
 			$safe_visitor_ip = $sanitize( $visitor_ip, 45 );
 

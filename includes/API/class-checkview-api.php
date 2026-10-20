@@ -35,6 +35,7 @@ class CheckView_Api {
 		// Keep printed notices out of our JSON responses. Only our own routes;
 		// rest_api_init fires for every REST request on the site.
 		if ( Checkview_Admin::is_checkview_rest_request() ) {
+			// phpcs:ignore WordPress.PHP.IniSet.display_errors_Disallowed -- Our routes only; notices would break JSON.
 			ini_set( 'display_errors', '0' );
 		}
 		register_rest_route(
@@ -419,6 +420,7 @@ class CheckView_Api {
 		$args = array(
 			'limit'          => - 1,
 			'payment_method' => 'checkview',
+			// phpcs:ignore WordPress.DB.SlowDBQuery.slow_db_query_meta_query -- Limited to checkview payment method orders.
 			'meta_query'     => array(
 				array(
 					'relation' => 'AND', // Use 'AND' for both conditions to apply.
@@ -704,6 +706,7 @@ class CheckView_Api {
 		$args = array(
 			'post_type'           => 'product',
 			'post_status'         => array( 'publish', 'draft' ),
+			// phpcs:ignore WordPress.WP.PostsPerPage.posts_per_page_posts_per_page -- SaaS product picker needs full list.
 			'posts_per_page'      => 1000,
 			'ignore_sticky_posts' => 1,
 			'orderby'             => 'modified',        // Order by last modified date.
@@ -714,6 +717,7 @@ class CheckView_Api {
 		}
 
 		if ( ! empty( $checkview_product_type ) && null !== $checkview_product_type ) {
+			// phpcs:ignore WordPress.DB.SlowDBQuery.slow_db_query_tax_query -- Single product_type term filter.
 			$args['tax_query'] = array(
 				array(
 					'taxonomy' => 'product_type',

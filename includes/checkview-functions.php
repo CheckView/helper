@@ -207,6 +207,7 @@ if ( ! function_exists( 'checkview_get_test_id' ) ) {
 	 * @return string|false Test ID, or `false` on failure.
 	 */
 	function checkview_get_test_id() {
+		// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Read-only CheckView test param from SaaS request; no nonce possible.
 		$cv_test_id = isset( $_REQUEST[ CheckView::PARAM_TEST_ID ] ) ? sanitize_text_field( wp_unslash( $_REQUEST[ CheckView::PARAM_TEST_ID ] ) ) : '';
 
 		if ( ! empty( $cv_test_id ) ) {
@@ -720,7 +721,7 @@ if ( ! function_exists( 'checkview_whitelist_api_ip' ) ) {
 		$api_ip     = checkview_get_api_ip();
 
 		if ( is_array( $api_ip ) && in_array( $current_ip, $api_ip ) ) {
-			$home_url = parse_url( home_url() ); // Returns `false`, `null`, or an assosiative array.
+			$home_url = wp_parse_url( home_url() ); // Returns `false`, `null`, or an assosiative array.
 
 			if ( false === $home_url || null === $home_url ) {
 				// phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log -- Desired production debug logging.

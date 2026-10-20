@@ -325,6 +325,7 @@ if ( ! class_exists( 'Checkview_Cf7_Helper' ) ) {
 				$files            = $submission->uploaded_files();
 				$uploaded_files   = array();
 
+				// phpcs:ignore WordPress.Security.NonceVerification.Missing -- Runs in CF7 submission hook; only file keys are read.
 				foreach ( $_FILES as $file_key => $file ) {
 					array_push( $uploaded_files, $file_key );
 				}
@@ -354,7 +355,7 @@ if ( ! class_exists( 'Checkview_Cf7_Helper' ) ) {
 						}
 
 						if ( is_array( $d ) ) {
-							$tmp_d = serialize( $d );
+							$tmp_d = maybe_serialize( $d );
 						}
 
 						$form_data[ $key ] = $tmp_d;

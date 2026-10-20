@@ -92,6 +92,7 @@ if ( ! class_exists( 'Checkview_Fatal_Capture' ) ) {
 			// default is off unless a php.ini turns it on, and the default
 			// parameter length of 15 characters fits a whole API key.
 			if ( function_exists( 'ini_set' ) ) {
+				// phpcs:ignore WordPress.PHP.IniSet.Risky -- Keeps API keys out of fatal traces (see above).
 				self::$args_stripped = false !== ini_set( 'zend.exception_ignore_args', '1' );
 			}
 
