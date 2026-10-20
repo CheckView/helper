@@ -678,11 +678,13 @@ class CheckView_Api {
 			);
 		}
 		global $wpdb;
-		$products               = get_transient( 'checkview_store_products_transient' );
 		$checkview_keyword      = $request->get_param( 'checkview_keyword' );
 		$checkview_product_type = $request->get_param( 'checkview_product_type' );
 		$checkview_keyword      = isset( $checkview_keyword ) ? sanitize_text_field( $checkview_keyword ) : null;
 		$checkview_product_type = isset( $checkview_product_type ) ? sanitize_text_field( $checkview_product_type ) : null;
+		// The transient holds only the unfiltered list; filtered requests bypass it.
+		$is_filtered = ! empty( $checkview_keyword ) || ! empty( $checkview_product_type );
+		$products    = $is_filtered ? false : get_transient( 'checkview_store_products_transient' );
 		if ( isset( $this->jwt_error ) && null !== $this->jwt_error ) {
 			Checkview_Admin_Logs::add( 'api-logs', $this->jwt_error );
 			return new WP_Error(
@@ -765,7 +767,9 @@ class CheckView_Api {
 			$products['cart_url']      = wc_get_cart_url();
 			$products['checkout_url']  = wc_get_checkout_url();
 			$products['myaccount_url'] = wc_get_page_permalink( 'myaccount' );
-			set_transient( 'checkview_store_products_transient', $products, 12 * HOUR_IN_SECONDS );
+			if ( ! $is_filtered ) {
+				set_transient( 'checkview_store_products_transient', $products, 12 * HOUR_IN_SECONDS );
+			}
 			return new WP_REST_Response(
 				array(
 					'status'        => 200,
