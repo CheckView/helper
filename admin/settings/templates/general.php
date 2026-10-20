@@ -12,7 +12,7 @@ $checkview_options = get_option( 'checkview_advance_options', array() );
 $delete_all        = ! empty( $checkview_options['checkview_delete_data'] ) ? $checkview_options['checkview_delete_data'] : '';
 $allow_dev         = ! empty( $checkview_options['checkview_allowed_extensions'] ) ? $checkview_options['checkview_allowed_extensions'] : '';
 $hide_me           = get_option( 'checkview_hide_me', false );
-if ( 'true' == $hide_me ) {
+if ( 'true' === $hide_me ) {
 	$checkview_title = esc_html__( 'Automated Testing', 'checkview' );
 } else {
 	$checkview_title = esc_html__( 'CheckView', 'checkview' );

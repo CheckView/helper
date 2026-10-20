@@ -218,7 +218,7 @@ class CheckView {
 		$visitor_ip  = checkview_get_visitor_ip();
 		$cv_bot_ip   = checkview_get_api_ip();
 		$is_local    = checkview_is_local_environment();
-		$ip_verified = $is_local || ( is_array( $cv_bot_ip ) && in_array( $visitor_ip, $cv_bot_ip ) );
+		$ip_verified = $is_local || ( is_array( $cv_bot_ip ) && in_array( $visitor_ip, $cv_bot_ip, true ) );
 
 		// Unforgeable per-request signal: the CheckView test runner attaches a
 		// short-lived signed token (X-CheckView-Signature) that this verifies

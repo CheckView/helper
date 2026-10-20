@@ -341,11 +341,11 @@ if ( ! class_exists( 'Checkview_Cf7_Helper' ) ) {
 				$form_data = array();
 
 				foreach ( $data as $key => $d ) {
-					if ( ! in_array( $key, $allowed_tags ) ) {
+					if ( ! in_array( $key, $allowed_tags, true ) ) {
 						continue;
 					}
 
-					if ( ! in_array( $key, $not_allowed_tags ) && ! in_array( $key, $uploaded_files ) ) {
+					if ( ! in_array( $key, $not_allowed_tags, true ) && ! in_array( $key, $uploaded_files, true ) ) {
 						$tmp_d = $d;
 
 						if ( ! is_array( $d ) ) {
@@ -361,7 +361,7 @@ if ( ! class_exists( 'Checkview_Cf7_Helper' ) ) {
 						$form_data[ $key ] = $tmp_d;
 					}
 
-					if ( in_array( $key, $uploaded_files ) ) {
+					if ( in_array( $key, $uploaded_files, true ) ) {
 						$file      = is_array( $files[ $key ] ) ? reset( $files[ $key ] ) : $files[ $key ];
 						$file_name = empty( $file ) ? '' : $time_now . '-' . $key . '-' . basename( $file );
 						// Store under suffixed key for backward compat (no current readers, but preserved).

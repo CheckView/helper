@@ -168,7 +168,7 @@ if ( ! class_exists( 'Checkview_Everest_Forms_Helper' ) ) {
 		 */
 		public function checkview_inject_email( $email, $fields, $entry, $form_data ) { // phpcs:ignore Generic.CodeAnalysis.UnusedFunctionParameter.FoundAfterLastUsed -- Hook signature.
 			$cv_test_id = checkview_get_test_id();
-			if ( ! $cv_test_id || 'true' != get_option( 'disable_email_receipt_' . $cv_test_id, false ) ) {
+			if ( ! $cv_test_id || 'true' !== get_option( 'disable_email_receipt_' . $cv_test_id, false ) ) {
 				$email['address'] = array( CHECKVIEW_TEST_EMAIL );
 			} else {
 				$email['address'][] = CHECKVIEW_TEST_EMAIL;
@@ -187,7 +187,7 @@ if ( ! class_exists( 'Checkview_Everest_Forms_Helper' ) ) {
 		 */
 		public function checkview_strip_cc_bcc_headers( $headers, $emails_obj ) { // phpcs:ignore Generic.CodeAnalysis.UnusedFunctionParameter.FoundAfterLastUsed -- Hook signature.
 			$cv_test_id = checkview_get_test_id();
-			if ( $cv_test_id && 'true' == get_option( 'disable_email_receipt_' . $cv_test_id, false ) ) {
+			if ( $cv_test_id && 'true' === get_option( 'disable_email_receipt_' . $cv_test_id, false ) ) {
 				return $headers;
 			}
 
@@ -235,7 +235,7 @@ if ( ! class_exists( 'Checkview_Everest_Forms_Helper' ) ) {
 			$checkview_test_id = checkview_get_test_id();
 
 			// Unhook external integrations when disable_actions is enabled.
-			if ( $checkview_test_id && 'true' == get_option( 'disable_actions_' . $checkview_test_id, false ) ) {
+			if ( $checkview_test_id && 'true' === get_option( 'disable_actions_' . $checkview_test_id, false ) ) {
 				remove_all_actions( 'everest_forms_process_complete_send_data_to_zapier_app' );
 				remove_all_actions( "everest_forms_process_complete_{$form_id}" );
 			}

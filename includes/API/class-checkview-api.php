@@ -949,7 +949,7 @@ class CheckView_Api {
 				$order_object = null;
 				$current_user = get_user_by( 'id', $customer_id );
 				// Delete customer if available.
-				if ( $customer_id && isset( $current_user->roles ) && ! in_array( 'administrator', $current_user->roles ) ) {
+				if ( $customer_id && isset( $current_user->roles ) && ! in_array( 'administrator', $current_user->roles, true ) ) {
 					$customer = new WC_Customer( $customer_id );
 
 					if ( ! function_exists( 'wp_delete_user' ) ) {
@@ -2473,7 +2473,7 @@ class CheckView_Api {
 		$product    = Checkview_Woo_Automated_Testing::checkview_get_test_product();
 		$product_id = ! empty( $product->get_id() ) ? $product->get_id() : false;
 		$status     = checkview_update_woocommerce_product_status( $product_id, $checkview_status );
-		if ( 0 != $status && ! is_wp_error( $product_id ) ) {
+		if ( 0 !== $status && ! is_wp_error( $product_id ) ) {
 			return new WP_REST_Response(
 				array(
 					'_checkview_status' => 'updated',

@@ -636,7 +636,7 @@ if ( ! class_exists( 'Checkview_Gforms_Helper' ) ) {
 			}
 
 			$cv_test_id = checkview_get_test_id();
-			if ( ! $cv_test_id || 'true' != get_option( 'disable_email_receipt_' . $cv_test_id, false ) ) {
+			if ( ! $cv_test_id || 'true' !== get_option( 'disable_email_receipt_' . $cv_test_id, false ) ) {
 				$email['to'] = CHECKVIEW_TEST_EMAIL;
 				$headers     = $email['headers'];
 				if ( ! is_array( $headers ) ) {
@@ -670,7 +670,7 @@ if ( ! class_exists( 'Checkview_Gforms_Helper' ) ) {
 		 */
 		public function checkview_modify_sendgrid_email( array $email ): array {
 			$cv_test_id = checkview_get_test_id();
-			if ( ! $cv_test_id || 'true' != get_option( 'disable_email_receipt_' . $cv_test_id, false ) ) {
+			if ( ! $cv_test_id || 'true' !== get_option( 'disable_email_receipt_' . $cv_test_id, false ) ) {
 				$email['personalizations'][0]['to']  = CHECKVIEW_TEST_EMAIL;
 				$email['personalizations'][0]['cc']  = '';
 				$email['personalizations'][0]['bcc'] = '';
@@ -691,7 +691,7 @@ if ( ! class_exists( 'Checkview_Gforms_Helper' ) ) {
 		 */
 		public function checkview_modify_postmark_email( array $email ): array {
 			$cv_test_id = checkview_get_test_id();
-			if ( ! $cv_test_id || 'true' != get_option( 'disable_email_receipt_' . $cv_test_id, false ) ) {
+			if ( ! $cv_test_id || 'true' !== get_option( 'disable_email_receipt_' . $cv_test_id, false ) ) {
 				$email['To'] = CHECKVIEW_TEST_EMAIL;
 				$headers     = $email['Headers'];
 				if ( ! is_array( $headers ) ) {
@@ -840,7 +840,7 @@ if ( ! class_exists( 'Checkview_Gforms_Helper' ) ) {
 		 */
 		public function checkview_disable_addons_feed( $feeds, $entry, $form ) { // phpcs:ignore Generic.CodeAnalysis.UnusedFunctionParameter.FoundAfterLastUsed -- Hook signature.
 			$cv_test_id = checkview_get_test_id();
-			if ( $cv_test_id && 'true' == get_option( 'disable_actions_' . $cv_test_id, false ) ) {
+			if ( $cv_test_id && 'true' === get_option( 'disable_actions_' . $cv_test_id, false ) ) {
 				if ( is_array( $feeds ) ) {
 					foreach ( $feeds as $feed ) {
 						if ( ! is_array( $feed ) ) {

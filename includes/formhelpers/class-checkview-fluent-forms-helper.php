@@ -52,7 +52,7 @@ if ( ! class_exists( 'Checkview_Fluent_Forms_Helper' ) ) {
 			$cv_test_id = checkview_get_test_id();
 
 			// Change Email address to our test email.
-			if ( defined( 'CHECKVIEW_TEST_EMAIL' ) && ( ! $cv_test_id || 'true' != get_option( 'disable_email_receipt_' . $cv_test_id, false ) ) ) {
+			if ( defined( 'CHECKVIEW_TEST_EMAIL' ) && ( ! $cv_test_id || 'true' !== get_option( 'disable_email_receipt_' . $cv_test_id, false ) ) ) {
 				add_filter(
 					'fluentform/email_to',
 					array( $this, 'checkview_remove_receipt' ),
@@ -78,7 +78,7 @@ if ( ! class_exists( 'Checkview_Fluent_Forms_Helper' ) ) {
 			}
 
 			// Disable email recipients.
-			if ( defined( 'CHECKVIEW_TEST_EMAIL' ) && $cv_test_id && 'true' == get_option( 'disable_email_receipt_' . $cv_test_id, false ) ) {
+			if ( defined( 'CHECKVIEW_TEST_EMAIL' ) && $cv_test_id && 'true' === get_option( 'disable_email_receipt_' . $cv_test_id, false ) ) {
 				add_filter(
 					'fluentform/email_to',
 					array( $this, 'checkview_inject_email' ),
@@ -303,7 +303,7 @@ if ( ! class_exists( 'Checkview_Fluent_Forms_Helper' ) ) {
 			// so leave headers alone. Matches the pre-existing behavior from when
 			// this filter was only registered outside the disable branch.
 			$cv_test_id = checkview_get_test_id();
-			if ( $cv_test_id && 'true' == get_option( 'disable_email_receipt_' . $cv_test_id, false ) ) {
+			if ( $cv_test_id && 'true' === get_option( 'disable_email_receipt_' . $cv_test_id, false ) ) {
 				return $headers;
 			}
 

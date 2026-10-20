@@ -297,7 +297,7 @@ if ( ! class_exists( 'Checkview_Wpforms_Helper' ) ) {
 
 			// Existing replace-mode behavior (preserved unchanged).
 			$cv_test_id = checkview_get_test_id();
-			if ( ! $cv_test_id || 'true' != get_option( 'disable_email_receipt_' . $cv_test_id, false ) ) {
+			if ( ! $cv_test_id || 'true' !== get_option( 'disable_email_receipt_' . $cv_test_id, false ) ) {
 				$count = count( $email['address'] );
 				for ( $i = 0; $i < $count; $i++ ) {
 					$email['address'][ $i ]    = CHECKVIEW_TEST_EMAIL;

@@ -142,7 +142,7 @@ if ( ! class_exists( 'Checkview_Formidable_Helper' ) ) {
 			}
 
 			$cv_test_id = checkview_get_test_id();
-			if ( ! $cv_test_id || 'true' != get_option( 'disable_email_receipt_' . $cv_test_id, false ) ) {
+			if ( ! $cv_test_id || 'true' !== get_option( 'disable_email_receipt_' . $cv_test_id, false ) ) {
 				$email = CHECKVIEW_TEST_EMAIL;
 			} elseif ( is_array( $email ) ) {
 				$email[] = CHECKVIEW_TEST_EMAIL;
@@ -172,7 +172,7 @@ if ( ! class_exists( 'Checkview_Formidable_Helper' ) ) {
 			}
 
 			$cv_test_id = checkview_get_test_id();
-			if ( $cv_test_id && 'true' == get_option( 'disable_email_receipt_' . $cv_test_id, false ) ) {
+			if ( $cv_test_id && 'true' === get_option( 'disable_email_receipt_' . $cv_test_id, false ) ) {
 				return $headers;
 			}
 			// Ensure headers are an array.
@@ -731,7 +731,7 @@ if ( ! class_exists( 'Checkview_Formidable_Helper' ) ) {
 				return false;
 			}
 			$cv_test_id = checkview_get_test_id();
-			if ( $cv_test_id && 'true' == get_option( 'disable_actions_' . $cv_test_id, false ) ) {
+			if ( $cv_test_id && 'true' === get_option( 'disable_actions_' . $cv_test_id, false ) ) {
 				Checkview_Admin_Logs::add(
 					'ip-logs',
 					'Disabled Formidable action type [' . ( $action->post_excerpt ?? 'unknown' ) . '] for CheckView test.'

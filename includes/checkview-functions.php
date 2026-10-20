@@ -623,7 +623,7 @@ if ( ! function_exists( 'checkview_get_visitor_ip' ) ) {
 				$ip = trim( $ip );
 				$ip = preg_replace( '/:\d{1,5}$/', '', $ip );
 
-				if ( null !== $ip && checkview_validate_ip( $ip ) && is_array( $cv_bot_ip ) && in_array( $ip, $cv_bot_ip ) ) {
+				if ( null !== $ip && checkview_validate_ip( $ip ) && is_array( $cv_bot_ip ) && in_array( $ip, $cv_bot_ip, true ) ) {
 					return sanitize_text_field( $ip );
 				}
 			}
@@ -720,7 +720,7 @@ if ( ! function_exists( 'checkview_whitelist_api_ip' ) ) {
 		$current_ip = checkview_get_visitor_ip();
 		$api_ip     = checkview_get_api_ip();
 
-		if ( is_array( $api_ip ) && in_array( $current_ip, $api_ip ) ) {
+		if ( is_array( $api_ip ) && in_array( $current_ip, $api_ip, true ) ) {
 			$home_url = wp_parse_url( home_url() ); // Returns `false`, `null`, or an assosiative array.
 
 			if ( false === $home_url || null === $home_url ) {
@@ -1891,7 +1891,7 @@ if ( ! function_exists( 'checkview_update_woocommerce_product_status' ) ) {
 		$allowed_status = array( 'publish', 'draft' );
 
 		Checkview_Admin_Logs::add( 'api-logs', 'Updating status of test product [' . $product_id . '] to [' . $status . ']...' );
-		if ( get_post_type( $product_id ) === 'product' && in_array( $status, $allowed_status ) ) {
+		if ( get_post_type( $product_id ) === 'product' && in_array( $status, $allowed_status, true ) ) {
 			// Update the post status.
 			$updated = wp_update_post(
 				array(

@@ -101,7 +101,7 @@ if ( ! function_exists( 'checkview_hcap_whitelist_ip' ) ) {
 		}
 
 		// Whitelist our IPs.
-		if ( is_array( $cv_bot_ip ) && in_array( $ip, $cv_bot_ip ) ) {
+		if ( is_array( $cv_bot_ip ) && in_array( $ip, $cv_bot_ip, true ) ) {
 			return true;
 		}
 
@@ -227,7 +227,7 @@ if ( ! function_exists( 'checkview_disable_addons_providers' ) ) {
 	 */
 	function checkview_disable_addons_providers( array $providers ): array {
 		$cv_test_id = checkview_get_test_id();
-		if ( ! $cv_test_id || 'true' != get_option( 'disable_actions_' . $cv_test_id, false ) ) {
+		if ( ! $cv_test_id || 'true' !== get_option( 'disable_actions_' . $cv_test_id, false ) ) {
 			return $providers;
 		}
 		$providers = array();
@@ -251,7 +251,7 @@ if ( ! function_exists( 'checkview_disable_addons_feed' ) ) {
 	 */
 	function checkview_disable_addons_feed( array $core_class_names ): array {
 		$cv_test_id = checkview_get_test_id();
-		if ( ! $cv_test_id || 'true' != get_option( 'disable_actions_' . $cv_test_id, false ) ) {
+		if ( ! $cv_test_id || 'true' !== get_option( 'disable_actions_' . $cv_test_id, false ) ) {
 			return $core_class_names;
 		}
 		$core_class_names = array(
@@ -296,7 +296,7 @@ if ( is_plugin_active( 'better-wp-security/better-wp-security.php' ) ) {
 			}
 
 			// Whitelist our IPs.
-			if ( is_array( $cv_bot_ip ) && in_array( $visitor_ip, $cv_bot_ip ) ) {
+			if ( is_array( $cv_bot_ip ) && in_array( $visitor_ip, $cv_bot_ip, true ) ) {
 				return array_merge( $whitelisted_ips, (array) $visitor_ip );
 			}
 			return $whitelisted_ips;
@@ -321,7 +321,7 @@ if ( is_plugin_active( 'defender-security/wp-defender.php' ) ) {
 			}
 
 			// Whitelist our IPs.
-			if ( is_array( $cv_bot_ip ) && in_array( $visitor_ip, $cv_bot_ip ) ) {
+			if ( is_array( $cv_bot_ip ) && in_array( $visitor_ip, $cv_bot_ip, true ) ) {
 				return array_merge( $whitelisted_ips, (array) $visitor_ip );
 			}
 			return $whitelisted_ips;

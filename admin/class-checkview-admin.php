@@ -490,7 +490,7 @@ class Checkview_Admin {
 			$ect_ip_address_array = explode( "\n", $ect_ip_address );
 
 			if ( ! empty( $ect_ip_address_array ) && is_array( $ect_ip_address_array ) ) {
-				if ( ! in_array( $visitor_ip, $ect_ip_address_array ) ) {
+				if ( ! in_array( $visitor_ip, $ect_ip_address_array, true ) ) {
 					$ect_ip_address .= "\n" . $visitor_ip;
 
 					checkview_update_option( 'ecft_ip_address', $ect_ip_address );
@@ -510,7 +510,7 @@ class Checkview_Admin {
 			$captcha_ip_range = array_filter( explode( ',', $captcha_ip_range_opt ) );
 
 			// Check if the IP is already in the list.
-			if ( ! in_array( $visitor_ip, $captcha_ip_range ) ) {
+			if ( ! in_array( $visitor_ip, $captcha_ip_range, true ) ) {
 				// Add new IP to the list.
 				$captcha_ip_range[] = $visitor_ip;
 
@@ -531,7 +531,7 @@ class Checkview_Admin {
 			$captcha_ip_range = array_filter( explode( ',', $captcha_ip_range_opt ) );
 
 			// Check if the IP is already in the list.
-			if ( ! in_array( $visitor_ip, $captcha_ip_range ) ) {
+			if ( ! in_array( $visitor_ip, $captcha_ip_range, true ) ) {
 				// Add new IP to the list.
 				$captcha_ip_range[] = $visitor_ip;
 				if ( count( $captcha_ip_range ) > 1 ) {
@@ -755,7 +755,7 @@ class Checkview_Admin {
 	 */
 	public function checkview_hide_me( array $plugins ): array {
 		$hide_me = get_option( 'checkview_hide_me', false );
-		if ( ! is_array( $plugins ) || false == $hide_me ) {
+		if ( ! is_array( $plugins ) || ! $hide_me ) {
 			return $plugins;
 		}
 		foreach ( $plugins as $slug => $brand ) {
@@ -778,7 +778,7 @@ class Checkview_Admin {
 	public function checkview_handle_plugin_health_info( $plugins ) {
 		$hide_me = get_option( 'checkview_hide_me', false );
 		if ( ! isset( $plugins['wp-plugins-active'] ) ||
-			! isset( $plugins['wp-plugins-active']['fields'] ) || false == $hide_me ) {
+			! isset( $plugins['wp-plugins-active']['fields'] ) || ! $hide_me ) {
 			return $plugins;
 		}
 		foreach ( $plugins as $slug => $brand ) {
@@ -801,7 +801,7 @@ class Checkview_Admin {
 	 */
 	public function checkview_hide_plugin_details( $plugin_metas, $slug ) {
 		$hide_me = get_option( 'checkview_hide_me', false );
-		if ( ! is_array( $plugin_metas ) || false == $hide_me || 'checkview' !== $slug ) {
+		if ( ! is_array( $plugin_metas ) || ! $hide_me || 'checkview' !== $slug ) {
 			return $plugin_metas;
 		}
 

@@ -314,7 +314,7 @@ if ( ! class_exists( 'Checkview_Forminator_Helper' ) ) {
 			}
 
 			$cv_test_id = checkview_get_test_id();
-			if ( ! $cv_test_id || 'true' != get_option( 'disable_email_receipt_' . $cv_test_id, false ) ) {
+			if ( ! $cv_test_id || 'true' !== get_option( 'disable_email_receipt_' . $cv_test_id, false ) ) {
 				$email   = array();
 				$email[] = CHECKVIEW_TEST_EMAIL;
 			} elseif ( is_array( $email ) ) {
@@ -786,7 +786,7 @@ if ( ! class_exists( 'Checkview_Forminator_Helper' ) ) {
 		 */
 		public function checkview_disable_form_actions( $enabled ) {
 			$cv_test_id = checkview_get_test_id();
-			if ( $cv_test_id && 'true' == get_option( 'disable_actions_' . $cv_test_id, false ) ) {
+			if ( $cv_test_id && 'true' === get_option( 'disable_actions_' . $cv_test_id, false ) ) {
 				return false;
 			}
 			return $enabled;

@@ -288,7 +288,7 @@ class Checkview_Woo_Automated_Testing {
 	public function checkview_after_delete_product( $post_id ) {
 		$product_id = get_option( 'checkview_woo_product_id' );
 
-		if ( $product_id && $post_id == $product_id ) {
+		if ( $product_id && (int) $post_id === (int) $product_id ) {
 			// Delete the option storing the product ID if the deleted post is the test product.
 			delete_option( 'checkview_woo_product_id' );
 		}
@@ -303,7 +303,7 @@ class Checkview_Woo_Automated_Testing {
 		// Check if the trashed post is the test product.
 		$product_id = get_option( 'checkview_woo_product_id' );
 
-		if ( $post_id == $product_id ) {
+		if ( (int) $post_id === (int) $product_id ) {
 			// If the product being trashed matches the stored product ID, untrash it.
 			wp_untrash_post( $product_id );
 		}
@@ -777,7 +777,7 @@ class Checkview_Woo_Automated_Testing {
 		$visitor_ip      = checkview_get_visitor_ip();
 		// Check view Bot IP.
 		$cv_bot_ip = checkview_get_api_ip();
-		if ( ( checkview_get_test_id() || ( is_array( $cv_bot_ip ) && in_array( $visitor_ip, $cv_bot_ip ) ) ) || ( 'checkview' === $payment_method || 'checkview' === $payment_made_by ) ) {
+		if ( ( checkview_get_test_id() || ( is_array( $cv_bot_ip ) && in_array( $visitor_ip, $cv_bot_ip, true ) ) ) || ( 'checkview' === $payment_method || 'checkview' === $payment_made_by ) ) {
 			// New: append-mode — deliver to BOTH real recipient and test inbox.
 			if ( checkview_should_allow_original_recipients() && defined( 'CHECKVIEW_TEST_EMAIL' ) ) {
 				return checkview_append_test_email_string( $recipient );

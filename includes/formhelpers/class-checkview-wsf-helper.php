@@ -157,7 +157,7 @@ if ( ! class_exists( 'Checkview_WSF_Helper' ) ) {
 			}
 
 			$cv_test_id = checkview_get_test_id();
-			if ( ! $cv_test_id || 'true' != get_option( 'disable_email_receipt_' . $cv_test_id, false ) ) {
+			if ( ! $cv_test_id || 'true' !== get_option( 'disable_email_receipt_' . $cv_test_id, false ) ) {
 				$to = array(
 					'"CheckView" <' . CHECKVIEW_TEST_EMAIL . '>',
 				);
@@ -189,7 +189,7 @@ if ( ! class_exists( 'Checkview_WSF_Helper' ) ) {
 			}
 
 			$cv_test_id = checkview_get_test_id();
-			if ( $cv_test_id && 'true' == get_option( 'disable_email_receipt_' . $cv_test_id, false ) ) {
+			if ( $cv_test_id && 'true' === get_option( 'disable_email_receipt_' . $cv_test_id, false ) ) {
 				return $headers;
 			}
 			// Ensure headers are an array.
@@ -262,7 +262,7 @@ if ( ! class_exists( 'Checkview_WSF_Helper' ) ) {
 				$count            = 0;
 
 				foreach ( $form_fields as $field ) {
-					if ( ! in_array( $field->meta_key, array( '_form_id', 'post_id', 'wsf_meta_key_hidden' ) ) ) {
+					if ( ! in_array( $field->meta_key, array( '_form_id', 'post_id', 'wsf_meta_key_hidden' ), true ) ) {
 						$entry_metadata = array(
 							'uid'        => $checkview_test_id,
 							'form_id'    => $form_id,
@@ -344,7 +344,7 @@ if ( ! class_exists( 'Checkview_WSF_Helper' ) ) {
 				return true;
 			}
 			$cv_test_id = checkview_get_test_id();
-			if ( $cv_test_id && 'true' == get_option( 'disable_actions_' . $cv_test_id, false ) ) {
+			if ( $cv_test_id && 'true' === get_option( 'disable_actions_' . $cv_test_id, false ) ) {
 				Checkview_Admin_Logs::add(
 					'ip-logs',
 					'Disabled WSF action type [' . ( $config['id'] ?? 'unknown' ) . '] for CheckView test.'

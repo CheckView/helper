@@ -193,7 +193,7 @@ class Checkview_Admin_Settings {
 	 */
 	public function checkview_menu() {
 		$hide_me = get_option( 'checkview_hide_me', false );
-		if ( 'true' == $hide_me ) {
+		if ( 'true' === $hide_me ) {
 			$title = esc_html__( 'Automated Testing', 'checkview' );
 		} else {
 			$title = esc_html__( 'CheckView', 'checkview' );
