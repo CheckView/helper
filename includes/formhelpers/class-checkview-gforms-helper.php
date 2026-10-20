@@ -741,8 +741,10 @@ if ( ! class_exists( 'Checkview_Gforms_Helper' ) ) {
 					'uid'        => $uid,
 					'form_id'    => $row->form_id,
 					'entry_id'   => $row->entry_id,
+					// phpcs:disable WordPress.DB.SlowDBQuery -- cv_entry_meta columns for $wpdb->insert(), not WP_Query args.
 					'meta_key'   => checkview_truncate_meta_key( $row->meta_key ),
 					'meta_value' => $row->meta_value,
+					// phpcs:enable WordPress.DB.SlowDBQuery
 				);
 
 				$result = $wpdb->insert( $entry_meta_table, $data );

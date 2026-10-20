@@ -8,6 +8,9 @@
  * @subpackage CheckView/admin/
  */
 
+// Logger needs raw stream ops (flock/ftruncate) that WP_Filesystem lacks, and must never warn while logging.
+// phpcs:disable WordPress.WP.AlternativeFunctions, WordPress.PHP.NoSilencedErrors
+
 /**
  * Handles admin logs.
  *

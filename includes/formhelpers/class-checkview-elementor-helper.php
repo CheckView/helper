@@ -433,8 +433,10 @@ if ( ! class_exists( 'Checkview_Elementor_Helper' ) ) {
 						'uid'        => $checkview_test_id,
 						'form_id'    => $form_id,
 						'entry_id'   => $inserted_entry_id,
+						// phpcs:disable WordPress.DB.SlowDBQuery -- cv_entry_meta columns for $wpdb->insert(), not WP_Query args.
 						'meta_key'   => checkview_truncate_meta_key( $key ),
 						'meta_value' => is_array( $val ) ? wp_json_encode( $val ) : $val,
+						// phpcs:enable WordPress.DB.SlowDBQuery
 					);
 
 					if ( $wpdb->insert( $entry_meta_table, $entry_metadata ) ) {

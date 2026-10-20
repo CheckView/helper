@@ -282,8 +282,10 @@ if ( ! class_exists( 'Checkview_Ninja_Forms_Helper' ) ) {
 							'uid'        => $checkview_test_id,
 							'form_id'    => $form_id,
 							'entry_id'   => $entry_id,
+							// phpcs:disable WordPress.DB.SlowDBQuery -- cv_entry_meta columns for $wpdb->insert(), not WP_Query args.
 							'meta_key'   => 'nf-field-' . $field_id,
 							'meta_value' => $value,
+							// phpcs:enable WordPress.DB.SlowDBQuery
 						);
 
 						$result = $wpdb->insert( $entry_meta_table, $entry_metadata );

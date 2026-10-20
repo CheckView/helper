@@ -365,8 +365,10 @@ if ( ! class_exists( 'Checkview_Formidable_Helper' ) ) {
 									'uid'        => $checkview_test_id,
 									'form_id'    => $form_id,
 									'entry_id'   => $entry_id,
+									// phpcs:disable WordPress.DB.SlowDBQuery -- cv_entry_meta columns for $wpdb->insert(), not WP_Query args.
 									'meta_key'   => $sub_fields[0]['field_id'],
 									'meta_value' => $first,
+									// phpcs:enable WordPress.DB.SlowDBQuery
 								);
 
 								$result = $wpdb->insert( $entry_meta_table, $entry_metadata );
@@ -380,8 +382,10 @@ if ( ! class_exists( 'Checkview_Formidable_Helper' ) ) {
 									'uid'        => $checkview_test_id,
 									'form_id'    => $form_id,
 									'entry_id'   => $entry_id,
+									// phpcs:disable WordPress.DB.SlowDBQuery -- cv_entry_meta columns for $wpdb->insert(), not WP_Query args.
 									'meta_key'   => $sub_fields[1]['field_id'],
 									'meta_value' => $middle,
+									// phpcs:enable WordPress.DB.SlowDBQuery
 								);
 
 								$result = $wpdb->insert( $entry_meta_table, $entry_metadata );
@@ -395,8 +399,10 @@ if ( ! class_exists( 'Checkview_Formidable_Helper' ) ) {
 									'uid'        => $checkview_test_id,
 									'form_id'    => $form_id,
 									'entry_id'   => $entry_id,
+									// phpcs:disable WordPress.DB.SlowDBQuery -- cv_entry_meta columns for $wpdb->insert(), not WP_Query args.
 									'meta_key'   => $sub_fields[2]['field_id'],
 									'meta_value' => $last,
+									// phpcs:enable WordPress.DB.SlowDBQuery
 								);
 
 								$result = $wpdb->insert( $entry_meta_table, $entry_metadata );
@@ -417,8 +423,10 @@ if ( ! class_exists( 'Checkview_Formidable_Helper' ) ) {
 									'uid'        => $checkview_test_id,
 									'form_id'    => $form_id,
 									'entry_id'   => $entry_id,
+									// phpcs:disable WordPress.DB.SlowDBQuery -- cv_entry_meta columns for $wpdb->insert(), not WP_Query args.
 									'meta_key'   => $sub_fields[0]['field_id'],
 									'meta_value' => $first,
+									// phpcs:enable WordPress.DB.SlowDBQuery
 								);
 
 								$result = $wpdb->insert( $entry_meta_table, $entry_metadata );
@@ -432,8 +440,10 @@ if ( ! class_exists( 'Checkview_Formidable_Helper' ) ) {
 									'uid'        => $checkview_test_id,
 									'form_id'    => $form_id,
 									'entry_id'   => $entry_id,
+									// phpcs:disable WordPress.DB.SlowDBQuery -- cv_entry_meta columns for $wpdb->insert(), not WP_Query args.
 									'meta_key'   => $sub_fields[1]['field_id'],
 									'meta_value' => $last,
+									// phpcs:enable WordPress.DB.SlowDBQuery
 								);
 
 								$result = $wpdb->insert( $entry_meta_table, $entry_metadata );
@@ -454,8 +464,10 @@ if ( ! class_exists( 'Checkview_Formidable_Helper' ) ) {
 									'uid'        => $checkview_test_id,
 									'form_id'    => $form_id,
 									'entry_id'   => $entry_id,
+									// phpcs:disable WordPress.DB.SlowDBQuery -- cv_entry_meta columns for $wpdb->insert(), not WP_Query args.
 									'meta_key'   => $sub_fields[1]['field_id'],
 									'meta_value' => $first,
+									// phpcs:enable WordPress.DB.SlowDBQuery
 								);
 
 								$result = $wpdb->insert( $entry_meta_table, $entry_metadata );
@@ -469,8 +481,10 @@ if ( ! class_exists( 'Checkview_Formidable_Helper' ) ) {
 									'uid'        => $checkview_test_id,
 									'form_id'    => $form_id,
 									'entry_id'   => $entry_id,
+									// phpcs:disable WordPress.DB.SlowDBQuery -- cv_entry_meta columns for $wpdb->insert(), not WP_Query args.
 									'meta_key'   => $sub_fields[0]['field_id'],
 									'meta_value' => $last,
+									// phpcs:enable WordPress.DB.SlowDBQuery
 								);
 
 								$result = $wpdb->insert( $entry_meta_table, $entry_metadata );
@@ -490,8 +504,10 @@ if ( ! class_exists( 'Checkview_Formidable_Helper' ) ) {
 							'uid'        => $checkview_test_id,
 							'form_id'    => $form_id,
 							'entry_id'   => $entry_id,
+							// phpcs:disable WordPress.DB.SlowDBQuery -- cv_entry_meta columns for $wpdb->insert(), not WP_Query args.
 							'meta_key'   => $fields[ $field->field_id ]['field_id'],
 							'meta_value' => $field_value,
+							// phpcs:enable WordPress.DB.SlowDBQuery
 						);
 
 						$result = $wpdb->insert( $entry_meta_table, $entry_metadata );
