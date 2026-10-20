@@ -722,7 +722,7 @@ class CheckView_Api {
 				array(
 					'taxonomy' => 'product_type',
 					'field'    => 'slug',
-					'terms'    => $checkview_keyword,
+					'terms'    => $checkview_product_type,
 				),
 			);
 		}
