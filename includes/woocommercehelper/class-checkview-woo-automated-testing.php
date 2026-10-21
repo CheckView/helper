@@ -180,6 +180,46 @@ class Checkview_Woo_Automated_Testing {
 				'checkview_mailchimp_should_push_order'
 			);
 
+			// MailerLite for WooCommerce kill-switch: strips the plugin's
+			// cart/checkout/order hook callbacks for the current test request.
+			// Registered always-on (NOT inside checkview_test_mode, which skips
+			// is_admin()) because the plugin pushes the checkout email to
+			// MailerLite from an admin-ajax.php request
+			// (`woo_mailerlite_set_cart_email`). The callback gates itself on
+			// the test ID + `disable_*_<uuid>` options. `init @ 99` runs after
+			// `checkview_init_current_test` (`init @ 10`) and after the plugin
+			// registers its hooks (`plugins_loaded @ 12`).
+			$this->loader->add_action(
+				'init',
+				$this,
+				'checkview_mailerlite_killswitch',
+				99,
+				0
+			);
+
+			// MailerLite order-sync backstop for requests the kill-switch never
+			// sees (gateway callbacks, cron, admin edits after the test ends).
+			// Stamps the plugin's own `order_sent` short-circuit transient on
+			// test orders. Runs after `checkview_stamp_order_meta`
+			// (STAMP_PRIORITY) on order creation/save, and before the plugin's
+			// `handleOrderStatusChanged` (priority 10) on its trigger hooks.
+			$checkview_mailerlite_order_hooks = array(
+				'woocommerce_new_order'               => self::STAMP_PRIORITY + 1,
+				'woocommerce_after_order_object_save' => self::STAMP_PRIORITY + 1,
+				'woocommerce_order_status_changed'    => 1,
+				'woocommerce_saved_order_items'       => 1,
+				'woocommerce_order_status_completed'  => 1,
+			);
+			foreach ( $checkview_mailerlite_order_hooks as $hook_name => $priority ) {
+				$this->loader->add_action(
+					$hook_name,
+					$this,
+					'checkview_mailerlite_block_order_sync',
+					$priority,
+					1
+				);
+			}
+
 			// Hide CheckView test orders from the WooCommerce REST API so
 			// pull-based integrations (Shippo et al.) that poll
 			// `GET /wc/v3/orders` with store API keys never ingest them. The
@@ -1214,6 +1254,192 @@ class Checkview_Woo_Automated_Testing {
 		}
 
 		return $order_id;
+	}
+
+	/**
+	 * MailerLite for WooCommerce kill-switch — strips the plugin's hook
+	 * callbacks for the current CheckView test request.
+	 *
+	 * MailerLite for WooCommerce (`woo-mailerlite`, verified against 3.1.26)
+	 * exposes no per-order or per-request suppression filter. It pushes test
+	 * data to MailerLite from:
+	 *   - `WooMailerLiteService::setCartEmail` (admin-ajax
+	 *     `woo_mailerlite_set_cart_email`, fired as soon as the checkout email
+	 *     is typed) and `handleCheckoutPage`, both calling `sendCart()`;
+	 *   - `WooMailerLiteService::handleCartUpdated` (cart table writes that
+	 *     feed `sendCart()`);
+	 *   - `WooMailerLiteOrderController::handleOrderStatusChanged`
+	 *     (`syncOrder()`, creates the customer/subscriber);
+	 *   - `WooMailerLitePluginController` / `WooMailerLitePublic` (checkout
+	 *     checkbox, public JS that calls the AJAX endpoint, universal.js
+	 *     tracking).
+	 * All are instance callbacks registered via the plugin's loader on
+	 * `plugins_loaded @ 12`, so an instance sweep at `init @ 99` removes them
+	 * before any cart, checkout, AJAX or order event fires.
+	 *
+	 * Option gate mirrors `checkview_mailchimp_killswitch`: only engages when
+	 * the SaaS sent `disable_actions=true` or `disable_webhooks=true` for this
+	 * test. Honors `cv_suppression_kill_switch`.
+	 *
+	 * Test ID source: `CV_TEST_ID` when defined. On admin-ajax requests only,
+	 * falls back to `get_checkview_test_id()` (referer/cookie), because the
+	 * checkout AJAX call may not carry the signed-request header that
+	 * `CheckView::is_bot()` requires. A forged cookie only works while a real
+	 * test's `disable_*_<uuid>` option is active, and only suppresses
+	 * MailerLite for that visitor's own request.
+	 *
+	 * @since 2.5.2
+	 *
+	 * @return void
+	 */
+	public function checkview_mailerlite_killswitch() {
+		if ( ! class_exists( 'WooMailerLite' ) ) {
+			return;
+		}
+
+		$test_id = $this->checkview_mailerlite_suppressed_test_id();
+		if ( ! $test_id ) {
+			return;
+		}
+
+		$removed = $this->checkview_remove_hooks_by_instance(
+			array(
+				'WooMailerLiteService',
+				'WooMailerLiteOrderController',
+				'WooMailerLitePluginController',
+				'WooMailerLitePublic',
+			)
+		);
+
+		Checkview_Admin_Logs::add(
+			'ip-logs',
+			'MailerLite kill-switch: removed ' . $removed . ' woo-mailerlite hook callback(s) for test [' . $test_id . '].'
+		);
+	}
+
+	/**
+	 * Returns the active CheckView test ID when MailerLite should be
+	 * suppressed for the current request, false otherwise.
+	 *
+	 * @since 2.5.2
+	 *
+	 * @return string|false
+	 */
+	private function checkview_mailerlite_suppressed_test_id() {
+		if ( get_option( 'cv_suppression_kill_switch' ) === 'true' ) {
+			return false;
+		}
+
+		$test_id = false;
+		if ( defined( 'CV_TEST_ID' ) && CV_TEST_ID ) {
+			$test_id = CV_TEST_ID;
+		} elseif ( wp_doing_ajax() && function_exists( 'get_checkview_test_id' ) ) {
+			$test_id = get_checkview_test_id();
+		}
+
+		if ( ! $test_id ) {
+			return false;
+		}
+
+		$suppress = ( get_option( 'disable_actions_' . $test_id ) === 'true' )
+				|| ( get_option( 'disable_webhooks_' . $test_id ) === 'true' );
+
+		return $suppress ? $test_id : false;
+	}
+
+	/**
+	 * Removes every registered hook callback whose object is an instance of
+	 * one of the given classes. Collect-then-remove so `$wp_filter` is never
+	 * mutated mid-iteration. Absent classes are skipped.
+	 *
+	 * @since 2.5.2
+	 *
+	 * @param string[] $class_names Class names to match.
+	 * @return int Number of callbacks removed.
+	 */
+	private function checkview_remove_hooks_by_instance( array $class_names ) {
+		$class_names = array_values( array_filter( $class_names, 'class_exists' ) );
+		if ( empty( $class_names ) ) {
+			return 0;
+		}
+
+		global $wp_filter;
+		$targets = array();
+
+		foreach ( $wp_filter as $hook_name => $hook ) {
+			if ( ! ( $hook instanceof WP_Hook ) ) {
+				continue;
+			}
+			foreach ( $hook->callbacks as $priority => $callbacks ) {
+				foreach ( $callbacks as $cb ) {
+					$fn = isset( $cb['function'] ) ? $cb['function'] : null;
+					if ( ! is_array( $fn ) || ! isset( $fn[0] ) || ! is_object( $fn[0] ) ) {
+						continue;
+					}
+					foreach ( $class_names as $class_name ) {
+						if ( $fn[0] instanceof $class_name ) {
+							$targets[] = array( $hook_name, $fn, $priority );
+							break;
+						}
+					}
+				}
+			}
+		}
+
+		foreach ( $targets as $target ) {
+			remove_action( $target[0], $target[1], $target[2] );
+		}
+
+		return count( $targets );
+	}
+
+	/**
+	 * Blocks MailerLite for WooCommerce from syncing CheckView test orders.
+	 *
+	 * `WooMailerLiteOrderController::handleOrderStatusChanged` returns early
+	 * when the transient `woo_mailerlite_order_sent:<order_id>` is set (the
+	 * plugin's own dedupe, written via `WooMailerLiteCache`). Setting it for
+	 * test orders covers status changes outside the test request (gateway
+	 * callbacks, cron, admin edits), which the per-request kill-switch never
+	 * sees. Stamped while the test is still active (order creation/save), so
+	 * the block outlives `complete_checkview_test()` deleting the
+	 * `disable_*_<uuid>` options.
+	 *
+	 * Relies on an internal plugin key. If MailerLite renames it, this fails
+	 * open (orders sync, no error).
+	 *
+	 * @since 2.5.2
+	 *
+	 * @param int|WC_Order $order Order ID or order object, depending on hook.
+	 * @return void
+	 */
+	public function checkview_mailerlite_block_order_sync( $order ) {
+		if ( ! class_exists( 'WooMailerLite' ) || ! function_exists( 'cv_is_suppressible_test_order' ) ) {
+			return;
+		}
+		// Cleanup cron deletes test orders; deletion fires save hooks.
+		if ( doing_action( 'checkview_delete_orders_action' ) ) {
+			return;
+		}
+
+		// Cheap meta check first: `woocommerce_after_order_object_save` fires
+		// on every save of every order, real customers included.
+		if ( ! cv_is_suppressible_test_order( $order ) ) {
+			return;
+		}
+
+		$order_id  = is_object( $order ) ? (int) $order->get_id() : (int) $order;
+		$transient = 'woo_mailerlite_order_sent:' . $order_id;
+		if ( get_transient( $transient ) ) {
+			return;
+		}
+
+		set_transient( $transient, true, DAY_IN_SECONDS );
+
+		Checkview_Admin_Logs::add(
+			'ip-logs',
+			'MailerLite kill-switch: blocked order sync for test order [' . $order_id . '].'
+		);
 	}
 
 	/**
