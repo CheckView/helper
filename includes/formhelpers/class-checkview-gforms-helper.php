@@ -261,6 +261,35 @@ if ( ! class_exists( 'Checkview_Gforms_Helper' ) ) {
 				'hcap_activate',
 				'__return_false'
 			);
+
+			// WP Armour — Honeypot Anti Spam.
+			//
+			// Its GF integration hooks `gform_validation` at priority 10 and, on a
+			// spam verdict, sets is_valid = false and attaches the failure to
+			// `$form['fields'][0]` with the configurable `wpa_error_message`
+			// (honeypot/includes/integration/wpa_gravityforms.php:6-17).
+			//
+			// checkview_bypass_captcha_validation() below cannot clear that. Field
+			// [0] is whatever the form's first field happens to be, so the type
+			// allowlist does not match, and the default message —
+			// " Spamming or your Javascript is disabled !!" — contains none of the
+			// markers in `checkview_anti_bot_validation_markers`. Adding a marker
+			// would not be reliable either: the message is a site option the owner
+			// can rewrite to anything.
+			//
+			// Its check also FAILS CLOSED — wpa_check_is_spam()
+			// (honeypot/includes/wpa_functions.php:136-153) treats a submission as
+			// spam UNLESS it carries WP Armour's JS-injected fields — so the
+			// failure mode is a hard block, not a soft one.
+			//
+			// Registered on `init` at PHP_INT_MAX because WP Armour includes its
+			// integrations from an `init` callback at the default priority
+			// (wp-armour.php:17-24), the same priority this helper is loaded at.
+			add_action(
+				'init',
+				array( $this, 'checkview_unhook_wp_armour' ),
+				PHP_INT_MAX
+			);
 			// Bypass Akismet.
 			add_filter(
 				'akismet_get_api_key',
@@ -278,6 +307,33 @@ if ( ! class_exists( 'Checkview_Gforms_Helper' ) ) {
 				PHP_INT_MAX
 			);
 		}
+		/**
+		 * Removes WP Armour's Gravity Forms validation callback for this request.
+		 *
+		 * Explicit unhook rather than a message marker, because the failure it
+		 * raises is indistinguishable from a genuine one: it lands on an arbitrary
+		 * field and carries an operator-configurable message. Mirrors
+		 * unhook_gf_recaptcha_addon().
+		 *
+		 * Degrades to a logged no-op — nothing removed and no such function means
+		 * the plugin is absent; the function present but not removable means it
+		 * changed priority or was renamed, which is worth surfacing.
+		 *
+		 * @since 2.3.0
+		 *
+		 * @return void
+		 */
+		public function checkview_unhook_wp_armour() {
+			if ( remove_action( 'gform_validation', 'wpa_gravityforms_extra_validation', 10 ) ) {
+				Checkview_Admin_Logs::add( 'ip-logs', 'Unhooked WP Armour from gform_validation for this CheckView test.' );
+				return;
+			}
+
+			if ( function_exists( 'wpa_gravityforms_extra_validation' ) ) {
+				Checkview_Admin_Logs::add( 'ip-logs', 'WP Armour detected but its gform_validation callback was not removable (priority changed or renamed?) — GF submissions may still be rejected as spam.' );
+			}
+		}
+
 		/**
 		 * Unsets Captchas from the form.
 		 *
