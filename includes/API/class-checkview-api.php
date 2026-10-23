@@ -1259,7 +1259,7 @@ class CheckView_Api {
 					// `[gravityform` the singular needs a space and the plural an
 					// `s` — so each spelling needs its own set.
 					//
-					// Each spelling gets three bounded ID forms. The unquoted one
+					// Each spelling gets four bounded ID forms. The unquoted one
 					// was unterminated, so form 12 also matched
 					// [gravityform id=123] and silently inherited its pages: `]`
 					// ends the shortcode, a space means further attributes follow
@@ -1738,12 +1738,8 @@ class CheckView_Api {
 						)",
 							array_merge(
 								$cf7_patterns,
-								array(
-									'publish',
-									'kadence_wootemplate',
-									'kadence_element',
-									'revision',
-								)
+								array( 'publish' ),
+								$post_types
 							)
 						)
 					);
@@ -1902,9 +1898,7 @@ class CheckView_Api {
 							'%[forminator_form id=' . $row->ID . ']%',
 							'%[forminator_form id=' . $row->ID . ' %',
 							'publish',
-							'kadence_wootemplate',
-							'kadence_element',
-							'revision'
+							...$post_types
 						)
 					);
 					if ( $form_pages ) {
