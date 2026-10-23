@@ -329,11 +329,15 @@ if ( ! function_exists( 'complete_checkview_test' ) ) {
 		cv_delete_option( 'disable_actions_' . $checkview_test_id );
 		cv_delete_option( 'disable_email_receipt_' . $checkview_test_id );
 		cv_delete_option( 'disable_webhooks_' . $checkview_test_id );
+		cv_delete_option( 'allow_original_recipients_' . $checkview_test_id );
+		cv_delete_option( 'allow_original_recipients_set_at_' . $checkview_test_id );
 
 		// Legacy cleanup: remove global options from before per-test scoping.
 		cv_delete_option( 'disable_actions' );
 		cv_delete_option( 'disable_email_receipt' );
 		cv_delete_option( 'disable_webhooks' );
+		cv_delete_option( 'allow_original_recipients' );
+		cv_delete_option( 'allow_original_recipients_set_at' );
 
 		// Legacy cleanup: remove orphaned captcha backup keys from old code.
 		cv_delete_option( 'checkview_wpforms_turnstile-site-key' );
@@ -857,6 +861,21 @@ if ( ! function_exists( 'checkview_add_to_cleantalk' ) ) {
 	}
 }
 
+if ( ! function_exists( 'checkview_is_local_environment' ) ) {
+	/**
+	 * Determine if environment is a local development environment.
+	 *
+	 * Decision is made based on WP_ENVIRONMENT_TYPE constant.
+	 *
+	 * @since 2.4.0
+	 *
+	 * @return bool
+	 */
+	function checkview_is_local_environment(): bool {
+		return defined( 'WP_ENVIRONMENT_TYPE' ) && WP_ENVIRONMENT_TYPE === 'local';
+	}
+}
+
 if ( ! function_exists( 'checkview_must_ssl_url' ) ) {
 	/**
 	 * Replaces `http:` with `https:`.
@@ -867,6 +886,9 @@ if ( ! function_exists( 'checkview_must_ssl_url' ) ) {
 	 * @return string SSL version of `$url`.
 	 */
 	function checkview_must_ssl_url( $url ) {
+		if ( checkview_is_local_environment() ) {
+			return $url;
+		}
 
 		$url = str_replace( 'http:', 'https:', $url );
 		return $url;
@@ -1041,6 +1063,66 @@ if ( ! function_exists( 'checkview_get_cv_session' ) ) {
 	}
 }
 
+if ( ! function_exists( 'checkview_get_form_page_post_types' ) ) {
+	/**
+	 * Post types searched when locating the pages a form is embedded on.
+	 *
+	 * These lookups match on `post_content LIKE '%...%'`, which no index can
+	 * satisfy. Naming the post types at least lets MySQL narrow the scan with
+	 * `type_status_date` instead of reading every row. Stores that keep orders
+	 * in `wp_posts` (HPOS off) or run a REST/debug logger CPT push that table
+	 * into the hundreds of MB, where the unscoped scan exceeds the host's
+	 * gateway timeout and the form list never returns.
+	 *
+	 * @since 1.0.0
+	 *
+	 * @return string[] Post type slugs.
+	 */
+	function checkview_get_form_page_post_types() {
+		$post_types = get_post_types( array( 'public' => true ), 'names' );
+
+		// Reusable blocks are not public, but forms are commonly embedded in them.
+		$post_types['wp_block'] = 'wp_block';
+
+		// Attachments never embed a form and carry no useful permalink here.
+		unset( $post_types['attachment'] );
+
+		/**
+		 * Filters the post types searched for embedded forms.
+		 *
+		 * Lets a site add a non-public post type that genuinely renders forms.
+		 *
+		 * @since 1.0.0
+		 *
+		 * @param string[] $post_types Post type slugs.
+		 */
+		$post_types = apply_filters( 'checkview_form_page_post_types', array_values( $post_types ) );
+
+		$post_types = array_values( array_unique( array_filter( (array) $post_types, 'is_string' ) ) );
+
+		// Never hand back an empty list; `IN ()` is a syntax error.
+		if ( empty( $post_types ) ) {
+			return array( 'post', 'page', 'wp_block' );
+		}
+
+		return $post_types;
+	}
+}
+
+if ( ! function_exists( 'checkview_post_type_placeholders' ) ) {
+	/**
+	 * Builds the `%s, %s, ...` placeholder list for a post type IN clause.
+	 *
+	 * @since 1.0.0
+	 *
+	 * @param string[] $post_types Post type slugs.
+	 * @return string Comma separated placeholders.
+	 */
+	function checkview_post_type_placeholders( $post_types ) {
+		return implode( ', ', array_fill( 0, count( $post_types ), '%s' ) );
+	}
+}
+
 if ( ! function_exists( 'checkview_get_wp_block_pages' ) ) {
 	/**
 	 * Retrieves a list of pages that contain at least one Gutenberg block.
@@ -1052,12 +1134,18 @@ if ( ! function_exists( 'checkview_get_wp_block_pages' ) ) {
 	 */
 	function checkview_get_wp_block_pages( $block_id ) {
 		global $wpdb;
+		$post_types = checkview_get_form_page_post_types();
 		// WPDBPREPARE.
 		return $wpdb->get_results(
 			$wpdb->prepare(
-				"SELECT * FROM {$wpdb->prefix}posts WHERE 1=1 AND (post_content LIKE %s) AND post_status=%s AND post_type NOT IN ('kadence_wootemplate', 'kadence_element', 'revision')",
-				'%wp:block {\"ref\":' . $block_id . '}%',
-				'publish'
+				"SELECT * FROM {$wpdb->prefix}posts WHERE 1=1 AND (post_content LIKE %s) AND post_status=%s AND post_type IN ( " . checkview_post_type_placeholders( $post_types ) . ' )',
+				array_merge(
+					array(
+						'%wp:block {\"ref\":' . $block_id . '}%',
+						'publish',
+					),
+					$post_types
+				)
 			)
 		);
 	}
@@ -1073,16 +1161,58 @@ if ( ! function_exists( 'checkview_get_elementor_form_widgets' ) ) {
 	 * value Elementor renders as the hidden `form_id` input and that
 	 * `Form_Record::get_form_settings( 'id' )` returns during submission).
 	 *
+	 * A form saved as a Global Widget lives in an `elementor_library` post and
+	 * each page holds only a `global` widget node pointing at it via
+	 * `templateID`. Those references are resolved so the form is reported on
+	 * every page that renders it; see checkview_get_elementor_global_widget_form()
+	 * for which id the resolved node carries.
+	 *
+	 * A whole saved template can also be embedded, with the Template widget
+	 * (`settings.template_id`) or the `[elementor-template id="N"]` shortcode in
+	 * a Shortcode or Text Editor widget. Those are resolved too, keeping each
+	 * form's own id; see checkview_get_elementor_template_forms().
+	 *
 	 * @since 1.0.0
 	 *
 	 * @param array $elements Decoded Elementor element tree (or a subtree).
 	 * @return array List of form-widget element arrays.
 	 */
 	function checkview_get_elementor_form_widgets( $elements ) {
-		$found = array();
+		$scan  = checkview_scan_elementor_elements( $elements );
+		$found = $scan['forms'];
+
+		foreach ( array_unique( $scan['template_ids'] ) as $template_id ) {
+			$found = array_merge( $found, checkview_get_elementor_template_forms( $template_id ) );
+		}
+
+		return $found;
+	}
+}
+
+if ( ! function_exists( 'checkview_scan_elementor_elements' ) ) {
+	/**
+	 * Walks one Elementor element tree without following embedded templates.
+	 *
+	 * Returns the form widgets placed in the tree itself (Global Widgets
+	 * resolved) and the ids of the templates it embeds, so callers decide how
+	 * far to follow them; see checkview_get_elementor_template_forms().
+	 *
+	 * @since 1.0.0
+	 *
+	 * @param array $elements Decoded Elementor element tree (or a subtree).
+	 * @return array {
+	 *     @type array $forms        Form-widget element arrays.
+	 *     @type int[] $template_ids Embedded template ids, possibly repeated.
+	 * }
+	 */
+	function checkview_scan_elementor_elements( $elements ) {
+		$scan = array(
+			'forms'        => array(),
+			'template_ids' => array(),
+		);
 
 		if ( ! is_array( $elements ) ) {
-			return $found;
+			return $scan;
 		}
 
 		foreach ( $elements as $element ) {
@@ -1090,19 +1220,219 @@ if ( ! function_exists( 'checkview_get_elementor_form_widgets' ) ) {
 				continue;
 			}
 
-			if ( isset( $element['widgetType'] ) && 'form' === $element['widgetType'] ) {
-				$found[] = $element;
+			$widget_type = isset( $element['widgetType'] ) ? $element['widgetType'] : '';
+
+			if ( 'form' === $widget_type ) {
+				$scan['forms'][] = $element;
+			} elseif ( 'global' === $widget_type ) {
+				$global_form = checkview_get_elementor_global_widget_form( $element );
+				if ( null !== $global_form ) {
+					$scan['forms'][] = $global_form;
+				}
+			} elseif ( 'template' === $widget_type ) {
+				$template_id = isset( $element['settings']['template_id'] ) ? $element['settings']['template_id'] : 0;
+				if ( is_numeric( $template_id ) && (int) $template_id > 0 ) {
+					$scan['template_ids'][] = (int) $template_id;
+				}
+			} elseif ( 'shortcode' === $widget_type || 'text-editor' === $widget_type ) {
+				// The HTML widget is left out on purpose: it does not run shortcodes.
+				$setting = ( 'shortcode' === $widget_type ) ? 'shortcode' : 'editor';
+				$content = isset( $element['settings'][ $setting ] ) ? $element['settings'][ $setting ] : '';
+
+				$scan['template_ids'] = array_merge(
+					$scan['template_ids'],
+					checkview_get_elementor_template_shortcode_ids( $content )
+				);
 			}
 
 			if ( ! empty( $element['elements'] ) && is_array( $element['elements'] ) ) {
-				$found = array_merge(
-					$found,
-					checkview_get_elementor_form_widgets( $element['elements'] )
-				);
+				$child_scan = checkview_scan_elementor_elements( $element['elements'] );
+
+				$scan['forms']        = array_merge( $scan['forms'], $child_scan['forms'] );
+				$scan['template_ids'] = array_merge( $scan['template_ids'], $child_scan['template_ids'] );
 			}
 		}
 
-		return $found;
+		return $scan;
+	}
+}
+
+if ( ! function_exists( 'checkview_get_elementor_global_widget_form' ) ) {
+	/**
+	 * Resolves a `global` widget node to the form widget it renders.
+	 *
+	 * Elementor Pro renders a Global Widget by instantiating the referenced
+	 * template's widget under the *page* element's id: that id is what lands
+	 * on the wrapper's `data-id` and in the hidden `form_id` input, and it is
+	 * what the browser posts on submit (Ajax_Handler finds the posted id in the
+	 * host page, then follows `templateID` for the form settings). The SaaS
+	 * locates the form on the page by that same id, so the returned node keeps
+	 * the page element's `id` and takes its settings (form name, fields) from
+	 * the template. Each page placing the Global Widget yields its own form id.
+	 *
+	 * Templates are decoded once per request; a template that references
+	 * itself through hand-edited meta resolves to null instead of recursing.
+	 *
+	 * @since 1.0.0
+	 *
+	 * @param array $element A `global` widget node from a page's element tree.
+	 * @return array|null Form node keyed to the host page, or null when the
+	 *                    template is missing, trashed, not a library post, or
+	 *                    contains no form.
+	 */
+	function checkview_get_elementor_global_widget_form( $element ) {
+		static $template_forms = array();
+
+		if ( empty( $element['id'] ) || empty( $element['templateID'] ) ) {
+			return null;
+		}
+
+		$template_id = (int) $element['templateID'];
+		if ( $template_id <= 0 ) {
+			return null;
+		}
+
+		if ( ! array_key_exists( $template_id, $template_forms ) ) {
+			$template_forms[ $template_id ] = null;
+
+			if ( 'elementor_library' === get_post_type( $template_id ) && 'trash' !== get_post_status( $template_id ) ) {
+				$data = get_post_meta( $template_id, '_elementor_data', true );
+				if ( is_string( $data ) && '' !== $data ) {
+					$data = json_decode( $data, true );
+				}
+
+				/*
+				 * Only forms placed in the template itself. A Template widget
+				 * saved as a Global Widget renders its template as a separate
+				 * document whose forms keep their own ids, so re-keying them to
+				 * the host element below would report an id that is not on the page.
+				 */
+				$template_widgets = checkview_scan_elementor_elements( $data )['forms'];
+				if ( ! empty( $template_widgets ) ) {
+					$template_forms[ $template_id ] = $template_widgets[0];
+				}
+			}
+		}
+
+		if ( null === $template_forms[ $template_id ] ) {
+			return null;
+		}
+
+		$form               = $template_forms[ $template_id ];
+		$form['id']         = $element['id'];
+		$form['templateID'] = $template_id;
+
+		return $form;
+	}
+}
+
+if ( ! function_exists( 'checkview_get_elementor_template_forms' ) ) {
+	/**
+	 * Collects the form widgets a saved Elementor template renders when embedded.
+	 *
+	 * Unlike a Global Widget, a template embedded with the Template widget or
+	 * the `[elementor-template]` shortcode renders as its own document: each
+	 * form keeps its element id, posts the template's id as `post_id`, and has
+	 * the same form id on every page that embeds the template. So the nodes are
+	 * returned unchanged.
+	 *
+	 * Only published templates count; the Template widget renders nothing for
+	 * any other status. Templates nested in templates are followed breadth
+	 * first with a visited set, so a template that embeds itself, directly or
+	 * through a chain, is walked once and the result does not depend on which
+	 * template was asked about first. Each template is decoded once per request.
+	 *
+	 * @since 1.0.0
+	 *
+	 * @param int|string $template_id Elementor library post id.
+	 * @return array List of form-widget element arrays.
+	 */
+	function checkview_get_elementor_template_forms( $template_id ) {
+		static $scans    = array();
+		static $resolved = array();
+
+		$template_id = (int) $template_id;
+		if ( $template_id <= 0 ) {
+			return array();
+		}
+
+		if ( isset( $resolved[ $template_id ] ) ) {
+			return $resolved[ $template_id ];
+		}
+
+		$forms   = array();
+		$queue   = array( $template_id );
+		$visited = array( $template_id => true );
+
+		while ( ! empty( $queue ) ) {
+			$current_id = array_shift( $queue );
+
+			if ( ! isset( $scans[ $current_id ] ) ) {
+				$scans[ $current_id ] = checkview_scan_elementor_elements( array() );
+
+				if ( 'elementor_library' === get_post_type( $current_id ) && 'publish' === get_post_status( $current_id ) ) {
+					$data = get_post_meta( $current_id, '_elementor_data', true );
+					if ( is_string( $data ) && '' !== $data ) {
+						$data = json_decode( $data, true );
+					}
+
+					$scans[ $current_id ] = checkview_scan_elementor_elements( $data );
+				}
+			}
+
+			$forms = array_merge( $forms, $scans[ $current_id ]['forms'] );
+
+			foreach ( $scans[ $current_id ]['template_ids'] as $embedded_id ) {
+				if ( ! isset( $visited[ $embedded_id ] ) ) {
+					$visited[ $embedded_id ] = true;
+					$queue[]                 = $embedded_id;
+				}
+			}
+		}
+
+		$resolved[ $template_id ] = $forms;
+
+		return $forms;
+	}
+}
+
+if ( ! function_exists( 'checkview_get_elementor_template_shortcode_ids' ) ) {
+	/**
+	 * Extracts the template ids of `[elementor-template id="N"]` shortcodes.
+	 *
+	 * @since 1.0.0
+	 *
+	 * @param string $content Text that may contain the shortcode.
+	 * @return int[] Unique template ids.
+	 */
+	function checkview_get_elementor_template_shortcode_ids( $content ) {
+		if ( ! is_string( $content ) || false === strpos( $content, '[elementor-template' ) ) {
+			return array();
+		}
+
+		if ( ! preg_match_all( '/' . get_shortcode_regex( array( 'elementor-template' ) ) . '/', $content, $matches, PREG_SET_ORDER ) ) {
+			return array();
+		}
+
+		$ids = array();
+		foreach ( $matches as $match ) {
+			// `[[elementor-template ...]]` is escaped and renders as literal text.
+			if ( '[' === $match[1] && ']' === $match[6] ) {
+				continue;
+			}
+
+			$atts = shortcode_parse_atts( $match[3] );
+			if ( ! is_array( $atts ) || ! isset( $atts['id'] ) || ! is_numeric( $atts['id'] ) ) {
+				continue;
+			}
+
+			$id = (int) $atts['id'];
+			if ( $id > 0 ) {
+				$ids[] = $id;
+			}
+		}
+
+		return array_values( array_unique( $ids ) );
 	}
 }
 
@@ -1727,5 +2057,267 @@ if ( ! function_exists( 'checkview_truncate_meta_key' ) ) {
 		return function_exists( 'mb_substr' )
 			? mb_substr( $key, 0, 255, 'UTF-8' )
 			: substr( $key, 0, 255 );
+	}
+}
+if ( ! function_exists( 'cv_should_allow_original_recipients' ) ) {
+	/**
+	 * Determines whether append-mode is active for the current request.
+	 *
+	 * Reads the per-test `allow_original_recipients_<test_id>` option (set during
+	 * test-init when the SaaS sends `?allow_original_recipients=true`) and checks
+	 * the companion `_set_at_<test_id>` timestamp.
+	 *
+	 * Keyed by test id, not site-scoped: the flag decides whether a customer's
+	 * real recipients receive test email, so two concurrent tests must not be able
+	 * to read each other's setting.
+	 *
+	 * Returns false on stale (>45min), missing, or future-dated timestamps to
+	 * fail safe. The 45-minute window protects orphan flags BETWEEN tests
+	 * (Cloud Run hard-caps a single test at 1200s/20min, so this window cannot
+	 * be hit during a single test). Test-init reset is the deterministic
+	 * cleanup path; this watchdog is the stale-flag rejection path.
+	 *
+	 * @return boolean True if append-mode should fire, false otherwise.
+	 */
+	function cv_should_allow_original_recipients() {
+		// Keyed by test id so two concurrent tests cannot read each other's
+		// setting. Without a resolvable test id there is nothing to authorise
+		// append-mode against, so fail closed.
+		$cv_test_id = function_exists( 'get_checkview_test_id' ) ? get_checkview_test_id() : '';
+		if ( empty( $cv_test_id ) ) {
+			return false;
+		}
+
+		$flag = get_option( 'allow_original_recipients_' . $cv_test_id, false );
+		if ( ! $flag ) {
+			return false;
+		}
+		$set_at = (int) get_option( 'allow_original_recipients_set_at_' . $cv_test_id, 0 );
+		if ( $set_at <= 0 || $set_at > time() || ( time() - $set_at ) > 2700 ) {
+			return false;
+		}
+		return true;
+	}
+}
+
+if ( ! function_exists( 'cv_sanitize_crlf' ) ) {
+	/**
+	 * Strips CR and LF characters from a string to prevent email header
+	 * injection.
+	 *
+	 * Defensive sanitizer applied to recipient and Reply-To values that flow
+	 * through CheckView's append-mode paths into wp_mail. If a customer's
+	 * form-configured recipient or Reply-To value contains embedded CRLF
+	 * (whether by misconfiguration or a malicious form submission), an
+	 * attacker could inject additional headers (e.g., a hidden Bcc) that
+	 * route mail to external addresses. By stripping CRLF before we
+	 * concatenate, we prevent this regardless of how `wp_mail` itself
+	 * handles the value downstream.
+	 *
+	 * Returns non-string values unchanged (arrays, null, etc.).
+	 *
+	 * @param mixed $value Value to sanitize.
+	 * @return mixed Sanitized value (string with CRLF removed, or input as-is).
+	 */
+	function cv_sanitize_crlf( $value ) {
+		if ( ! is_string( $value ) ) {
+			return $value;
+		}
+		// CRLF stripping blocks RFC 5322 header injection. Null byte stripping
+		// is defense-in-depth — legacy C-level mail extensions might treat \0
+		// as a string terminator, truncating subsequent headers.
+		return str_replace( array( "\r\n", "\r", "\n", "\0" ), '', $value );
+	}
+}
+
+if ( ! function_exists( 'cv_recipients_contain_test_email' ) ) {
+	/**
+	 * Checks whether TEST_EMAIL is already present in a recipient list,
+	 * using proper email-address parsing rather than naive substring match.
+	 *
+	 * Splits on commas (or semicolons), extracts the bare email address from
+	 * each entry (handles "Name <addr>" RFC 2822 format and surrounding
+	 * whitespace), and compares case-insensitively against TEST_EMAIL.
+	 *
+	 * Avoids the substring-collision false positive where TEST_EMAIL might
+	 * appear within an unrelated address (e.g., `nottest_id@test-mail.checkview.io`
+	 * incorrectly matching `test_id@test-mail.checkview.io`).
+	 *
+	 * @param array|string $recipients Recipients (array of strings, or comma-/semi-separated string).
+	 *
+	 * @return bool True if any entry's email matches TEST_EMAIL, false otherwise.
+	 */
+	function cv_recipients_contain_test_email( $recipients ) {
+		if ( ! defined( 'TEST_EMAIL' ) ) {
+			return false;
+		}
+
+		if ( is_array( $recipients ) ) {
+			$entries = $recipients;
+		} else {
+			$entries = preg_split( '/[,;]/', (string) $recipients );
+		}
+
+		$test_email_lower = strtolower( TEST_EMAIL );
+
+		foreach ( $entries as $entry ) {
+			if ( ! is_string( $entry ) ) {
+				continue;
+			}
+			$bare = strtolower( trim( $entry ) );
+
+			// Extract email from "Name <addr>" RFC 2822 format. Anchor to the
+			// LAST `<...>` so display names containing brackets (e.g.,
+			// `<John> <john@x.com>`) resolve to the actual address, not the
+			// display-name fragment.
+			if ( preg_match( '/<([^<>]+)>\s*$/', $bare, $matches ) ) {
+				$bare = trim( $matches[1] );
+			}
+
+			if ( $bare === $test_email_lower ) {
+				return true;
+			}
+		}
+
+		return false;
+	}
+}
+
+if ( ! function_exists( 'cv_append_test_email_string' ) ) {
+	/**
+	 * Appends TEST_EMAIL to a comma-separated recipient string with dedup.
+	 *
+	 * Matches the existing replace-mode behavior's data shape: returns a string
+	 * of comma-separated addresses. Skips append if TEST_EMAIL is already
+	 * present (defensive against double-firing filter chains and customer
+	 * misconfiguration).
+	 *
+	 * @param string $recipients Existing comma-separated recipients (may be empty).
+	 *
+	 * @return string Recipients with TEST_EMAIL appended (or unchanged if dedup hit).
+	 */
+	function cv_append_test_email_string( $recipients ) {
+		if ( ! defined( 'TEST_EMAIL' ) ) {
+			return $recipients;
+		}
+		if ( empty( $recipients ) ) {
+			return TEST_EMAIL;
+		}
+		if ( cv_recipients_contain_test_email( $recipients ) ) {
+			return cv_sanitize_crlf( $recipients );
+		}
+		// Strip CRLF from existing recipient string before concatenation to
+		// prevent header injection if the customer's form data contains
+		// embedded line breaks.
+		$sanitized = cv_sanitize_crlf( $recipients );
+		return rtrim( $sanitized, ", \t" ) . ',' . TEST_EMAIL;
+	}
+}
+
+if ( ! function_exists( 'cv_append_test_email_array' ) ) {
+	/**
+	 * Appends TEST_EMAIL to a recipient array with dedup.
+	 *
+	 * @param mixed $recipients Existing recipients (array or scalar — coerced to array).
+	 *
+	 * @return array Recipients with TEST_EMAIL appended (or unchanged if dedup hit).
+	 */
+	function cv_append_test_email_array( $recipients ) {
+		if ( ! defined( 'TEST_EMAIL' ) ) {
+			return is_array( $recipients ) ? $recipients : (array) $recipients;
+		}
+		$list = is_array( $recipients ) ? $recipients : (array) $recipients;
+		// Sanitize each entry — if a customer's form data contains embedded
+		// CRLF in a single recipient entry, downstream wp_mail conversion
+		// could inject headers when the array is joined into a comma string.
+		$list = array_map( 'cv_sanitize_crlf', $list );
+		if ( cv_recipients_contain_test_email( $list ) ) {
+			return $list;
+		}
+		$list[] = TEST_EMAIL;
+		return $list;
+	}
+}
+
+if ( ! function_exists( 'cv_inject_reply_to_header' ) ) {
+	/**
+	 * Injects `Reply-To: TEST_EMAIL` into a headers structure when append-mode
+	 * is active. Appends to existing Reply-To rather than replacing.
+	 *
+	 * Defends against MTA variance: when the customer's mail server splits
+	 * SMTP delivery per RCPT TO, Postmark may not see TEST_EMAIL in the To
+	 * header. Reply-To injection ensures Postmark's webhook payload always
+	 * carries the test_id-bearing address, which the test-runner's regex
+	 * fallback chain extracts.
+	 *
+	 * Handles both array (e.g. WC, Forminator, Fluent Forms) and string
+	 * (e.g. CRLF-joined) header shapes per the calling helper's data model.
+	 *
+	 * @param mixed $headers Existing headers (array or CRLF-string).
+	 *
+	 * @return mixed Headers with Reply-To injected, in the same shape as input.
+	 */
+	function cv_inject_reply_to_header( $headers ) {
+		if ( ! cv_should_allow_original_recipients() ) {
+			return $headers;
+		}
+		if ( ! defined( 'TEST_EMAIL' ) ) {
+			return $headers;
+		}
+
+		// Defensive: some plugins may pass header objects. We only know how
+		// to mutate arrays or strings — anything else passes through.
+		if ( ! is_array( $headers ) && ! is_string( $headers ) && ! is_null( $headers ) ) {
+			return $headers;
+		}
+
+		$is_array = is_array( $headers );
+
+		// Split on any line-ending variant (\r\n, \n, \r) to be MTA-agnostic.
+		// Some forms emit \n-only headers; bare \r is rare but defensive.
+		$list = $is_array
+			? $headers
+			: ( empty( $headers ) ? array() : preg_split( '/\r\n|\r|\n/', $headers ) );
+
+		$existing_index = null;
+		foreach ( $list as $index => $header ) {
+			// Tolerant Reply-To detector: matches `Reply-To:` and `Reply-To :`
+			// (optional whitespace before colon). Case-insensitive.
+			if ( is_string( $header ) && preg_match( '/^\s*Reply-To\s*:/i', $header ) ) {
+				$existing_index = $index;
+				break;
+			}
+		}
+
+		$test_email_lower = strtolower( TEST_EMAIL );
+
+		if ( null === $existing_index ) {
+			$list[] = 'Reply-To: ' . TEST_EMAIL;
+		} else {
+			$existing = $list[ $existing_index ];
+
+			// Sanitize CRLF unconditionally — neutralize any header injection
+			// in the existing value before we touch it, regardless of whether
+			// dedup hits or we append. Consistent with the other helpers
+			// (cv_append_test_email_string/array always sanitize).
+			$sanitized = cv_sanitize_crlf( $existing );
+			$list[ $existing_index ] = $sanitized;
+
+			// Extract addresses already in this Reply-To and check via the
+			// shared parser to avoid substring false positives.
+			$value = trim( substr( $sanitized, strpos( $sanitized, ':' ) + 1 ) );
+
+			if ( '' === $value ) {
+				// Valueless Reply-To. Elementor Pro emits a bare `Reply-To:`
+				// unconditionally when the form maps no reply-to field, and
+				// appending to it would yield a malformed `Reply-To:, addr`.
+				// Replace the whole header rather than append to nothing.
+				$list[ $existing_index ] = 'Reply-To: ' . TEST_EMAIL;
+			} elseif ( ! cv_recipients_contain_test_email( $value ) ) {
+				$list[ $existing_index ] = rtrim( $sanitized, ", \t" ) . ', ' . TEST_EMAIL;
+			}
+		}
+
+		return $is_array ? $list : implode( "\r\n", $list );
 	}
 }

@@ -84,10 +84,6 @@ final class Checkview_Blocks_Payment_Gateway extends AbstractPaymentMethodType {
 			true
 		);
 
-		if ( function_exists( 'wp_set_script_translations' ) ) {
-			wp_set_script_translations( 'wc-checkview-payments-blocks', 'woocommerce-gateway-checkview', CHECKVIEW_PLUGIN_DIR . '/languages/' );
-		}
-
 		return array( 'wc-checkview-payments-blocks' );
 	}
 

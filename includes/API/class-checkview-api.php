@@ -32,10 +32,10 @@ class CheckView_Api {
 	 * @since 1.0.0
 	 */
 	public function checkview_register_rest_route() {
-		if ( defined( 'REST_REQUEST' ) && REST_REQUEST ) {
-			// Suppress errors for REST API requests.
+		// Keep printed notices out of our JSON responses. Only our own routes;
+		// rest_api_init fires for every REST request on the site.
+		if ( Checkview_Admin::is_checkview_rest_request() ) {
 			ini_set( 'display_errors', '0' );
-			error_reporting( E_ALL & ~E_NOTICE & ~E_WARNING );
 		}
 		register_rest_route(
 			'checkview/v1',
@@ -1209,6 +1209,7 @@ class CheckView_Api {
 	public function checkview_get_available_forms_list() {
 		global $wpdb;
 		$forms_list = get_transient( 'checkview_forms_list_transient' );
+		$is_local = checkview_is_local_environment();
 		if ( null !== $this->jwt_error ) {
 			Checkview_Admin_Logs::add( 'api-logs', $this->jwt_error );
 			return new WP_Error(
@@ -1219,7 +1220,7 @@ class CheckView_Api {
 		// Temporarily suppress errors.
 		$previous_error_reporting = error_reporting( 0 );
 
-		if ( '' !== $forms_list && null !== $forms_list && false !== $forms_list ) {
+		if ( '' !== $forms_list && null !== $forms_list && false !== $forms_list && ! $is_local ) {
 			return new WP_REST_Response(
 				array(
 					'status'        => 200,
@@ -1232,6 +1233,10 @@ class CheckView_Api {
 		if ( ! is_admin() ) {
 			include_once ABSPATH . 'wp-admin/includes/plugin.php';
 		}
+
+		$post_types        = checkview_get_form_page_post_types();
+		$type_placeholders = checkview_post_type_placeholders( $post_types );
+
 		if ( is_plugin_active( 'gravityforms/gravityforms.php' ) ) {
 			$tablename = $wpdb->prefix . 'gf_form';
 			$results   = $wpdb->get_results( $wpdb->prepare( 'Select * from ' . $tablename . ' where is_active=%d and is_trash=%d order by ID ASC', 1, 0 ) );
@@ -1258,11 +1263,16 @@ class CheckView_Api {
 							OR post_content LIKE %s
 						) 
 						AND post_status = 'publish' 
-						AND post_type NOT IN ('kadence_wootemplate', 'kadence_element', 'revision')",
-							'%wp:gravityforms/form {"formId":"' . $row->id . '"%',
-							'%[gravityform id="' . $row->id . '"%',
-							'%[gravityform id=' . $row->id . '%',
-							'%[gravityform id=' . $row->id . '%'
+						AND post_type IN ( {$type_placeholders} )",
+							array_merge(
+								array(
+									'%wp:gravityforms/form {"formId":"' . $row->id . '"%',
+									'%[gravityform id="' . $row->id . '"%',
+									'%[gravityform id=' . $row->id . '%',
+									'%[gravityform id=' . $row->id . '%',
+								),
+								$post_types
+							)
 						)
 					);
 					if ( $form_pages ) {
@@ -1312,11 +1322,16 @@ class CheckView_Api {
 							OR post_content LIKE %s
 						) 
 						AND post_status = 'publish' 
-						AND post_type NOT IN ('kadence_wootemplate', 'kadence_element', 'revision')",
-							'%wp:fluentfom/guten-block {"formId":"' . $row->id . '"%',
-							'%[fluentform id="' . $row->id . '"%',
-							'%[fluentform id=' . $row->id . '%',
-							'%[fluentform id=' . $row->id . '%'
+						AND post_type IN ( {$type_placeholders} )",
+							array_merge(
+								array(
+									'%wp:fluentfom/guten-block {"formId":"' . $row->id . '"%',
+									'%[fluentform id="' . $row->id . '"%',
+									'%[fluentform id=' . $row->id . '%',
+									'%[fluentform id=' . $row->id . '%',
+								),
+								$post_types
+							)
 						)
 					);
 					foreach ( $form_pages as $form_page ) {
@@ -1364,11 +1379,16 @@ class CheckView_Api {
 							OR post_content LIKE %s
 						) 
 						AND post_status = 'publish' 
-						AND post_type NOT IN ('kadence_wootemplate', 'kadence_element', 'revision')",
-							'%wp:ninja-forms/form {\"formID\":' . $row->id . '%',
-							'%[ninja_form id="' . $row->id . '"]%',
-							'%[ninja_form id=' . $row->id . ']%',
-							'%[ninja_form id=\'' . $row->id . '\']%'
+						AND post_type IN ( {$type_placeholders} )",
+							array_merge(
+								array(
+									'%wp:ninja-forms/form {\"formID\":' . $row->id . '%',
+									'%[ninja_form id="' . $row->id . '"]%',
+									'%[ninja_form id=' . $row->id . ']%',
+									'%[ninja_form id=\'' . $row->id . '\']%',
+								),
+								$post_types
+							)
 						)
 					);
 					if ( $form_pages ) {
@@ -1573,16 +1593,18 @@ class CheckView_Api {
 						AND (
 							(post_content LIKE %s OR post_content LIKE %s OR post_content LIKE %s OR post_content LIKE %s)
 							AND post_status = %s
-							AND post_type NOT IN (%s, %s, %s)
+							AND post_type IN ( {$type_placeholders} )
 						)",
-							'%wp:contact-form-7/contact-form-selector {"id":"' . $hash . '%',
-							'%[contact-form-7 id="' . $hash . '%',
-							'%[contact-form-7 id=' . $hash . '%',
-							'%[contact-form-7 id=' . $hash . '%',
-							'publish',
-							'kadence_wootemplate',
-							'kadence_element',
-							'revision'
+							array_merge(
+								array(
+									'%wp:contact-form-7/contact-form-selector {"id":"' . $hash . '%',
+									'%[contact-form-7 id="' . $hash . '%',
+									'%[contact-form-7 id=' . $hash . '%',
+									'%[contact-form-7 id=' . $hash . '%',
+									'publish',
+								),
+								$post_types
+							)
 						)
 					);
 					if ( $form_pages ) {
@@ -1633,11 +1655,16 @@ class CheckView_Api {
 							OR post_content LIKE %s
 						) 
 						AND post_status = 'publish' 
-						AND post_type NOT IN ('kadence_wootemplate', 'kadence_element', 'revision')",
-							'%wp:wsf-block/form-add {"form_id":"' . $row->id . '"%',
-							'%[ws_form id="' . $row->id . '"%',
-							'%[ws_form id=' . $row->id . '%',
-							'%[ws_form id=' . $row->id . '%'
+						AND post_type IN ( {$type_placeholders} )",
+							array_merge(
+								array(
+									'%wp:wsf-block/form-add {"form_id":"' . $row->id . '"%',
+									'%[ws_form id="' . $row->id . '"%',
+									'%[ws_form id=' . $row->id . '%',
+									'%[ws_form id=' . $row->id . '%',
+								),
+								$post_types
+							)
 						)
 					);
 					foreach ( $form_pages as $form_page ) {
@@ -1675,9 +1702,11 @@ class CheckView_Api {
 			$results = get_posts( $args );
 			if ( $results ) {
 				foreach ( $results as $row ) {
-					$forms['ForminatorForms'][ $row->ID ] = array(
+					$meta = get_post_meta( $row->ID, 'forminator_form_meta', true );
+					$display_name = $meta['settings']['formName'] ?? $row->post_title;
+					$forms['forminator'][ $row->ID ] = array(
 						'ID'   => $row->ID,
-						'Name' => $row->post_title,
+						'Name' => $display_name,
 					);
 
 					$form_pages = $wpdb->get_results(
@@ -1687,16 +1716,18 @@ class CheckView_Api {
 						AND (
 							(post_content LIKE %s OR post_content LIKE %s OR post_content LIKE %s OR post_content LIKE %s)
 							AND post_status = %s
-							AND post_type NOT IN (%s, %s, %s)
+							AND post_type IN ( {$type_placeholders} )
 						)",
-							'%wp:forminator/forms {"id":"' . $row->ID . '%',
-							'%[forminator_form id="' . $row->ID . '%',
-							'%[forminator_form id=' . $row->ID . '%',
-							'%[forminator_form id=' . $row->ID . '%',
-							'publish',
-							'kadence_wootemplate',
-							'kadence_element',
-							'revision'
+							array_merge(
+								array(
+									'%wp:forminator/forms {"id":"' . $row->ID . '%',
+									'%[forminator_form id="' . $row->ID . '%',
+									'%[forminator_form id=' . $row->ID . '%',
+									'%[forminator_form id=' . $row->ID . '%',
+									'publish',
+								),
+								$post_types
+							)
 						)
 					);
 					if ( $form_pages ) {
@@ -1707,7 +1738,7 @@ class CheckView_Api {
 								if ( $wp_block_pages ) {
 									foreach ( $wp_block_pages as $wp_block_page ) {
 										if ( ! empty( checkview_must_ssl_url( get_the_permalink( $wp_block_page->ID ) ) ) ) {
-											$forms['ForminatorForms'][ $row->ID ]['pages'][] = array(
+											$forms['forminator'][ $row->ID ]['pages'][] = array(
 												'ID'  => $wp_block_page->ID,
 												'url' => checkview_must_ssl_url( get_the_permalink( $wp_block_page->ID ) ),
 											);
@@ -1715,7 +1746,7 @@ class CheckView_Api {
 									}
 								}
 							} elseif ( ! empty( checkview_must_ssl_url( get_the_permalink( $form_page->ID ) ) ) ) {
-								$forms['ForminatorForms'][ $row->ID ]['pages'][] = array(
+								$forms['forminator'][ $row->ID ]['pages'][] = array(
 									'ID'  => $form_page->ID,
 									'url' => checkview_must_ssl_url( get_the_permalink( $form_page->ID ) ),
 								);
@@ -1753,11 +1784,16 @@ class CheckView_Api {
 							OR post_content LIKE %s
 						)
 						AND post_status = 'publish'
-						AND post_type NOT IN ('kadence_wootemplate', 'kadence_element', 'revision')",
-							'%wp:everest-forms/form-selector {"formId":"' . $row->ID . '"%',
-							'%wp:everest-forms/form-selector {"formId":' . $row->ID . '%',
-							'%[everest_form id="' . $row->ID . '"%',
-							'%[everest_form id=' . $row->ID . '%'
+						AND post_type IN ( {$type_placeholders} )",
+							array_merge(
+								array(
+									'%wp:everest-forms/form-selector {"formId":"' . $row->ID . '"%',
+									'%wp:everest-forms/form-selector {"formId":' . $row->ID . '%',
+									'%[everest_form id="' . $row->ID . '"%',
+									'%[everest_form id=' . $row->ID . '%',
+								),
+								$post_types
+							)
 						)
 					);
 					if ( $form_pages ) {
@@ -1790,20 +1826,127 @@ class CheckView_Api {
 			 * form is a widget embedded in a page's `_elementor_data` post meta
 			 * (JSON element tree). Find published posts whose Elementor data
 			 * contains a form widget, then walk the tree to collect each form.
-			 * The form id is the widget element id, which matches both the
-			 * rendered hidden `form_id` input and the submission hook's
-			 * get_form_settings( 'id' ) used by Checkview_Elementor_Helper.
+			 * The form id is the page element's id, which matches the rendered
+			 * hidden `form_id` input.
+			 *
+			 * A form saved as a Global Widget lives in an elementor_library post
+			 * and sits on pages as `{"widgetType":"global","templateID":N}`.
+			 * Library posts are never pages, so they stay excluded; instead,
+			 * pages are also matched on the ids of library templates that hold
+			 * a form, and checkview_get_elementor_global_widget_form() resolves
+			 * the reference. Matching on every `global` node would not do: a
+			 * header or button saved as global is on most pages of a site, and
+			 * this query loads each matched page's whole element tree.
+			 *
+			 * A whole template can also be embedded with the Template widget
+			 * (`"template_id":"N"`) or the `[elementor-template id="N"]`
+			 * shortcode, and templates can embed templates. So the set of
+			 * form-bearing templates is widened to every published template
+			 * that reaches a form through such a chain, and pages are matched
+			 * on those ids too. The LIKE patterns are only a prefilter; the walk
+			 * in checkview_get_elementor_form_widgets() decides exactly.
 			 */
+			$patterns          = array( '%"widgetType":"form"%' );
+			$shortcode_pattern = '%' . $wpdb->esc_like( '[elementor-template' ) . '%';
+
+			$form_template_ids = $wpdb->get_col(
+				$wpdb->prepare(
+					"SELECT p.ID FROM {$wpdb->prefix}posts p
+					INNER JOIN {$wpdb->prefix}postmeta pm ON pm.post_id = p.ID
+					WHERE pm.meta_key = %s
+					AND pm.meta_value LIKE %s
+					AND p.post_status = 'publish'
+					AND p.post_type = 'elementor_library'",
+					'_elementor_data',
+					'%"widgetType":"form"%'
+				)
+			);
+			$form_template_ids = array_values( array_filter( array_map( 'intval', (array) $form_template_ids ) ) );
+
+			if ( ! empty( $form_template_ids ) ) {
+				// Templates that embed a template, or place a form-bearing Global Widget.
+				$embed_patterns = array( '%"widgetType":"template"%', $shortcode_pattern );
+				foreach ( $form_template_ids as $form_template_id ) {
+					$embed_patterns[] = '%"templateID":' . $form_template_id . '%';
+					$embed_patterns[] = '%"templateID":"' . $form_template_id . '"%';
+				}
+
+				$embed_like_clauses = implode( ' OR ', array_fill( 0, count( $embed_patterns ), 'pm.meta_value LIKE %s' ) );
+
+				$embedding_template_ids = $wpdb->get_col(
+					$wpdb->prepare(
+						"SELECT p.ID FROM {$wpdb->prefix}posts p
+						INNER JOIN {$wpdb->prefix}postmeta pm ON pm.post_id = p.ID
+						WHERE pm.meta_key = %s
+						AND ( {$embed_like_clauses} )
+						AND p.post_status = 'publish'
+						AND p.post_type = 'elementor_library'",
+						array_merge( array( '_elementor_data' ), $embed_patterns )
+					)
+				);
+				foreach ( (array) $embedding_template_ids as $embedding_template_id ) {
+					$embedding_template_id = (int) $embedding_template_id;
+					if (
+						$embedding_template_id > 0
+						&& ! in_array( $embedding_template_id, $form_template_ids, true )
+						&& ! empty( checkview_get_elementor_template_forms( $embedding_template_id ) )
+					) {
+						$form_template_ids[] = $embedding_template_id;
+					}
+				}
+
+				foreach ( $form_template_ids as $form_template_id ) {
+					// Elementor writes templateID as a JSON number; some exports carry a string.
+					$patterns[] = '%"templateID":' . $form_template_id . '%';
+					$patterns[] = '%"templateID":"' . $form_template_id . '"%';
+					// Template widget control values are saved as strings; accept a bare number too.
+					$patterns[] = '%"template_id":"' . $form_template_id . '"%';
+					$patterns[] = '%"template_id":' . $form_template_id . '%';
+				}
+
+				// One id-agnostic pattern for shortcode embeds; the walk parses the id.
+				$patterns[] = $shortcode_pattern;
+			}
+
+			/*
+			 * Pages are keyed by post id so a form reached twice on one page,
+			 * or by both queries below, is listed for that page once.
+			 */
+			$add_elementor_page = static function ( $form_widget, $page_id ) use ( &$forms ) {
+				if ( empty( $form_widget['id'] ) ) {
+					return;
+				}
+				$form_id = $form_widget['id'];
+
+				if ( ! isset( $forms['Elementor'][ $form_id ] ) ) {
+					$forms['Elementor'][ $form_id ] = array(
+						'ID'   => $form_id,
+						'Name' => ( ! empty( $form_widget['settings']['form_name'] ) )
+							? $form_widget['settings']['form_name']
+							: 'Form ' . $form_id,
+					);
+				}
+
+				$page_url = checkview_must_ssl_url( get_the_permalink( $page_id ) );
+				if ( ! empty( $page_url ) ) {
+					$forms['Elementor'][ $form_id ]['pages'][ $page_id ] = array(
+						'ID'  => $page_id,
+						'url' => $page_url,
+					);
+				}
+			};
+
+			$like_clauses = implode( ' OR ', array_fill( 0, count( $patterns ), 'pm.meta_value LIKE %s' ) );
+
 			$elementor_pages = $wpdb->get_results(
 				$wpdb->prepare(
 					"SELECT p.ID, pm.meta_value FROM {$wpdb->prefix}posts p
 					INNER JOIN {$wpdb->prefix}postmeta pm ON pm.post_id = p.ID
 					WHERE pm.meta_key = %s
-					AND pm.meta_value LIKE %s
+					AND ( {$like_clauses} )
 					AND p.post_status = 'publish'
 					AND p.post_type NOT IN ('kadence_wootemplate', 'revision', 'elementor_library')",
-					'_elementor_data',
-					'%"widgetType":"form"%'
+					array_merge( array( '_elementor_data' ), $patterns )
 				)
 			);
 			if ( $elementor_pages ) {
@@ -1812,37 +1955,61 @@ class CheckView_Api {
 					if ( ! is_array( $elementor_data ) ) {
 						continue;
 					}
-					$form_widgets = checkview_get_elementor_form_widgets( $elementor_data );
-					foreach ( $form_widgets as $form_widget ) {
-						if ( empty( $form_widget['id'] ) ) {
-							continue;
-						}
-						$form_id   = $form_widget['id'];
-						$form_name = ( ! empty( $form_widget['settings']['form_name'] ) )
-							? $form_widget['settings']['form_name']
-							: 'Form ' . $form_id;
+					foreach ( checkview_get_elementor_form_widgets( $elementor_data ) as $form_widget ) {
+						$add_elementor_page( $form_widget, $elementor_page->ID );
+					}
+				}
+			}
 
-						if ( ! isset( $forms['Elementor'][ $form_id ] ) ) {
-							$forms['Elementor'][ $form_id ] = array(
-								'ID'   => $form_id,
-								'Name' => $form_name,
-							);
-						}
+			/*
+			 * A page not built with Elementor can still embed a template through
+			 * the shortcode in its post content, directly or inside a reusable
+			 * block. Library posts are public but are never the page a form is
+			 * tested on, so they stay out.
+			 */
+			if ( ! empty( $form_template_ids ) ) {
+				$shortcode_posts = $wpdb->get_results(
+					$wpdb->prepare(
+						"SELECT ID, post_type, post_content FROM {$wpdb->prefix}posts
+						WHERE post_content LIKE %s
+						AND post_status = 'publish'
+						AND post_type IN ( {$type_placeholders} )
+						AND post_type <> 'elementor_library'",
+						array_merge( array( $shortcode_pattern ), $post_types )
+					)
+				);
+				foreach ( (array) $shortcode_posts as $shortcode_post ) {
+					$template_forms = array();
+					foreach ( checkview_get_elementor_template_shortcode_ids( $shortcode_post->post_content ) as $template_id ) {
+						$template_forms = array_merge( $template_forms, checkview_get_elementor_template_forms( $template_id ) );
+					}
+					if ( empty( $template_forms ) ) {
+						continue;
+					}
 
-						$page_url = checkview_must_ssl_url( get_the_permalink( $elementor_page->ID ) );
-						if ( ! empty( $page_url ) ) {
-							$forms['Elementor'][ $form_id ]['pages'][] = array(
-								'ID'  => $elementor_page->ID,
-								'url' => $page_url,
-							);
+					$page_ids = array( $shortcode_post->ID );
+					if ( 'wp_block' === $shortcode_post->post_type ) {
+						$page_ids = wp_list_pluck( (array) checkview_get_wp_block_pages( $shortcode_post->ID ), 'ID' );
+					}
+					foreach ( $page_ids as $page_id ) {
+						foreach ( $template_forms as $form_widget ) {
+							$add_elementor_page( $form_widget, $page_id );
 						}
+					}
+				}
+			}
+
+			if ( ! empty( $forms['Elementor'] ) ) {
+				foreach ( $forms['Elementor'] as $form_id => $elementor_form ) {
+					if ( isset( $elementor_form['pages'] ) ) {
+						$forms['Elementor'][ $form_id ]['pages'] = array_values( $elementor_form['pages'] );
 					}
 				}
 			}
 		}
 
 		if ( is_array( $forms ) ) {
-			if ( ! empty( $forms ) ) {
+			if ( ! empty( $forms ) && ! $is_local ) {
 				set_transient( 'checkview_forms_list_transient', $forms, 12 * HOUR_IN_SECONDS );
 			}
 
@@ -2141,26 +2308,16 @@ class CheckView_Api {
 		$core_info            = array(
 			'version' => $wp_version,
 		);
-		$wp_filesystem_direct = new WP_Filesystem_Direct( array() );
-		$pad_spaces           = 45;
-		$checkview_options    = get_option( 'checkview_log_options', array() );
-
-		$logs_list = glob( Checkview_Admin_Logs::get_logs_folder() . '*.log' );
-		$logs      = array();
-		foreach ( $logs_list as $file ) {
-			$contents = $file && file_exists( $file ) ? $wp_filesystem_direct->get_contents( $file ) : '--';
-			if ( preg_match( '/\/([^\/]+)\.log$/', $file, $matches ) ) {
-				$file = $matches[1]; // Return the captured group.
-			}
-			$logs[ $file ] = $contents;
-		}
-		// Combine all data.
+		// Deliberately does NOT return log contents. This endpoint used to embed
+		// every log file in full, which is unbounded: a site with 39MB of logs
+		// exhausted a 512MB memory limit inside wp_json_encode() and the request
+		// died with a fatal, taking site-info down with it. Nothing consumes the
+		// logs from here either, and /checkview/v1/get-logs already serves them.
 		$response = array(
 			'plugins'  => $plugin_list,
 			'themes'   => $theme_list,
 			'core'     => $core_info,
 			'ajax_url' => admin_url( 'admin-ajax.php' ),
-			'logs'     => $logs,
 		);
 
 		if ( $response ) {
@@ -2262,57 +2419,28 @@ class CheckView_Api {
 	 * @return WP_REST_Response|WP_Error
 	 */
 	public function checkview_saas_get_helper_logs() {
-		// Get all plugins.
-		if ( ! function_exists( 'get_plugins' ) ) {
-			require_once ABSPATH . 'wp-admin/includes/plugin.php';
-		}
-		// Define the threshold timestamp (7 days ago).
-		$threshold_time = strtotime( '-7 days' );
-
-		$wp_filesystem_direct = new WP_Filesystem_Direct( array() );
-		$pad_spaces           = 45;
-		$checkview_options    = get_option( 'checkview_log_options', array() );
-
+		// The daily cleanup cron (purge_expired_logs) bounds how many files
+		// live here, so this endpoint no longer prunes or age-filters; it is a
+		// pure read. tail_file() caps each read so a noisy day cannot push the
+		// response toward the memory cliff site-info used to hit.
 		$logs_list = glob( Checkview_Admin_Logs::get_logs_folder() . '*.log' );
-		$logs      = array();
-		foreach ( $logs_list as $file ) {
-			$contents = $file && file_exists( $file ) ? $wp_filesystem_direct->get_contents( $file ) : '--';
-			if ( preg_match( '/\/([^\/]+)\.log$/', $file, $matche ) ) {
-				// Extract the date from the filename (e.g., log-YYYY-MM-DD.log).
-				if ( preg_match( '/log-(\d{4}-\d{2}-\d{2})\.log$/', $file, $matches ) ) {
-					$file_date = strtotime( $matches[1] );
 
-					// If the file's date is older than 7 days, delete the file.
-					if ( $file_date < $threshold_time ) {
-						unlink( $file );
-					} else {
-						$file          = $matche[1]; // Return the captured group.
-						$logs[ $file ] = $contents;
-					}
-				} else {
-					unlink( $file );
-				}
+		$logs = array();
+		foreach ( (array) $logs_list as $file ) {
+			if ( preg_match( '/\/([^\/]+)\.log$/', $file, $matche ) ) {
+				$logs[ $matche[1] ] = Checkview_Admin_Logs::tail_file( $file );
 			}
 		}
-		// Combine all data.
-		$response = array(
-			'logs' => $logs,
+
+		return new WP_REST_Response(
+			array(
+				'status'        => 200,
+				'response'      => esc_html__( 'Successfully retrieved the site info.', 'checkview' ),
+				'body_response' => array(
+					'logs' => $logs,
+				),
+			),
 		);
-		if ( $response ) {
-			return new WP_REST_Response(
-				array(
-					'status'        => 200,
-					'response'      => esc_html__( 'Successfully retrieved the site info.', 'checkview' ),
-					'body_response' => $response,
-				)
-			);
-		} else {
-			Checkview_Admin_Logs::add( 'api-logs', sanitize_text_field( 'Failed to retrieve the site info.' ) );
-			return new WP_Error(
-				400,
-				esc_html__( 'An error occurred while processing your request.', 'checkview' ),
-			);
-		}
 	}
 
 	/**

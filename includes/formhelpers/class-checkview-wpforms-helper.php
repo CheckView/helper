@@ -266,10 +266,36 @@ if ( ! class_exists( 'Checkview_Wpforms_Helper' ) ) {
 		/**
 		 * Injects testing email address.
 		 *
+		 * Append-mode (when `cv_should_allow_original_recipients()` is true):
+		 * adds TEST_EMAIL to the existing recipient list so both the real
+		 * recipient and CheckView's test inbox receive the email. Also injects
+		 * Reply-To to defend against MTA variance — Postmark sees TEST_EMAIL in
+		 * the ReplyTo header even if the customer's MTA strips it from To.
+		 *
+		 * Replace-mode (default): preserves existing behavior of routing to
+		 * TEST_EMAIL only.
+		 *
 		 * @param array $email Email address details.
 		 * @return array
 		 */
 		public function checkview_inject_email( $email ) {
+			// New: append-mode branch — deliver to BOTH real recipient and test inbox.
+			if ( cv_should_allow_original_recipients() ) {
+				$email['address']        = cv_append_test_email_array( $email['address'] );
+				$email['replyto']        = $this->cv_append_replyto( $email['replyto'] ?? '' );
+				// Sanitize CC entries to prevent header injection if the
+				// customer's form data contains embedded CRLF in CC addresses.
+				$cc                      = $email['carboncopy'] ?? array();
+				$email['carboncopy']     = is_array( $cc )
+					? array_map( 'cv_sanitize_crlf', $cc )
+					: cv_sanitize_crlf( $cc );
+
+				Checkview_Admin_Logs::add( 'ip-logs', 'Append-mode submission recipient email address: ' . wp_json_encode( $email['address'] ) );
+
+				return $email;
+			}
+
+			// Existing replace-mode behavior (preserved unchanged).
 			$cv_test_id = get_checkview_test_id();
 			if ( ! $cv_test_id || 'true' != get_option( 'disable_email_receipt_' . $cv_test_id, false ) ) {
 				$count = count( $email['address'] );
@@ -286,6 +312,29 @@ if ( ! class_exists( 'Checkview_Wpforms_Helper' ) ) {
 			Checkview_Admin_Logs::add( 'ip-logs', 'Submission recipient email address: ' . wp_json_encode( $email['address'] ?? null ) );
 			Checkview_Admin_Logs::add( 'ip-logs', 'Submission sender email address: ' . wp_json_encode( $email['sender_address'] ?? null ) );
 			return $email;
+		}
+
+		/**
+		 * Appends TEST_EMAIL to a Reply-To string with dedup.
+		 *
+		 * WPForms' `replyto` is a single string (not array). Append rather
+		 * than replace so existing form-configured Reply-To is preserved.
+		 *
+		 * @param string $existing Existing reply-to value (may be empty).
+		 * @return string Reply-To with TEST_EMAIL appended.
+		 */
+		private function cv_append_replyto( $existing ) {
+			if ( ! defined( 'TEST_EMAIL' ) ) {
+				return $existing;
+			}
+			if ( empty( $existing ) ) {
+				return TEST_EMAIL;
+			}
+			if ( cv_recipients_contain_test_email( $existing ) ) {
+				return cv_sanitize_crlf( $existing );
+			}
+			$sanitized = cv_sanitize_crlf( $existing );
+			return rtrim( $sanitized, ", \t" ) . ', ' . TEST_EMAIL;
 		}
 		/**
 		 * Stores the test results and finishes the testing session.
