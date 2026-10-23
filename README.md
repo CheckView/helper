@@ -111,3 +111,30 @@ Entry point: `checkview.php`
 ## Release
 
 Tag format `v1.0.X` on `main` triggers a GitHub Action that pushes to WordPress SVN. Use the `trunk` branch for non-versioned updates (readme/assets only).
+
+The deploy action builds the release with `rsync --exclude-from=.distignore`, so
+`.distignore` uses **rsync** pattern semantics (leading `/` = anchored to the
+plugin root; bare names match at any depth). Note that Composer's vendor-dir is
+`includes/vendor`, which is committed and must ship — the `/vendor` line in
+`.distignore` intentionally matches nothing. The action's `composer install`
+step is discarded by the second `actions/checkout`; releases contain only what
+is committed, so commit build outputs (`assets/js/frontend/blocks.js`,
+`includes/vendor/`).
+
+### Plugin Check
+
+WordPress.org runs [Plugin Check](https://wordpress.org/plugins/plugin-check/)
+on submissions. Known results for this plugin:
+
+- **`Offloading_Files_Check` flags `https://verify.checkview.io/whitelist.json`**
+  in `includes/checkview-functions.php`. This is a false positive: the check's
+  regex treats any URL ending in `.json` as an offloaded asset, but this is a
+  server-side `wp_remote_get()` to the plugin's own API, which the directory
+  guidelines allow. Do not "fix" it by changing the URL.
+- All admin assets are bundled locally (`admin/assets/js/vendor/`,
+  `admin/assets/fonts/`). Do not reintroduce CDN or Google Fonts URLs — the
+  check flags them, and the previous CDN-pinned SweetAlert2 was serving a
+  protestware build (see `admin/assets/js/vendor/README.md`).
+- Minified JS must ship with its source: `resources/js/frontend/block.js` is the
+  source for `assets/js/frontend/blocks.js` and is deliberately **not** in
+  `.distignore`.
