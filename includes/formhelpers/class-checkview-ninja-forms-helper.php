@@ -123,6 +123,27 @@ if ( ! class_exists( 'Checkview_Ninja_Forms_Helper' ) ) {
 		 * @return bool
 		 */
 		public function checkview_inject_email( $sent, $action_settings, $message, $headers, $attachments ) {
+			// Append-mode branch — let Ninja Forms' own pipeline send ONE email
+			// with merged recipients (real + TEST_EMAIL) instead of the direct
+			// wp_mail() to TEST_EMAIL only that replace-mode does below. This
+			// avoids the double-send risk that the existing code structure has.
+			if ( cv_should_allow_original_recipients() ) {
+				// Nothing can be mutated at this hook. `ninja_forms_action_email_send`
+				// is a plain apply_filters(), so $action_settings arrives by value and
+				// any change is discarded; NF then sends with $action_settings['to']
+				// (Actions/Email.php), a key this callback is not even passed under
+				// that name. NF also exposes no filter between _get_headers() and
+				// wp_mail(), so neither recipients nor headers are reachable here.
+				//
+				// Both are handled by the wp_mail backstop (Checkview_Mail_Redirect),
+				// which appends TEST_EMAIL to the recipients and injects Reply-To for
+				// MTA-variance defense. Returning the pass-through $sent lets NF run
+				// its own send, so exactly one email goes out.
+				Checkview_Admin_Logs::add( 'ip-logs', 'Append-mode: NF send passed through to the wp_mail backstop.' );
+
+				return $sent;
+			}
+
 			// Ensure headers are an array.
 			if ( ! is_array( $headers ) ) {
 				$headers = explode( "\r\n", $headers );
