@@ -1526,7 +1526,7 @@ class CheckView_Api {
 					// Mirrors Formidable's own reference detection —
 					// FrmFormsListHelper::get_base_search_strings_for_form()
 					// (verified against Formidable 6.33.1). A form can be placed
-					// five ways; CheckView previously matched only the first:
+					// five ways; CheckView previously matched only 1 and 3:
 					//
 					//   1. [formidable id=N]
 					//   2. [formidable id=N title=false]   (extra attributes)
@@ -1534,13 +1534,15 @@ class CheckView_Api {
 					//   4. [formidable id='N']
 					//   5. <!-- wp:formidable/simple-form {"formId":"N"} -->
 					//
-					// Patterns 2-5 never matched, so a form placed with the block
-					// editor — or with the shortcode copied from Formidable's own
-					// UI — was listed with no `pages` entry and could not be
-					// tested. The double-quoted variant was written as
-					// '%[formidable id=\"' inside a SINGLE-quoted PHP string,
-					// where \" is a literal backslash, so it searched for
-					// `id=\"N\"` and could never match real post content.
+					// The old double-quoted pattern was written as
+					// '%[formidable id=\"' in a SINGLE-quoted PHP string, so it
+					// holds a literal backslash. It still matched: backslash is
+					// LIKE's default escape character, so MySQL reads \" as a
+					// plain quote. The block also saves the shortcode inside its
+					// markup, so block placements were found that way. What was
+					// missed: an unquoted id followed by more attributes (2), a
+					// single-quoted id (4), and block markup without the inner
+					// shortcode (5).
 					//
 					// Anchoring the block pattern on `{` is safe: FrmSimpleBlocks
 					// Controller registers `formId` first as 'type' => 'string',
@@ -1898,7 +1900,7 @@ class CheckView_Api {
 							'%[forminator_form id=' . $row->ID . ']%',
 							'%[forminator_form id=' . $row->ID . ' %',
 							'publish',
-							...$post_types
+							...array_values( $post_types )
 						)
 					);
 					if ( $form_pages ) {
