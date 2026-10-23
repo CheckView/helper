@@ -253,6 +253,30 @@ class Checkview_Woo_Automated_Testing {
 				10,
 				3
 			);
+
+			// MVP scope: customer_completed_order. Other WC email types
+			// (processing, on-hold, refunds, invoices, subscriptions) are
+			// deferred to follow-up PRs based on customer demand. Priority
+			// matches the existing two filters above for consistency.
+			$this->loader->add_filter(
+				'woocommerce_email_recipient_customer_completed_order',
+				$this,
+				'checkview_filter_admin_emails',
+				10,
+				3
+			);
+
+			// Reply-To injection on WC email headers — defends against MTA
+			// variance (Postmark sees TEST_EMAIL in ReplyTo even if customer
+			// MTA strips it from To). Single filter for all WC emails;
+			// callback gates on $email->id matching MVP scope.
+			$this->loader->add_filter(
+				'woocommerce_email_headers',
+				$this,
+				'checkview_inject_reply_to_headers',
+				10,
+				3
+			);
 			$this->loader->add_action(
 				'checkview_delete_orders_action',
 				$this,
@@ -313,9 +337,19 @@ class Checkview_Woo_Automated_Testing {
 	/**
 	 * Clears the WooCommerce cart.
 	 *
+	 * Test-only behaviour: the CheckView bot appends `?checkview_empty_cart=true`
+	 * to reset its cart between checkout runs. This handler is hooked on
+	 * `template_redirect` for every front-end request, so it must be gated on
+	 * `is_bot()` — otherwise any shopper who follows a crafted product/shop link
+	 * carrying the parameter has their cart silently emptied.
+	 *
 	 * @return void
 	 */
 	public function checkview_empty_woocommerce_cart_if_parameter() {
+		if ( ! CheckView::is_bot() ) {
+			return;
+		}
+
 		// Check if WooCommerce is active.
 		if ( class_exists( 'WooCommerce' ) ) {
 			// Check if the parameter exists in the URL.
@@ -885,6 +919,11 @@ class Checkview_Woo_Automated_Testing {
 		// Check view Bot IP.
 		$cv_bot_ip = checkview_get_api_ip();
 		if ( ( get_checkview_test_id() || ( is_array( $cv_bot_ip ) && in_array( $visitor_ip, $cv_bot_ip ) ) ) || ( 'checkview' === $payment_method || 'checkview' === $payment_made_by ) ) {
+			// New: append-mode — deliver to BOTH real recipient and test inbox.
+			if ( cv_should_allow_original_recipients() && defined( 'TEST_EMAIL' ) ) {
+				return cv_append_test_email_string( $recipient );
+			}
+
 			if ( defined( 'CV_DISABLE_EMAIL_RECEIPT' ) ) {
 				if ( defined( 'TEST_EMAIL' ) ) {
 					$recipient = $recipient . ', ' . TEST_EMAIL;
@@ -901,6 +940,28 @@ class Checkview_Woo_Automated_Testing {
 		return $recipient;
 	}
 
+	/**
+	 * Injects Reply-To: TEST_EMAIL into WC email headers when append-mode is
+	 * active for one of the MVP-scoped email types. Defends against MTA
+	 * variance — Postmark sees TEST_EMAIL in the ReplyTo header even if the
+	 * customer's MTA strips it from To.
+	 *
+	 * Gated on email_id matching MVP scope (new_order, failed_order,
+	 * customer_completed_order). Other WC email types pass through unchanged.
+	 *
+	 * @param string|array $headers Existing email headers.
+	 * @param string       $email_id WC email type identifier (e.g. 'new_order').
+	 * @param object       $email WC email object.
+	 *
+	 * @return string|array Headers with Reply-To injected (or unchanged).
+	 */
+	public function checkview_inject_reply_to_headers( $headers, $email_id, $email ) {
+		$mvp_email_ids = array( 'new_order', 'failed_order', 'customer_completed_order' );
+		if ( ! in_array( $email_id, $mvp_email_ids, true ) ) {
+			return $headers;
+		}
+		return cv_inject_reply_to_header( $headers );
+	}
 
 	/**
 	 * Stops delivery of WooCommerce webhooks for active CheckView test orders.

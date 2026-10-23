@@ -34,5 +34,7 @@ class Checkview_Deactivator {
 		wp_unschedule_event( $timestamp, 'checkview_delete_table_cron_hook' );
 		$timestamp = wp_next_scheduled( 'checkview_options_cleanup_cron' );
 		wp_unschedule_event( $timestamp, 'checkview_options_cleanup_cron' );
+		$timestamp = wp_next_scheduled( 'checkview_logs_cleanup_cron' );
+		wp_unschedule_event( $timestamp, 'checkview_logs_cleanup_cron' );
 	}
 }
