@@ -1436,7 +1436,37 @@ class CheckView_Api {
 
 		if ( is_plugin_active( 'formidable/formidable.php' ) ) {
 			$tablename = $wpdb->prefix . 'frm_forms';
-			$results   = $wpdb->get_results( $wpdb->prepare( 'Select * from ' . $tablename . ' where 1=%d and status=%s', 1, 'published' ) );
+
+			// Mirror Formidable's own definition of a submittable form
+			// (FrmForm::get_published_forms(), FrmForm.php:969-975) rather than
+			// reimplementing it, so it cannot drift from upstream:
+			//
+			//   is_template = 0                  templates are not submittable
+			//   parent_form_id IN ( NULL, 0 )    child forms are the inner form of
+			//                                    a repeater/embedded field and are
+			//                                    only submitted via their parent
+			//   status IN ( NULL, '', published )
+			//
+			// That last one widens the previous `status = 'published'`: Formidable
+			// treats NULL and '' as published, so forms whose status column was
+			// never populated were silently absent from the list.
+			if ( is_callable( array( 'FrmForm', 'get_published_forms' ) ) ) {
+				// Default limit is 999; pass a higher one so large sites are not
+				// silently truncated.
+				$results = FrmForm::get_published_forms( array(), 999999 );
+			} else {
+				$results = $wpdb->get_results(
+					$wpdb->prepare(
+						'SELECT * FROM ' . $tablename . "
+						WHERE is_template = %d
+						AND ( status IS NULL OR status = '' OR status = %s )
+						AND ( parent_form_id IS NULL OR parent_form_id = %d )",
+						0,
+						'published',
+						0
+					)
+				);
+			}
 			if ( $results ) {
 				foreach ( $results as $row ) {
 					$forms['Formidable'][ $row->id ] = array(
