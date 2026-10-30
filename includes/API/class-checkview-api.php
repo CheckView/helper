@@ -1401,25 +1401,77 @@ class CheckView_Api {
 						'ID'   => $row->id,
 						'Name' => $row->title,
 					);
+					// Verified against Ninja Forms 3.14.11.
+					//
+					// The old block pattern was written as '{\"formID\":' inside
+					// a SINGLE-quoted PHP string, so it holds a literal
+					// backslash. It still matched real blocks, because
+					// backslash is LIKE's default escape character and MySQL
+					// reads \" as a plain quote. But it ended right after the
+					// ID, so form 7 also matched forms 71 and 712.
+					//
+					// Its `formID` attribute is registered as 'type' => 'integer'
+					// (build/form-block.js block.json), so it serialises UNQUOTED:
+					//
+					//   <!-- wp:ninja-forms/form {"formID":7} /-->
+					//   <!-- wp:ninja-forms/form {"formID":7,"formTitle":"..."} /-->
+					//
+					// Unlike Gravity Forms and Formidable — whose formId is a
+					// quoted string, and whose closing quote bounds the value —
+					// an unquoted integer has no terminator of its own.
+					// The two patterns below bound the value with `}` (formID is
+					// the only attribute) or `,` (further attributes follow),
+					// which are the only two characters that can legally end a
+					// JSON integer here.
+					//
+					// `formTitle` is declared after `formID`, and Gutenberg
+					// serialises comment attributes in registered-schema order,
+					// so `{"formID":` is a stable prefix.
+					//
+					// The quoted variants no longer require a closing `]`, and the
+					// bare variant carries BOTH terminators — `]` for the end of
+					// the shortcode and a space for further attributes. Ninja
+					// Forms ignores extra attributes but WordPress still renders
+					// them, so `[ninja_form id=12 title="x"]` is valid content
+					// that a `]`-only pattern silently missed. The ID stays
+					// bounded either way, so form 12 cannot match form 123.
+					//
+					// Ninja Forms also registers `ninja_forms` (plural) as a
+					// shortcode alias, and the block's own `deprecated` entry
+					// saved `[ninja_forms id=N]` — so that spelling exists in
+					// real post content on sites that used the older block and
+					// was never matched.
 					// WPDBPREPARE.
 					$form_pages = $wpdb->get_results(
 						$wpdb->prepare(
-							"SELECT * FROM {$wpdb->prefix}posts 
-						WHERE 1=1 
+							"SELECT ID, post_type FROM {$wpdb->prefix}posts
+						WHERE 1=1
 						AND (
-							post_content LIKE %s 
-							OR post_content LIKE %s 
-							OR post_content LIKE %s 
+							post_content LIKE %s
 							OR post_content LIKE %s
-						) 
-						AND post_status = 'publish' 
+							OR post_content LIKE %s
+							OR post_content LIKE %s
+							OR post_content LIKE %s
+							OR post_content LIKE %s
+							OR post_content LIKE %s
+							OR post_content LIKE %s
+							OR post_content LIKE %s
+							OR post_content LIKE %s
+						)
+						AND post_status = 'publish'
 						AND post_type IN ( {$type_placeholders} )",
 							array_merge(
 								array(
-									'%wp:ninja-forms/form {\"formID\":' . $row->id . '%',
-									'%[ninja_form id="' . $row->id . '"]%',
+									'%wp:ninja-forms/form {"formID":' . $row->id . '}%',
+									'%wp:ninja-forms/form {"formID":' . $row->id . ',%',
+									'%[ninja_form id="' . $row->id . '"%',
 									'%[ninja_form id=' . $row->id . ']%',
-									'%[ninja_form id=\'' . $row->id . '\']%',
+									'%[ninja_form id=' . $row->id . ' %',
+									"%[ninja_form id='" . $row->id . "'%",
+									'%[ninja_forms id="' . $row->id . '"%',
+									'%[ninja_forms id=' . $row->id . ']%',
+									'%[ninja_forms id=' . $row->id . ' %',
+									"%[ninja_forms id='" . $row->id . "'%",
 								),
 								$post_types
 							)
