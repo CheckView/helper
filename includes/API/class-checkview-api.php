@@ -1293,8 +1293,8 @@ class CheckView_Api {
 						WHERE 1=1
 						AND ( {$gf_where} )
 						AND post_status = 'publish'
-						AND post_type NOT IN ('kadence_wootemplate', 'kadence_element', 'revision')",
-							$gf_patterns
+						AND post_type IN ( {$type_placeholders} )",
+							array_merge( $gf_patterns, $post_types )
 						)
 					);
 					if ( $form_pages ) {
@@ -1344,23 +1344,28 @@ class CheckView_Api {
 							OR post_content LIKE %s
 						) 
 						AND post_status = 'publish' 
-						AND post_type NOT IN ('kadence_wootemplate', 'kadence_element', 'revision')",
-							'%wp:fluentfom/guten-block {"formId":"' . $row->id . '"%',
-							// The unquoted shortcode pattern was unterminated, so
-							// form 12 also matched [fluentform id=123] and
-							// silently inherited that form's pages. The two slots
-							// below previously held byte-identical duplicates, so
-							// both terminators fit without changing the
-							// placeholder count: `]` ends the shortcode, a space
-							// means further attributes follow (Fluent merges its
-							// defaults through shortcode_atts() with the
-							// `fluentform/shortcode_defaults` filter, so the
-							// accepted set is open-ended). Either way the ID is
-							// bounded. The quoted variant above is already bounded
-							// by its closing quote.
-							'%[fluentform id="' . $row->id . '"%',
-							'%[fluentform id=' . $row->id . ']%',
-							'%[fluentform id=' . $row->id . ' %'
+						AND post_type IN ( {$type_placeholders} )",
+							array_merge(
+								array(
+									'%wp:fluentfom/guten-block {"formId":"' . $row->id . '"%',
+									// The unquoted shortcode pattern was unterminated, so
+									// form 12 also matched [fluentform id=123] and
+									// silently inherited that form's pages. The two slots
+									// below previously held byte-identical duplicates, so
+									// both terminators fit without changing the
+									// placeholder count: `]` ends the shortcode, a space
+									// means further attributes follow (Fluent merges its
+									// defaults through shortcode_atts() with the
+									// `fluentform/shortcode_defaults` filter, so the
+									// accepted set is open-ended). Either way the ID is
+									// bounded. The quoted variant above is already bounded
+									// by its closing quote.
+									'%[fluentform id="' . $row->id . '"%',
+									'%[fluentform id=' . $row->id . ']%',
+									'%[fluentform id=' . $row->id . ' %',
+								),
+								$post_types
+							)
 						)
 					);
 					foreach ( $form_pages as $form_page ) {
@@ -1564,12 +1569,17 @@ class CheckView_Api {
 							OR post_content LIKE %s
 						)
 						AND post_status = 'publish'
-						AND post_type NOT IN ('kadence_wootemplate', 'kadence_element', 'revision')",
-							'%[formidable id=' . $row->id . ']%',
-							'%[formidable id=' . $row->id . ' %',
-							'%[formidable id="' . $row->id . '"%',
-							"%[formidable id='" . $row->id . "'%",
-							'%wp:formidable/simple-form {"formId":"' . $row->id . '"%'
+						AND post_type IN ( {$type_placeholders} )",
+							array_merge(
+								array(
+									'%[formidable id=' . $row->id . ']%',
+									'%[formidable id=' . $row->id . ' %',
+									'%[formidable id="' . $row->id . '"%',
+									"%[formidable id='" . $row->id . "'%",
+									'%wp:formidable/simple-form {"formId":"' . $row->id . '"%',
+								),
+								$post_types
+							)
 						)
 					);
 					if ( $form_pages ) {
@@ -1795,23 +1805,28 @@ class CheckView_Api {
 							OR post_content LIKE %s
 						) 
 						AND post_status = 'publish' 
-						AND post_type NOT IN ('kadence_wootemplate', 'kadence_element', 'revision')",
-							'%wp:wsf-block/form-add {"form_id":"' . $row->id . '"%',
-							// The unquoted shortcode pattern was unterminated, so
-							// form 12 also matched [ws_form id=123] and silently
-							// inherited that form's pages. The two slots below
-							// previously held byte-identical duplicates, so both
-							// terminators fit without changing the placeholder
-							// count: `]` ends the shortcode, a space means further
-							// attributes follow (element, element_id, class,
-							// published, preview, form_html and field_<id>
-							// population attrs — see
-							// WS_Form_Public::shortcode_ws_form). Either way the
-							// ID is bounded. The quoted variant above is already
-							// bounded by its closing quote.
-							'%[ws_form id="' . $row->id . '"%',
-							'%[ws_form id=' . $row->id . ']%',
-							'%[ws_form id=' . $row->id . ' %'
+						AND post_type IN ( {$type_placeholders} )",
+							array_merge(
+								array(
+									'%wp:wsf-block/form-add {"form_id":"' . $row->id . '"%',
+									// The unquoted shortcode pattern was unterminated, so
+									// form 12 also matched [ws_form id=123] and silently
+									// inherited that form's pages. The two slots below
+									// previously held byte-identical duplicates, so both
+									// terminators fit without changing the placeholder
+									// count: `]` ends the shortcode, a space means further
+									// attributes follow (element, element_id, class,
+									// published, preview, form_html and field_<id>
+									// population attrs — see
+									// WS_Form_Public::shortcode_ws_form). Either way the
+									// ID is bounded. The quoted variant above is already
+									// bounded by its closing quote.
+									'%[ws_form id="' . $row->id . '"%',
+									'%[ws_form id=' . $row->id . ']%',
+									'%[ws_form id=' . $row->id . ' %',
+								),
+								$post_types
+							)
 						)
 					);
 					foreach ( $form_pages as $form_page ) {
@@ -1962,49 +1977,54 @@ class CheckView_Api {
 							OR post_content LIKE %s
 						)
 						AND post_status = 'publish'
-						AND post_type NOT IN ('kadence_wootemplate', 'kadence_element', 'revision')",
-							// Verified against Everest Forms 3.5.2.
-							//
-							// The block pattern is correct as-is: `formId` is
-							// 'type' => 'string' (dist/form-selector/block.json),
-							// so it serialises quoted and the closing quote bounds
-							// the value.
-							//
-							// A second, UNQUOTED block pattern used to sit here. It
-							// is now removed. The reasoning for keeping it was
-							// self-contradictory: it was justified both as "inert,
-							// can never match current output" and as "may cover
-							// legacy unquoted output". Only one can be true, and if
-							// the legacy output existed the pattern was unbounded —
-							// form 12 would have matched {"formId":123}, the exact
-							// collision this PR fixes for the shortcode. Since
-							// formId is documented as a string with a '' default,
-							// the pattern was dead, so removing it loses nothing
-							// and drops the contradiction.
-							//
-							// The shortcode patterns are the fix. The unquoted
-							// variant was unterminated, so form 12 matched
-							// [everest_form id=123] and inherited another form's
-							// pages; it now requires the closing `]`. The
-							// single-quoted variant is newly matched — Everest's
-							// own Divi module emits exactly that form
-							// (addons/DiviBuilder/EverestFormsModule.php:137:
-							// sprintf( "[everest_form id='%s']", $form_id )), so
-							// it exists in real content on Divi sites.
-							'%wp:everest-forms/form-selector {"formId":"' . $row->ID . '"%',
-							//
-							// The unquoted variant needs BOTH terminators. The
-							// shortcode takes further attributes (`type`, `size`,
-							// `title`, `description`, `header_title`, … — see
-							// EVF_Shortcode_Form's shortcode_atts), so requiring
-							// only `]` would silently stop matching
-							// [everest_form id=N title="..."]. `]` ends the
-							// shortcode; a space means more attributes follow.
-							// Either way the ID is bounded, so 12 cannot match 123.
-							'%[everest_form id="' . $row->ID . '"%',
-							"%[everest_form id='" . $row->ID . "'%",
-							'%[everest_form id=' . $row->ID . ']%',
-							'%[everest_form id=' . $row->ID . ' %'
+						AND post_type IN ( {$type_placeholders} )",
+							array_merge(
+								array(
+									// Verified against Everest Forms 3.5.2.
+									//
+									// The block pattern is correct as-is: `formId` is
+									// 'type' => 'string' (dist/form-selector/block.json),
+									// so it serialises quoted and the closing quote bounds
+									// the value.
+									//
+									// A second, UNQUOTED block pattern used to sit here. It
+									// is now removed. The reasoning for keeping it was
+									// self-contradictory: it was justified both as "inert,
+									// can never match current output" and as "may cover
+									// legacy unquoted output". Only one can be true, and if
+									// the legacy output existed the pattern was unbounded —
+									// form 12 would have matched {"formId":123}, the exact
+									// collision this PR fixes for the shortcode. Since
+									// formId is documented as a string with a '' default,
+									// the pattern was dead, so removing it loses nothing
+									// and drops the contradiction.
+									//
+									// The shortcode patterns are the fix. The unquoted
+									// variant was unterminated, so form 12 matched
+									// [everest_form id=123] and inherited another form's
+									// pages; it now requires the closing `]`. The
+									// single-quoted variant is newly matched — Everest's
+									// own Divi module emits exactly that form
+									// (addons/DiviBuilder/EverestFormsModule.php:137:
+									// sprintf( "[everest_form id='%s']", $form_id )), so
+									// it exists in real content on Divi sites.
+									'%wp:everest-forms/form-selector {"formId":"' . $row->ID . '"%',
+									//
+									// The unquoted variant needs BOTH terminators. The
+									// shortcode takes further attributes (`type`, `size`,
+									// `title`, `description`, `header_title`, … — see
+									// EVF_Shortcode_Form's shortcode_atts), so requiring
+									// only `]` would silently stop matching
+									// [everest_form id=N title="..."]. `]` ends the
+									// shortcode; a space means more attributes follow.
+									// Either way the ID is bounded, so 12 cannot match 123.
+									'%[everest_form id="' . $row->ID . '"%',
+									"%[everest_form id='" . $row->ID . "'%",
+									'%[everest_form id=' . $row->ID . ']%',
+									'%[everest_form id=' . $row->ID . ' %',
+								),
+								$post_types
+							)
 						)
 					);
 					if ( $form_pages ) {
