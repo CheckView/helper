@@ -641,19 +641,21 @@ class Checkview_Woo_Automated_Testing {
 			return $result;
 		}
 
-		// The version segment is OPTIONAL and the match is case-insensitive.
-		// Both matter:
-		//
-		//   - WooCommerce registers every Store API route TWICE, once under
-		//     `wc/store/v1` and once under the bare `wc/store` namespace
-		//     (StoreApi/RoutesController.php:99-100). `/wc/store/products` is
-		//     therefore a live, unauthenticated route serving the same handler,
-		//     and a version-requiring pattern misses it entirely.
-		//   - `WP_REST_Server::dispatch()` matches routes case-insensitively
-		//     (`preg_match( '@^' . $route . '$@i', $path )`) but never calls
-		//     `set_route()`, so `$request->get_route()` returns the caller's
-		//     path verbatim — `/wc/store/v1/Products` dispatches fine and would
-		//     slip past a case-sensitive pattern.
+		/*
+		 * The version segment is OPTIONAL and the match is case-insensitive.
+		 * Both matter:
+		 *
+		 *   - WooCommerce registers every Store API route TWICE, once under
+		 *     `wc/store/v1` and once under the bare `wc/store` namespace
+		 *     (StoreApi/RoutesController.php:99-100). `/wc/store/products` is
+		 *     therefore a live, unauthenticated route serving the same handler,
+		 *     and a version-requiring pattern misses it entirely.
+		 *   - `WP_REST_Server::dispatch()` matches routes case-insensitively
+		 *     (`preg_match( '@^' . $route . '$@i', $path )`) but never calls
+		 *     `set_route()`, so `$request->get_route()` returns the caller's
+		 *     path verbatim — `/wc/store/v1/Products` dispatches fine and would
+		 *     slip past a case-sensitive pattern.
+		 */
 		if ( ! preg_match( '#^/wc/store/(?:v\d+/)?products(?:/collection-data)?/?$#i', (string) $request->get_route() ) ) {
 			return $result;
 		}

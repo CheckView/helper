@@ -1394,46 +1394,49 @@ class CheckView_Api {
 						'ID'   => $row->id,
 						'Name' => $row->title,
 					);
-					// Verified against Ninja Forms 3.14.11.
-					//
-					// The old block pattern was written as '{\"formID\":' inside
-					// a SINGLE-quoted PHP string, so it holds a literal
-					// backslash. It still matched real blocks, because
-					// backslash is LIKE's default escape character and MySQL
-					// reads \" as a plain quote. But it ended right after the
-					// ID, so form 7 also matched forms 71 and 712.
-					//
-					// Its `formID` attribute is registered as 'type' => 'integer'
-					// (build/form-block.js block.json), so it serialises UNQUOTED:
-					//
-					//   <!-- wp:ninja-forms/form {"formID":7} /-->
-					//   <!-- wp:ninja-forms/form {"formID":7,"formTitle":"..."} /-->
-					//
-					// Unlike Gravity Forms and Formidable — whose formId is a
-					// quoted string, and whose closing quote bounds the value —
-					// an unquoted integer has no terminator of its own.
-					// The two patterns below bound the value with `}` (formID is
-					// the only attribute) or `,` (further attributes follow),
-					// which are the only two characters that can legally end a
-					// JSON integer here.
-					//
-					// `formTitle` is declared after `formID`, and Gutenberg
-					// serialises comment attributes in registered-schema order,
-					// so `{"formID":` is a stable prefix.
-					//
-					// The quoted variants no longer require a closing `]`, and the
-					// bare variant carries BOTH terminators — `]` for the end of
-					// the shortcode and a space for further attributes. Ninja
-					// Forms ignores extra attributes but WordPress still renders
-					// them, so `[ninja_form id=12 title="x"]` is valid content
-					// that a `]`-only pattern silently missed. The ID stays
-					// bounded either way, so form 12 cannot match form 123.
-					//
-					// Ninja Forms also registers `ninja_forms` (plural) as a
-					// shortcode alias, and the block's own `deprecated` entry
-					// saved `[ninja_forms id=N]` — so that spelling exists in
-					// real post content on sites that used the older block and
-					// was never matched.
+
+					/*
+					 * Verified against Ninja Forms 3.14.11.
+					 *
+					 * The old block pattern was written as '{\"formID\":' inside
+					 * a SINGLE-quoted PHP string, so it holds a literal
+					 * backslash. It still matched real blocks, because
+					 * backslash is LIKE's default escape character and MySQL
+					 * reads \" as a plain quote. But it ended right after the
+					 * ID, so form 7 also matched forms 71 and 712.
+					 *
+					 * Its `formID` attribute is registered as 'type' => 'integer'
+					 * (build/form-block.js block.json), so it serialises UNQUOTED:
+					 *
+					 *   <!-- wp:ninja-forms/form {"formID":7} /-->
+					 *   <!-- wp:ninja-forms/form {"formID":7,"formTitle":"..."} /-->
+					 *
+					 * Unlike Gravity Forms and Formidable — whose formId is a
+					 * quoted string, and whose closing quote bounds the value —
+					 * an unquoted integer has no terminator of its own.
+					 * The two patterns below bound the value with `}` (formID is
+					 * the only attribute) or `,` (further attributes follow),
+					 * which are the only two characters that can legally end a
+					 * JSON integer here.
+					 *
+					 * `formTitle` is declared after `formID`, and Gutenberg
+					 * serialises comment attributes in registered-schema order,
+					 * so `{"formID":` is a stable prefix.
+					 *
+					 * The quoted variants no longer require a closing `]`, and the
+					 * bare variant carries BOTH terminators — `]` for the end of
+					 * the shortcode and a space for further attributes. Ninja
+					 * Forms ignores extra attributes but WordPress still renders
+					 * them, so `[ninja_form id=12 title="x"]` is valid content
+					 * that a `]`-only pattern silently missed. The ID stays
+					 * bounded either way, so form 12 cannot match form 123.
+					 *
+					 * Ninja Forms also registers `ninja_forms` (plural) as a
+					 * shortcode alias, and the block's own `deprecated` entry
+					 * saved `[ninja_forms id=N]` — so that spelling exists in
+					 * real post content on sites that used the older block and
+					 * was never matched.
+					 */
 					// WPDBPREPARE.
 					$form_pages = $wpdb->get_results(
 						$wpdb->prepare(
@@ -1536,19 +1539,21 @@ class CheckView_Api {
 		if ( is_plugin_active( 'formidable/formidable.php' ) ) {
 			$tablename = $wpdb->prefix . 'frm_forms';
 
-			// Mirror Formidable's own definition of a submittable form
-			// (FrmForm::get_published_forms(), FrmForm.php:969-975) rather than
-			// reimplementing it, so it cannot drift from upstream:
-			//
-			//   is_template = 0                  templates are not submittable
-			//   parent_form_id IN ( NULL, 0 )    child forms are the inner form of
-			//                                    a repeater/embedded field and are
-			//                                    only submitted via their parent
-			//   status IN ( NULL, '', published )
-			//
-			// That last one widens the previous `status = 'published'`: Formidable
-			// treats NULL and '' as published, so forms whose status column was
-			// never populated were silently absent from the list.
+			/*
+			 * Mirror Formidable's own definition of a submittable form
+			 * (FrmForm::get_published_forms(), FrmForm.php:969-975) rather than
+			 * reimplementing it, so it cannot drift from upstream:
+			 *
+			 *   is_template = 0                  templates are not submittable
+			 *   parent_form_id IN ( NULL, 0 )    child forms are the inner form of
+			 *                                    a repeater/embedded field and are
+			 *                                    only submitted via their parent
+			 *   status IN ( NULL, '', published )
+			 *
+			 * That last one widens the previous `status = 'published'`: Formidable
+			 * treats NULL and '' as published, so forms whose status column was
+			 * never populated were silently absent from the list.
+			 */
 			if ( is_callable( array( 'FrmForm', 'get_published_forms' ) ) ) {
 				// Default limit is 999; pass a higher one so large sites are not
 				// silently truncated.
@@ -1574,36 +1579,38 @@ class CheckView_Api {
 						'Name' => $row->name,
 					);
 
-					// Mirrors Formidable's own reference detection —
-					// FrmFormsListHelper::get_base_search_strings_for_form()
-					// (verified against Formidable 6.33.1). A form can be placed
-					// five ways; CheckView previously matched only 1 and 3:
-					//
-					//   1. [formidable id=N]
-					//   2. [formidable id=N title=false]   (extra attributes)
-					//   3. [formidable id="N"]             (what Formidable's UI emits)
-					//   4. [formidable id='N']
-					//   5. <!-- wp:formidable/simple-form {"formId":"N"} -->
-					//
-					// The old double-quoted pattern was written as
-					// '%[formidable id=\"' in a SINGLE-quoted PHP string, so it
-					// holds a literal backslash. It still matched: backslash is
-					// LIKE's default escape character, so MySQL reads \" as a
-					// plain quote. The block also saves the shortcode inside its
-					// markup, so block placements were found that way. What was
-					// missed: an unquoted id followed by more attributes (2), a
-					// single-quoted id (4), and block markup without the inner
-					// shortcode (5).
-					//
-					// Anchoring the block pattern on `{` is safe: FrmSimpleBlocks
-					// Controller registers `formId` first as 'type' => 'string',
-					// and Gutenberg serializes comment attributes in registered-
-					// schema order.
-					//
-					// Each pattern self-disambiguates by ID (closing `]`, trailing
-					// space, or closing quote), so form 12 does not match content
-					// referencing form 123. Only the integer `frm_forms.id` is
-					// interpolated, so no esc_like() handling is needed.
+					/*
+					 * Mirrors Formidable's own reference detection —
+					 * FrmFormsListHelper::get_base_search_strings_for_form()
+					 * (verified against Formidable 6.33.1). A form can be placed
+					 * five ways; CheckView previously matched only 1 and 3:
+					 *
+					 *   1. [formidable id=N]
+					 *   2. [formidable id=N title=false]   (extra attributes)
+					 *   3. [formidable id="N"]             (what Formidable's UI emits)
+					 *   4. [formidable id='N']
+					 *   5. <!-- wp:formidable/simple-form {"formId":"N"} -->
+					 *
+					 * The old double-quoted pattern was written as
+					 * '%[formidable id=\"' in a SINGLE-quoted PHP string, so it
+					 * holds a literal backslash. It still matched: backslash is
+					 * LIKE's default escape character, so MySQL reads \" as a
+					 * plain quote. The block also saves the shortcode inside its
+					 * markup, so block placements were found that way. What was
+					 * missed: an unquoted id followed by more attributes (2), a
+					 * single-quoted id (4), and block markup without the inner
+					 * shortcode (5).
+					 *
+					 * Anchoring the block pattern on `{` is safe: FrmSimpleBlocks
+					 * Controller registers `formId` first as 'type' => 'string',
+					 * and Gutenberg serializes comment attributes in registered-
+					 * schema order.
+					 *
+					 * Each pattern self-disambiguates by ID (closing `]`, trailing
+					 * space, or closing quote), so form 12 does not match content
+					 * referencing form 123. Only the integer `frm_forms.id` is
+					 * interpolated, so no esc_like() handling is needed.
+					 */
 					// WPDBPREPARE.
 					$form_pages = $wpdb->get_results(
 						$wpdb->prepare(
@@ -1703,22 +1710,24 @@ class CheckView_Api {
 						'%wp:contact-form-7/contact-form-selector {"id":' . $row->ID . '}%',
 					);
 
-					// CF7 resolves the shortcode `id` by hash FIRST and falls
-					// back to the post ID:
-					//
-					//   $contact_form = wpcf7_get_contact_form_by_hash( $id );
-					//   if ( ! $contact_form ) { $contact_form = wpcf7_contact_form( $id ); }
-					//
-					// (includes/contact-form-functions.php:248-252), so a numeric
-					// `[contact-form-7 id=123]` is valid, still renders, and is
-					// the spelling used by content predating CF7's hash ids. It
-					// was never matched before.
-					//
-					// Each is bounded — closing quote, `]`, or a space before
-					// further attributes — so post 12 cannot match post 123, and
-					// a numeric id cannot match a hash that merely begins with
-					// the same digits (a hash is far longer than the id, so the
-					// terminator never lines up).
+					/*
+					 * CF7 resolves the shortcode `id` by hash FIRST and falls
+					 * back to the post ID:
+					 *
+					 *   $contact_form = wpcf7_get_contact_form_by_hash( $id );
+					 *   if ( ! $contact_form ) { $contact_form = wpcf7_contact_form( $id ); }
+					 *
+					 * (includes/contact-form-functions.php:248-252), so a numeric
+					 * `[contact-form-7 id=123]` is valid, still renders, and is
+					 * the spelling used by content predating CF7's hash ids. It
+					 * was never matched before.
+					 *
+					 * Each is bounded — closing quote, `]`, or a space before
+					 * further attributes — so post 12 cannot match post 123, and
+					 * a numeric id cannot match a hash that merely begins with
+					 * the same digits (a hash is far longer than the id, so the
+					 * terminator never lines up).
+					 */
 					$cf7_patterns[] = '%[contact-form-7 id="' . $row->ID . '"%';
 					$cf7_patterns[] = "%[contact-form-7 id='" . $row->ID . "'%";
 					$cf7_patterns[] = '%[contact-form-7 id=' . $row->ID . ']%';

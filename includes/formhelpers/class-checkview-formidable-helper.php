@@ -114,35 +114,37 @@ if ( ! class_exists( 'Checkview_Formidable_Helper' ) ) {
 				'__return_false'
 			);
 
-			// Anti-spam bypass, precise layer.
-			//
-			// Formidable's spam pipeline (FrmEntryValidate::spam_check) has
-			// eight independent gates. Only the honeypot (above) and the
-			// captcha field type (frm_fields_to_validate) were handled. Each
-			// filter below is the documented switch for one gate, verified
-			// against Formidable 6.33.1:
-			//
-			//   frm_run_antispam    FrmAntiSpam::run_antispam() — the token
-			//                       check. Fails closed when the token is
-			//                       missing, which happens on a stale cached
-			//                       page (tokens are only valid +/- 2 days) or
-			//                       when the form is rendered without its JS.
-			//   frm_check_blacklist FrmSpamCheckWPDisallowedWords::is_enabled()
-			//                       — the only gate that is ALWAYS on. It runs
-			//                       wp_check_comment_disallowed_list() over the
-			//                       entry content, the submitting IP and the
-			//                       user agent whenever WordPress's own
-			//                       disallowed_keys option is non-empty, which
-			//                       security plugins routinely populate.
-			//   frm_check_denylist  FrmSpamCheckDenylist::is_enabled() — the
-			//                       Formidable denylist (words, emails, IPs).
-			//
-			// StopForumSpam and the WP-comment-spam check have no enable
-			// filter, and Formidable's Akismet path reads
-			// get_option( 'wordpress_api_key' ) directly rather than going
-			// through `akismet_get_api_key` above — so neither is reachable
-			// from here. Those are caught by the frm_validate_entry backstop
-			// instead.
+			/*
+			 * Anti-spam bypass, precise layer.
+			 *
+			 * Formidable's spam pipeline (FrmEntryValidate::spam_check) has
+			 * eight independent gates. Only the honeypot (above) and the
+			 * captcha field type (frm_fields_to_validate) were handled. Each
+			 * filter below is the documented switch for one gate, verified
+			 * against Formidable 6.33.1:
+			 *
+			 *   frm_run_antispam    FrmAntiSpam::run_antispam() — the token
+			 *                       check. Fails closed when the token is
+			 *                       missing, which happens on a stale cached
+			 *                       page (tokens are only valid +/- 2 days) or
+			 *                       when the form is rendered without its JS.
+			 *   frm_check_blacklist FrmSpamCheckWPDisallowedWords::is_enabled()
+			 *                       — the only gate that is ALWAYS on. It runs
+			 *                       wp_check_comment_disallowed_list() over the
+			 *                       entry content, the submitting IP and the
+			 *                       user agent whenever WordPress's own
+			 *                       disallowed_keys option is non-empty, which
+			 *                       security plugins routinely populate.
+			 *   frm_check_denylist  FrmSpamCheckDenylist::is_enabled() — the
+			 *                       Formidable denylist (words, emails, IPs).
+			 *
+			 * StopForumSpam and the WP-comment-spam check have no enable
+			 * filter, and Formidable's Akismet path reads
+			 * get_option( 'wordpress_api_key' ) directly rather than going
+			 * through `akismet_get_api_key` above — so neither is reachable
+			 * from here. Those are caught by the frm_validate_entry backstop
+			 * instead.
+			 */
 			add_filter( 'frm_run_antispam', '__return_false', PHP_INT_MAX );
 			add_filter( 'frm_check_blacklist', '__return_false', PHP_INT_MAX );
 			add_filter( 'frm_check_denylist', '__return_false', PHP_INT_MAX );
@@ -219,8 +221,8 @@ if ( ! class_exists( 'Checkview_Formidable_Helper' ) ) {
 			// Same two lines the GF and Forminator helpers use. CAVEAT: this is
 			// an INTERNAL global, not a public API, so re-verify on CleanTalk
 			// updates. Harmless when CleanTalk is not installed.
-			global $cleantalk_executed;
-			$cleantalk_executed = true;
+			global $cleantalk_executed; // phpcs:ignore WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedVariableFound -- CleanTalk-owned global.
+			$cleantalk_executed = true; // phpcs:ignore WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedVariableFound -- CleanTalk-owned global.
 		}
 		/**
 		 * Sets our email for test submissions.
