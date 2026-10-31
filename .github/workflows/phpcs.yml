@@ -1,0 +1,41 @@
+name: PHPCS
+
+on:
+  workflow_call:
+    inputs:
+      php-version:
+        description: PHP version to run PHPCS with.
+        type: string
+        default: '8.3'
+
+jobs:
+  phpcs:
+    name: PHPCS
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ inputs.php-version }}
+          tools: composer, cs2pr
+          coverage: none
+
+      - name: Cache PHPCS tooling
+        uses: actions/cache@v4
+        with:
+          path: tools/phpcs/vendor
+          key: phpcs-${{ runner.os }}-php${{ inputs.php-version }}-${{ hashFiles('tools/phpcs/composer.lock') }}
+
+      - name: Install PHPCS tooling
+        run: composer tools -- --no-interaction --no-progress
+
+      - name: Run PHPCS
+        run: composer lint -- -q --report-full --report-checkstyle=./phpcs-report.xml
+
+      - name: Annotate PR with PHPCS results
+        if: ${{ always() && hashFiles('phpcs-report.xml') != '' }}
+        run: cs2pr ./phpcs-report.xml

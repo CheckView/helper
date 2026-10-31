@@ -1,0 +1,8 @@
+name: PR checks
+
+on:
+  pull_request:
+
+jobs:
+  phpcs:
+    uses: ./.github/workflows/phpcs.yml

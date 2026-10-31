@@ -10,8 +10,12 @@ on:
       - "v*"
 
 jobs:
+  phpcs:
+    uses: ./.github/workflows/phpcs.yml
+
   tag:
     name: New tag
+    needs: phpcs
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@main
