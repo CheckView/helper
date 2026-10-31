@@ -207,7 +207,10 @@ Support and test configuration are handled through the CheckView platform. Pleas
 
 = 2.5.2-beta =
 * Security: hCaptcha is only skipped for verified CheckView test requests.
+* WooCommerce: When Disable Actions is on, CheckView test checkouts no longer reach MailerLite (MailerLite for WooCommerce): no cart, checkout email, or order sync, including order status changes after the test ends.
 * Elementor: Find forms inside a saved template that a page embeds with the Template widget or the [elementor-template] shortcode, including templates nested in templates, and list them against the pages that embed them. Also list a page once per form when the same form appears on it more than once.
+* WooCommerce: Hide CheckView testing product from the public store API.
+* Formidable: Bypass CleanTalk's spam check during CheckView tests.
 
 = 2.5.1 =
 * Release the 2.5.0 changes below. 2.5.0 was published with the wrong stable tag, so WordPress.org never offered it to sites.

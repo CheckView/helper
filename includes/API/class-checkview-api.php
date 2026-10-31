@@ -1246,30 +1246,54 @@ class CheckView_Api {
 					foreach ( $addons as $addon ) {
 						$forms['GravityForms'][ $row->id ]['addons'][] = $addon->addon_slug;
 					}
+					// Gravity Forms registers BOTH `[gravityform]` and
+					// `[gravityforms]` to the same callback
+					// (gravityforms.php:252-253). The plural is the original
+					// spelling, so it is precisely the older content that carries
+					// it. The two tags do not overlap as LIKE patterns — after
+					// `[gravityform` the singular needs a space and the plural an
+					// `s` — so each spelling needs its own set.
+					//
+					// Each spelling gets four bounded ID forms. The unquoted one
+					// was unterminated, so form 12 also matched
+					// [gravityform id=123] and silently inherited its pages: `]`
+					// ends the shortcode, a space means further attributes follow
+					// (title, description, ajax, tabindex, field_values, theme).
+					// Quoted variants are bounded by their closing quote.
+					//
+					// Single quotes are included because WordPress's own
+					// shortcode parser accepts `id="7"`, `id='7'` and `id=7`
+					// identically (wp-includes/shortcodes.php:551), so a
+					// single-quoted embed is a working form that was undiscovered.
+					$gf_patterns = array(
+						'%wp:gravityforms/form {"formId":"' . $row->id . '"%',
+					);
+					foreach ( array( 'gravityform', 'gravityforms' ) as $gf_tag ) {
+						$gf_patterns[] = '%[' . $gf_tag . ' id="' . $row->id . '"%';
+						$gf_patterns[] = '%[' . $gf_tag . " id='" . $row->id . "'%";
+						$gf_patterns[] = '%[' . $gf_tag . ' id=' . $row->id . ']%';
+						$gf_patterns[] = '%[' . $gf_tag . ' id=' . $row->id . ' %';
+					}
+
+					// Placeholder list is generated from the pattern count, not
+					// from any user-supplied value, so the interpolation below is
+					// a fixed repetition of `post_content LIKE %s`. Every actual
+					// value is still bound through $wpdb->prepare().
 					// WPDBPREPARE.
+					$gf_where = implode( ' OR ', array_fill( 0, count( $gf_patterns ), 'post_content LIKE %s' ) );
+
+					// phpcs:disable WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- Interpolated value is a generated list of LIKE %s clauses.
 					$form_pages = $wpdb->get_results(
 						$wpdb->prepare(
 							"SELECT ID, post_type FROM {$wpdb->prefix}posts
-						WHERE 1=1 
-						AND (
-							post_content LIKE %s 
-							OR post_content LIKE %s 
-							OR post_content LIKE %s  
-							OR post_content LIKE %s
-						) 
-						AND post_status = 'publish' 
+						WHERE 1=1
+						AND ( {$gf_where} )
+						AND post_status = 'publish'
 						AND post_type IN ( " . implode( ', ', array_fill( 0, count( $post_types ), '%s' ) ) . ' )',
-							array_merge(
-								array(
-									'%wp:gravityforms/form {"formId":"' . $row->id . '"%',
-									'%[gravityform id="' . $row->id . '"%',
-									'%[gravityform id=' . $row->id . '%',
-									'%[gravityform id=' . $row->id . '%',
-								),
-								$post_types
-							)
+							array_merge( $gf_patterns, $post_types )
 						)
 					);
+					// phpcs:enable WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 					if ( $form_pages ) {
 						foreach ( $form_pages as $form_page ) {
 							if ( 'wp_block' === $form_page->post_type ) {
@@ -1319,9 +1343,21 @@ class CheckView_Api {
 							array_merge(
 								array(
 									'%wp:fluentfom/guten-block {"formId":"' . $row->id . '"%',
+									// The unquoted shortcode pattern was unterminated, so
+									// form 12 also matched [fluentform id=123] and
+									// silently inherited that form's pages. The two slots
+									// below previously held byte-identical duplicates, so
+									// both terminators fit without changing the
+									// placeholder count: `]` ends the shortcode, a space
+									// means further attributes follow (Fluent merges its
+									// defaults through shortcode_atts() with the
+									// `fluentform/shortcode_defaults` filter, so the
+									// accepted set is open-ended). Either way the ID is
+									// bounded. The quoted variant above is already bounded
+									// by its closing quote.
 									'%[fluentform id="' . $row->id . '"%',
-									'%[fluentform id=' . $row->id . '%',
-									'%[fluentform id=' . $row->id . '%',
+									'%[fluentform id=' . $row->id . ']%',
+									'%[fluentform id=' . $row->id . ' %',
 								),
 								$post_types
 							)
@@ -1358,25 +1394,77 @@ class CheckView_Api {
 						'ID'   => $row->id,
 						'Name' => $row->title,
 					);
+					// Verified against Ninja Forms 3.14.11.
+					//
+					// The old block pattern was written as '{\"formID\":' inside
+					// a SINGLE-quoted PHP string, so it holds a literal
+					// backslash. It still matched real blocks, because
+					// backslash is LIKE's default escape character and MySQL
+					// reads \" as a plain quote. But it ended right after the
+					// ID, so form 7 also matched forms 71 and 712.
+					//
+					// Its `formID` attribute is registered as 'type' => 'integer'
+					// (build/form-block.js block.json), so it serialises UNQUOTED:
+					//
+					//   <!-- wp:ninja-forms/form {"formID":7} /-->
+					//   <!-- wp:ninja-forms/form {"formID":7,"formTitle":"..."} /-->
+					//
+					// Unlike Gravity Forms and Formidable — whose formId is a
+					// quoted string, and whose closing quote bounds the value —
+					// an unquoted integer has no terminator of its own.
+					// The two patterns below bound the value with `}` (formID is
+					// the only attribute) or `,` (further attributes follow),
+					// which are the only two characters that can legally end a
+					// JSON integer here.
+					//
+					// `formTitle` is declared after `formID`, and Gutenberg
+					// serialises comment attributes in registered-schema order,
+					// so `{"formID":` is a stable prefix.
+					//
+					// The quoted variants no longer require a closing `]`, and the
+					// bare variant carries BOTH terminators — `]` for the end of
+					// the shortcode and a space for further attributes. Ninja
+					// Forms ignores extra attributes but WordPress still renders
+					// them, so `[ninja_form id=12 title="x"]` is valid content
+					// that a `]`-only pattern silently missed. The ID stays
+					// bounded either way, so form 12 cannot match form 123.
+					//
+					// Ninja Forms also registers `ninja_forms` (plural) as a
+					// shortcode alias, and the block's own `deprecated` entry
+					// saved `[ninja_forms id=N]` — so that spelling exists in
+					// real post content on sites that used the older block and
+					// was never matched.
 					// WPDBPREPARE.
 					$form_pages = $wpdb->get_results(
 						$wpdb->prepare(
-							"SELECT * FROM {$wpdb->prefix}posts 
-						WHERE 1=1 
+							"SELECT ID, post_type FROM {$wpdb->prefix}posts
+						WHERE 1=1
 						AND (
-							post_content LIKE %s 
-							OR post_content LIKE %s 
-							OR post_content LIKE %s 
+							post_content LIKE %s
 							OR post_content LIKE %s
-						) 
-						AND post_status = 'publish' 
+							OR post_content LIKE %s
+							OR post_content LIKE %s
+							OR post_content LIKE %s
+							OR post_content LIKE %s
+							OR post_content LIKE %s
+							OR post_content LIKE %s
+							OR post_content LIKE %s
+							OR post_content LIKE %s
+						)
+						AND post_status = 'publish'
 						AND post_type IN ( " . implode( ', ', array_fill( 0, count( $post_types ), '%s' ) ) . ' )',
 							array_merge(
 								array(
-									'%wp:ninja-forms/form {\"formID\":' . $row->id . '%',
-									'%[ninja_form id="' . $row->id . '"]%',
+									'%wp:ninja-forms/form {"formID":' . $row->id . '}%',
+									'%wp:ninja-forms/form {"formID":' . $row->id . ',%',
+									'%[ninja_form id="' . $row->id . '"%',
 									'%[ninja_form id=' . $row->id . ']%',
-									'%[ninja_form id=\'' . $row->id . '\']%',
+									'%[ninja_form id=' . $row->id . ' %',
+									"%[ninja_form id='" . $row->id . "'%",
+									'%[ninja_forms id="' . $row->id . '"%',
+									'%[ninja_forms id=' . $row->id . ']%',
+									'%[ninja_forms id=' . $row->id . ' %',
+									"%[ninja_forms id='" . $row->id . "'%",
 								),
 								$post_types
 							)
@@ -1447,7 +1535,38 @@ class CheckView_Api {
 
 		if ( is_plugin_active( 'formidable/formidable.php' ) ) {
 			$tablename = $wpdb->prefix . 'frm_forms';
-			$results   = $wpdb->get_results( $wpdb->prepare( 'Select * from %i where 1=%d and status=%s', $tablename, 1, 'published' ) );
+
+			// Mirror Formidable's own definition of a submittable form
+			// (FrmForm::get_published_forms(), FrmForm.php:969-975) rather than
+			// reimplementing it, so it cannot drift from upstream:
+			//
+			//   is_template = 0                  templates are not submittable
+			//   parent_form_id IN ( NULL, 0 )    child forms are the inner form of
+			//                                    a repeater/embedded field and are
+			//                                    only submitted via their parent
+			//   status IN ( NULL, '', published )
+			//
+			// That last one widens the previous `status = 'published'`: Formidable
+			// treats NULL and '' as published, so forms whose status column was
+			// never populated were silently absent from the list.
+			if ( is_callable( array( 'FrmForm', 'get_published_forms' ) ) ) {
+				// Default limit is 999; pass a higher one so large sites are not
+				// silently truncated.
+				$results = FrmForm::get_published_forms( array(), 999999 );
+			} else {
+				$results = $wpdb->get_results(
+					$wpdb->prepare(
+						"SELECT * FROM %i
+						WHERE is_template = %d
+						AND ( status IS NULL OR status = '' OR status = %s )
+						AND ( parent_form_id IS NULL OR parent_form_id = %d )",
+						$tablename,
+						0,
+						'published',
+						0
+					)
+				);
+			}
 			if ( $results ) {
 				foreach ( $results as $row ) {
 					$forms['Formidable'][ $row->id ] = array(
@@ -1455,21 +1574,57 @@ class CheckView_Api {
 						'Name' => $row->name,
 					);
 
+					// Mirrors Formidable's own reference detection —
+					// FrmFormsListHelper::get_base_search_strings_for_form()
+					// (verified against Formidable 6.33.1). A form can be placed
+					// five ways; CheckView previously matched only 1 and 3:
+					//
+					//   1. [formidable id=N]
+					//   2. [formidable id=N title=false]   (extra attributes)
+					//   3. [formidable id="N"]             (what Formidable's UI emits)
+					//   4. [formidable id='N']
+					//   5. <!-- wp:formidable/simple-form {"formId":"N"} -->
+					//
+					// The old double-quoted pattern was written as
+					// '%[formidable id=\"' in a SINGLE-quoted PHP string, so it
+					// holds a literal backslash. It still matched: backslash is
+					// LIKE's default escape character, so MySQL reads \" as a
+					// plain quote. The block also saves the shortcode inside its
+					// markup, so block placements were found that way. What was
+					// missed: an unquoted id followed by more attributes (2), a
+					// single-quoted id (4), and block markup without the inner
+					// shortcode (5).
+					//
+					// Anchoring the block pattern on `{` is safe: FrmSimpleBlocks
+					// Controller registers `formId` first as 'type' => 'string',
+					// and Gutenberg serializes comment attributes in registered-
+					// schema order.
+					//
+					// Each pattern self-disambiguates by ID (closing `]`, trailing
+					// space, or closing quote), so form 12 does not match content
+					// referencing form 123. Only the integer `frm_forms.id` is
+					// interpolated, so no esc_like() handling is needed.
 					// WPDBPREPARE.
 					$form_pages = $wpdb->get_results(
 						$wpdb->prepare(
 							"SELECT ID, post_type FROM {$wpdb->prefix}posts
-						WHERE 1=1 
+						WHERE 1=1
 						AND (
-							post_content LIKE %s 
+							post_content LIKE %s
 							OR post_content LIKE %s
-						) 
-						AND post_status = 'publish' 
+							OR post_content LIKE %s
+							OR post_content LIKE %s
+							OR post_content LIKE %s
+						)
+						AND post_status = 'publish'
 						AND post_type IN ( " . implode( ', ', array_fill( 0, count( $post_types ), '%s' ) ) . ' )',
 							array_merge(
 								array(
-									'%[formidable id=\"' . $row->id . '\"%',
 									'%[formidable id=' . $row->id . ']%',
+									'%[formidable id=' . $row->id . ' %',
+									'%[formidable id="' . $row->id . '"%',
+									"%[formidable id='" . $row->id . "'%",
+									'%wp:formidable/simple-form {"formId":"' . $row->id . '"%',
 								),
 								$post_types
 							)
@@ -1510,33 +1665,142 @@ class CheckView_Api {
 			$results = get_posts( $args );
 			if ( $results ) {
 				foreach ( $results as $row ) {
-					$hash                     = substr( get_post_meta( $row->ID, '_hash', true ), 0, absint( 7 ) );
+					$hash = substr( get_post_meta( $row->ID, '_hash', true ), 0, absint( 7 ) );
+
+					// Fall back to the post ID when `_hash` is missing. Without
+					// this, a hash-less form was reported to the SaaS with
+					// `ID => ''` — page discovery below now finds it, but the form
+					// itself was unidentifiable, so the guard alone left it
+					// half-broken.
+					//
+					// The post ID is a valid substitute rather than a placeholder:
+					// CF7 resolves the shortcode `id` by hash FIRST and falls back
+					// to the post ID (includes/contact-form-functions.php:248-252),
+					// so both identify the same form to CF7 itself.
 					$forms['CF7'][ $row->ID ] = array(
-						'ID'   => $hash,
+						'ID'   => '' !== $hash ? $hash : (string) $row->ID,
 						'Name' => $row->post_title,
 					);
 
+					// Verified against Contact Form 7 6.1.6.
+					//
+					// The block stores the numeric POST ID in `id`
+					// ('type' => 'integer' in includes/block-editor/block.json,
+					// set as `id: parseInt(t)` in index.js) and keeps the hash in
+					// a separate `hash` string attribute. The old pattern looked
+					// for the 7-char hash, quoted, in the `id` slot —
+					// `{"id":"<hash>` — which never matched a real block, so a
+					// CF7 form placed with the block editor was never attributed
+					// to a page.
+					//
+					// Matching on the integer post ID needs an explicit
+					// terminator, since an unquoted integer has none: `,` (the
+					// editor always writes `hash` next) or `}` (defensive, if
+					// `id` were ever the only attribute). Without it, post 12
+					// would match post 123.
+					$cf7_patterns = array(
+						'%wp:contact-form-7/contact-form-selector {"id":' . $row->ID . ',%',
+						'%wp:contact-form-7/contact-form-selector {"id":' . $row->ID . '}%',
+					);
+
+					// CF7 resolves the shortcode `id` by hash FIRST and falls
+					// back to the post ID:
+					//
+					//   $contact_form = wpcf7_get_contact_form_by_hash( $id );
+					//   if ( ! $contact_form ) { $contact_form = wpcf7_contact_form( $id ); }
+					//
+					// (includes/contact-form-functions.php:248-252), so a numeric
+					// `[contact-form-7 id=123]` is valid, still renders, and is
+					// the spelling used by content predating CF7's hash ids. It
+					// was never matched before.
+					//
+					// Each is bounded — closing quote, `]`, or a space before
+					// further attributes — so post 12 cannot match post 123, and
+					// a numeric id cannot match a hash that merely begins with
+					// the same digits (a hash is far longer than the id, so the
+					// terminator never lines up).
+					$cf7_patterns[] = '%[contact-form-7 id="' . $row->ID . '"%';
+					$cf7_patterns[] = "%[contact-form-7 id='" . $row->ID . "'%";
+					$cf7_patterns[] = '%[contact-form-7 id=' . $row->ID . ']%';
+					$cf7_patterns[] = '%[contact-form-7 id=' . $row->ID . ' %';
+
+					// Hash-based shortcodes are only searched when a hash exists.
+					//
+					// `_hash` is written by add_post_meta() on save
+					// (includes/contact-form.php:1292), so a form created before
+					// CF7 introduced hash ids and never re-saved since — or one
+					// inserted by an import or migration — has none.
+					// get_post_meta() then returns '' and $hash is ''.
+					//
+					// Interpolating that produced `%[contact-form-7 id="%`, which
+					// matches EVERY CF7 shortcode on the site: the form claimed
+					// every page containing any CF7 form. That is the same
+					// wrong-attribution failure as an unbounded id, with a far
+					// wider blast radius, so the degenerate patterns are simply
+					// not emitted. Such a form is still discoverable through the
+					// block and numeric-id patterns above.
+					//
+					// The hash patterns deliberately do NOT close the quote:
+					// $hash is a 7-char prefix of the full hash CF7 writes into
+					// `[contact-form-7 id="<full hash>" title="..."]`
+					// (includes/contact-form.php:1369), so prefix matching is
+					// required. Collision needs two forms sharing the same 7 hex
+					// chars (~1 in 268M per pair).
+					if ( '' !== $hash ) {
+						$cf7_patterns[] = '%[contact-form-7 id="' . $hash . '%';
+						$cf7_patterns[] = "%[contact-form-7 id='" . $hash . '%';
+					} else {
+						Checkview_Admin_Logs::add(
+							'api-logs',
+							'CF7 form [' . $row->ID . '] has no _hash meta; skipping hash-based page discovery for it (block and numeric-id patterns still apply).'
+						);
+					}
+
+					// CF7 still registers `[contact-form]` alongside
+					// `[contact-form-7]` (load.php:136-137), for content written
+					// before CF7 3.0. It does NOT take the same id: the legacy
+					// branch reads the first positional attribute and resolves it
+					// through the `_old_cf7_unit_id` post meta
+					// (contact-form-functions.php:258-264, :24-39), so the number
+					// in `[contact-form 1]` is an old unit id, unrelated to the
+					// post ID or the hash. Matching post IDs here would attribute
+					// other forms' pages to this one.
+					//
+					// Only forms migrated from pre-3.0 CF7 carry that meta, so on
+					// a modern install this adds no patterns at all.
+					$old_unit_id = get_post_meta( $row->ID, '_old_cf7_unit_id', true );
+					if ( '' !== $old_unit_id && is_numeric( $old_unit_id ) ) {
+						$old_unit_id = absint( $old_unit_id );
+						// Bounded, or form 1 also matches `[contact-form 12]`.
+						$cf7_patterns[] = '%[contact-form ' . $old_unit_id . ']%';
+						$cf7_patterns[] = '%[contact-form ' . $old_unit_id . ' %';
+					}
+
+					// Placeholder list is generated from the pattern count, not
+					// from any user-supplied value, so the interpolation below is
+					// a fixed repetition of `post_content LIKE %s`. Every actual
+					// value is still bound through $wpdb->prepare().
+					// WPDBPREPARE.
+					$cf7_where = implode( ' OR ', array_fill( 0, count( $cf7_patterns ), 'post_content LIKE %s' ) );
+
+					// phpcs:disable WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- Interpolated value is a generated list of LIKE %s clauses.
 					$form_pages = $wpdb->get_results(
 						$wpdb->prepare(
 							"SELECT ID, post_type FROM {$wpdb->prefix}posts
 						WHERE 1=1
 						AND (
-							(post_content LIKE %s OR post_content LIKE %s OR post_content LIKE %s OR post_content LIKE %s)
+							( {$cf7_where} )
 							AND post_status = %s
 							AND post_type IN ( " . implode( ', ', array_fill( 0, count( $post_types ), '%s' ) ) . ' )
 						)',
 							array_merge(
-								array(
-									'%wp:contact-form-7/contact-form-selector {"id":"' . $hash . '%',
-									'%[contact-form-7 id="' . $hash . '%',
-									'%[contact-form-7 id=' . $hash . '%',
-									'%[contact-form-7 id=' . $hash . '%',
-									'publish',
-								),
+								$cf7_patterns,
+								array( 'publish' ),
 								$post_types
 							)
 						)
 					);
+					// phpcs:enable WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 					if ( $form_pages ) {
 						foreach ( $form_pages as $form_page ) {
 							if ( ! empty( $form_page->post_type ) && 'wp_block' === $form_page->post_type ) {
@@ -1588,9 +1852,21 @@ class CheckView_Api {
 							array_merge(
 								array(
 									'%wp:wsf-block/form-add {"form_id":"' . $row->id . '"%',
+									// The unquoted shortcode pattern was unterminated, so
+									// form 12 also matched [ws_form id=123] and silently
+									// inherited that form's pages. The two slots below
+									// previously held byte-identical duplicates, so both
+									// terminators fit without changing the placeholder
+									// count: `]` ends the shortcode, a space means further
+									// attributes follow (element, element_id, class,
+									// published, preview, form_html and field_<id>
+									// population attrs — see
+									// WS_Form_Public::shortcode_ws_form). Either way the
+									// ID is bounded. The quoted variant above is already
+									// bounded by its closing quote.
 									'%[ws_form id="' . $row->id . '"%',
-									'%[ws_form id=' . $row->id . '%',
-									'%[ws_form id=' . $row->id . '%',
+									'%[ws_form id=' . $row->id . ']%',
+									'%[ws_form id=' . $row->id . ' %',
 								),
 								$post_types
 							)
@@ -1641,16 +1917,48 @@ class CheckView_Api {
 							"SELECT ID, post_type FROM {$wpdb->prefix}posts
 						WHERE 1=1
 						AND (
-							(post_content LIKE %s OR post_content LIKE %s OR post_content LIKE %s OR post_content LIKE %s)
+							(post_content LIKE %s OR post_content LIKE %s OR post_content LIKE %s OR post_content LIKE %s OR post_content LIKE %s)
 							AND post_status = %s
 							AND post_type IN ( " . implode( ', ', array_fill( 0, count( $post_types ), '%s' ) ) . ' )
 						)',
+							// Verified against Forminator 1.56.0.
+							//
+							// The block attribute is `module_id`, not `id`
+							// (registerBlockType("forminator/forms", { attributes:
+							// { module_id: { type: "string" }, alignment: ... } })
+							// in addons/pro/gutenberg/js/forms-block.min.js), so
+							// the old `{"id":"N` pattern never matched a real
+							// block and a Forminator form placed with the block
+							// editor was never attributed to a page.
+							//
+							// `module_id` is a string and is declared first, so
+							// `{"module_id":"N"` is a stable, quote-bounded prefix.
+							//
+							// The shortcode quote is now closed. Previously
+							// `[forminator_form id="N` was unterminated, so form
+							// 12 matched form 123 and silently inherited another
+							// form's pages — attributing wrong pages rather than
+							// missing them. Forminator's canonical shortcode is
+							// double-quoted ([forminator_form id="276"]); the
+							// single-quoted variant is accepted for hand-authored
+							// content and replaces a slot that previously held a
+							// duplicate of the unquoted pattern.
+							//
+							// The unquoted variant needs BOTH terminators. The
+							// shortcode takes further attributes (`is_preview`,
+							// `preview_data`, `is_block_editor` — see
+							// Forminator_Render_Form::render_shortcode), so
+							// requiring only `]` would silently stop matching
+							// [forminator_form id=N is_preview=true]. `]` ends the
+							// shortcode; a space means more attributes follow.
+							// Either way the ID is bounded, so 12 cannot match 123.
 							array_merge(
 								array(
-									'%wp:forminator/forms {"id":"' . $row->ID . '%',
-									'%[forminator_form id="' . $row->ID . '%',
-									'%[forminator_form id=' . $row->ID . '%',
-									'%[forminator_form id=' . $row->ID . '%',
+									'%wp:forminator/forms {"module_id":"' . $row->ID . '"%',
+									'%[forminator_form id="' . $row->ID . '"%',
+									"%[forminator_form id='" . $row->ID . "'%",
+									'%[forminator_form id=' . $row->ID . ']%',
+									'%[forminator_form id=' . $row->ID . ' %',
 									'publish',
 								),
 								$post_types
@@ -1708,15 +2016,54 @@ class CheckView_Api {
 							OR post_content LIKE %s
 							OR post_content LIKE %s
 							OR post_content LIKE %s
+							OR post_content LIKE %s
 						)
 						AND post_status = 'publish'
 						AND post_type IN ( " . implode( ', ', array_fill( 0, count( $post_types ), '%s' ) ) . ' )',
 							array_merge(
 								array(
+									// Verified against Everest Forms 3.5.2.
+									//
+									// The block pattern is correct as-is: `formId` is
+									// 'type' => 'string' (dist/form-selector/block.json),
+									// so it serialises quoted and the closing quote bounds
+									// the value.
+									//
+									// A second, UNQUOTED block pattern used to sit here. It
+									// is now removed. The reasoning for keeping it was
+									// self-contradictory: it was justified both as "inert,
+									// can never match current output" and as "may cover
+									// legacy unquoted output". Only one can be true, and if
+									// the legacy output existed the pattern was unbounded —
+									// form 12 would have matched {"formId":123}, the exact
+									// collision this PR fixes for the shortcode. Since
+									// formId is documented as a string with a '' default,
+									// the pattern was dead, so removing it loses nothing
+									// and drops the contradiction.
+									//
+									// The shortcode patterns are the fix. The unquoted
+									// variant was unterminated, so form 12 matched
+									// [everest_form id=123] and inherited another form's
+									// pages; it now requires the closing `]`. The
+									// single-quoted variant is newly matched — Everest's
+									// own Divi module emits exactly that form
+									// (addons/DiviBuilder/EverestFormsModule.php:137:
+									// sprintf( "[everest_form id='%s']", $form_id )), so
+									// it exists in real content on Divi sites.
 									'%wp:everest-forms/form-selector {"formId":"' . $row->ID . '"%',
-									'%wp:everest-forms/form-selector {"formId":' . $row->ID . '%',
+									//
+									// The unquoted variant needs BOTH terminators. The
+									// shortcode takes further attributes (`type`, `size`,
+									// `title`, `description`, `header_title`, … — see
+									// EVF_Shortcode_Form's shortcode_atts), so requiring
+									// only `]` would silently stop matching
+									// [everest_form id=N title="..."]. `]` ends the
+									// shortcode; a space means more attributes follow.
+									// Either way the ID is bounded, so 12 cannot match 123.
 									'%[everest_form id="' . $row->ID . '"%',
-									'%[everest_form id=' . $row->ID . '%',
+									"%[everest_form id='" . $row->ID . "'%",
+									'%[everest_form id=' . $row->ID . ']%',
+									'%[everest_form id=' . $row->ID . ' %',
 								),
 								$post_types
 							)
@@ -1905,7 +2252,7 @@ class CheckView_Api {
 						"SELECT ID, post_type, post_content FROM {$wpdb->prefix}posts
 						WHERE post_content LIKE %s
 						AND post_status = 'publish'
-						AND post_type IN ( {$type_placeholders} )
+						AND post_type IN ( " . implode( ', ', array_fill( 0, count( $post_types ), '%s' ) ) . " )
 						AND post_type <> 'elementor_library'",
 						array_merge( array( $shortcode_pattern ), $post_types )
 					)

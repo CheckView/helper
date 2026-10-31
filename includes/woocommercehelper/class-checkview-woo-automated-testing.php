@@ -180,6 +180,46 @@ class Checkview_Woo_Automated_Testing {
 				'checkview_mailchimp_should_push_order'
 			);
 
+			// MailerLite for WooCommerce kill-switch: strips the plugin's
+			// cart/checkout/order hook callbacks for the current test request.
+			// Registered always-on (NOT inside checkview_test_mode, which skips
+			// is_admin()) because the plugin pushes the checkout email to
+			// MailerLite from an admin-ajax.php request
+			// (`woo_mailerlite_set_cart_email`). The callback gates itself on
+			// the test ID + `disable_*_<uuid>` options. `init @ 99` runs after
+			// `checkview_init_current_test` (`init @ 10`) and after the plugin
+			// registers its hooks (`plugins_loaded @ 12`).
+			$this->loader->add_action(
+				'init',
+				$this,
+				'checkview_mailerlite_killswitch',
+				99,
+				0
+			);
+
+			// MailerLite order-sync backstop for requests the kill-switch never
+			// sees (gateway callbacks, cron, admin edits after the test ends).
+			// Stamps the plugin's own `order_sent` short-circuit transient on
+			// test orders. Runs after `checkview_stamp_order_meta`
+			// (STAMP_PRIORITY) on order creation/save, and before the plugin's
+			// `handleOrderStatusChanged` (priority 10) on its trigger hooks.
+			$checkview_mailerlite_order_hooks = array(
+				'woocommerce_new_order'               => self::STAMP_PRIORITY + 1,
+				'woocommerce_after_order_object_save' => self::STAMP_PRIORITY + 1,
+				'woocommerce_order_status_changed'    => 1,
+				'woocommerce_saved_order_items'       => 1,
+				'woocommerce_order_status_completed'  => 1,
+			);
+			foreach ( $checkview_mailerlite_order_hooks as $hook_name => $priority ) {
+				$this->loader->add_action(
+					$hook_name,
+					$this,
+					'checkview_mailerlite_block_order_sync',
+					$priority,
+					1
+				);
+			}
+
 			// Hide CheckView test orders from the WooCommerce REST API so
 			// pull-based integrations (Shippo et al.) that poll
 			// `GET /wc/v3/orders` with store API keys never ingest them. The
@@ -210,6 +250,32 @@ class Checkview_Woo_Automated_Testing {
 				'checkview_exclude_test_orders_from_rest',
 				10,
 				2
+			);
+
+			// Hide the test product from the unauthenticated Store API. The
+			// product's `product_visibility` terms are correct — the shop
+			// archive is clean and `?catalog_visibility=visible` excludes it —
+			// but Store API only builds the `product_visibility` tax_query when
+			// the request supplies a `catalog_visibility` param, so a request
+			// without one applies NO visibility filtering at all and returns
+			// hidden products. Verified in WC 10.9.4,
+			// StoreApi/Utilities/ProductQuery::prepare_objects_query().
+			//
+			// Registered always-on (NOT behind the is_bot() gate in
+			// checkview_test_mode) because a third-party Store API poll is not a
+			// bot request — same reasoning as the orders REST guard above.
+			//
+			// Via rest_pre_dispatch rather than a bare pre_get_posts: Store API
+			// exposes no query-args filter to hook (ProductQuery has one
+			// apply_filters, for pricing; the Products route has none), so
+			// pre_get_posts is the only seam — and it must be attached for this
+			// request only, never globally on customer front-end traffic.
+			$this->loader->add_filter(
+				'rest_pre_dispatch',
+				$this,
+				'checkview_maybe_hide_test_product_from_store_api',
+				10,
+				3
 			);
 
 			$this->loader->add_filter(
@@ -543,6 +609,122 @@ class Checkview_Woo_Automated_Testing {
 		$args['post__not_in'][] = (int) $product_id;
 
 		return $args;
+	}
+
+	/**
+	 * Attaches the Store API product exclusion to this request only.
+	 *
+	 * Runs on `rest_pre_dispatch` for every REST request, matches the Store API
+	 * product-listing routes, and only then registers the `pre_get_posts`
+	 * callback — so no global query filter is added to ordinary front-end
+	 * traffic. Returns `$result` untouched; this is a filter purely for its
+	 * position in the request lifecycle.
+	 *
+	 * Matches `/wc/store/vN/products` and `/wc/store/vN/products/collection-data`.
+	 * The version is matched loosely so a future Store API v2 is covered.
+	 * `collection-data` is included because it derives its price range and
+	 * counts from a real WP_Query whose generated SQL becomes a subquery
+	 * (ProductQueryFilters), so the test product otherwise drags the store's
+	 * price-filter minimum down to its own price. Single-product reads
+	 * (`/products/<id>`) are deliberately not matched — a direct fetch by ID is
+	 * not a listing leak, and hiding it would only turn a known ID into a 404.
+	 *
+	 * @since 2.3.1
+	 *
+	 * @param mixed            $result  Dispatch result, passed through unchanged.
+	 * @param \WP_REST_Server  $server  REST server instance (unused).
+	 * @param \WP_REST_Request $request The REST request being dispatched.
+	 * @return mixed The unmodified `$result`.
+	 */
+	public function checkview_maybe_hide_test_product_from_store_api( $result, $server, $request ) {
+		if ( ! is_object( $request ) || ! method_exists( $request, 'get_route' ) ) {
+			return $result;
+		}
+
+		// The version segment is OPTIONAL and the match is case-insensitive.
+		// Both matter:
+		//
+		//   - WooCommerce registers every Store API route TWICE, once under
+		//     `wc/store/v1` and once under the bare `wc/store` namespace
+		//     (StoreApi/RoutesController.php:99-100). `/wc/store/products` is
+		//     therefore a live, unauthenticated route serving the same handler,
+		//     and a version-requiring pattern misses it entirely.
+		//   - `WP_REST_Server::dispatch()` matches routes case-insensitively
+		//     (`preg_match( '@^' . $route . '$@i', $path )`) but never calls
+		//     `set_route()`, so `$request->get_route()` returns the caller's
+		//     path verbatim — `/wc/store/v1/Products` dispatches fine and would
+		//     slip past a case-sensitive pattern.
+		if ( ! preg_match( '#^/wc/store/(?:v\d+/)?products(?:/collection-data)?/?$#i', (string) $request->get_route() ) ) {
+			return $result;
+		}
+
+		if ( empty( get_option( 'checkview_woo_product_id' ) ) ) {
+			return $result;
+		}
+
+		add_filter( 'posts_where', array( $this, 'checkview_exclude_test_product_from_store_api_query' ), 10, 2 );
+
+		return $result;
+	}
+
+	/**
+	 * Excludes the CheckView test product from a Store API product query by
+	 * appending an explicit `ID != x` clause to the WHERE.
+	 *
+	 * Only ever hooked for the duration of a matched Store API request by
+	 * `checkview_maybe_hide_test_product_from_store_api()`. Left registered for
+	 * the rest of that request on purpose: the collection-data endpoint builds
+	 * several WP_Query instances and each one needs the exclusion.
+	 *
+	 * Why a WHERE clause and not `post__not_in`: `WP_Query::get_posts()`
+	 * resolves post-ID restrictions through an if/elseif chain —
+	 * `p` then `post__in` then `post__not_in` (class-wp-query.php:2131-2140).
+	 * Store API maps its own `include` request param straight into `post__in`
+	 * (StoreApi/Utilities/ProductQuery.php:32) and writes it again for
+	 * `on_sale=true` (:199), so ANY request carrying `include` would have made
+	 * `post__not_in` unreachable and the test product would have been returned.
+	 * An appended WHERE clause is additive and cannot be superseded that way.
+	 *
+	 * `post_type` is read as an array because Store API widens it to
+	 * `array( 'product', 'product_variation' )` whenever a `sku` or `slug`
+	 * param is present (ProductQuery.php:47-49) — the test product's slug is
+	 * deterministic, so a string comparison here would have let
+	 * `?slug=checkview-testing-product` through.
+	 *
+	 * The clause also propagates to `/products/collection-data`, which derives
+	 * its price range and counts from `$query->request` (ProductQueryFilters).
+	 *
+	 * @since 2.3.1
+	 *
+	 * @param string    $where WHERE clause of the query.
+	 * @param \WP_Query $query The query being prepared.
+	 * @return string Possibly modified WHERE clause.
+	 */
+	public function checkview_exclude_test_product_from_store_api_query( $where, $query = null ) {
+		global $wpdb;
+
+		if ( ! is_object( $query ) || ! method_exists( $query, 'get' ) ) {
+			return $where;
+		}
+
+		if ( ! in_array( 'product', (array) $query->get( 'post_type' ), true ) ) {
+			return $where;
+		}
+
+		$product_id = (int) get_option( 'checkview_woo_product_id' );
+		if ( $product_id <= 0 ) {
+			return $where;
+		}
+
+		$clause = $wpdb->prepare( " AND {$wpdb->posts}.ID != %d ", $product_id );
+
+		// Idempotent: collection-data runs this several times per request and
+		// `prepare()` output is deterministic for a given id.
+		if ( false !== strpos( $where, $clause ) ) {
+			return $where;
+		}
+
+		return $where . $clause;
 	}
 
 	/**
@@ -1215,6 +1397,192 @@ class Checkview_Woo_Automated_Testing {
 		}
 
 		return $order_id;
+	}
+
+	/**
+	 * MailerLite for WooCommerce kill-switch — strips the plugin's hook
+	 * callbacks for the current CheckView test request.
+	 *
+	 * MailerLite for WooCommerce (`woo-mailerlite`, verified against 3.1.26)
+	 * exposes no per-order or per-request suppression filter. It pushes test
+	 * data to MailerLite from:
+	 *   - `WooMailerLiteService::setCartEmail` (admin-ajax
+	 *     `woo_mailerlite_set_cart_email`, fired as soon as the checkout email
+	 *     is typed) and `handleCheckoutPage`, both calling `sendCart()`;
+	 *   - `WooMailerLiteService::handleCartUpdated` (cart table writes that
+	 *     feed `sendCart()`);
+	 *   - `WooMailerLiteOrderController::handleOrderStatusChanged`
+	 *     (`syncOrder()`, creates the customer/subscriber);
+	 *   - `WooMailerLitePluginController` / `WooMailerLitePublic` (checkout
+	 *     checkbox, public JS that calls the AJAX endpoint, universal.js
+	 *     tracking).
+	 * All are instance callbacks registered via the plugin's loader on
+	 * `plugins_loaded @ 12`, so an instance sweep at `init @ 99` removes them
+	 * before any cart, checkout, AJAX or order event fires.
+	 *
+	 * Option gate mirrors `checkview_mailchimp_killswitch`: only engages when
+	 * the SaaS sent `disable_actions=true` or `disable_webhooks=true` for this
+	 * test. Honors `cv_suppression_kill_switch`.
+	 *
+	 * Test ID source: `CV_TEST_ID` when defined. On admin-ajax requests only,
+	 * falls back to `get_checkview_test_id()` (referer/cookie), because the
+	 * checkout AJAX call may not carry the signed-request header that
+	 * `CheckView::is_bot()` requires. A forged cookie only works while a real
+	 * test's `disable_*_<uuid>` option is active, and only suppresses
+	 * MailerLite for that visitor's own request.
+	 *
+	 * @since 2.5.2
+	 *
+	 * @return void
+	 */
+	public function checkview_mailerlite_killswitch() {
+		if ( ! class_exists( 'WooMailerLite' ) ) {
+			return;
+		}
+
+		$test_id = $this->checkview_mailerlite_suppressed_test_id();
+		if ( ! $test_id ) {
+			return;
+		}
+
+		$removed = $this->checkview_remove_hooks_by_instance(
+			array(
+				'WooMailerLiteService',
+				'WooMailerLiteOrderController',
+				'WooMailerLitePluginController',
+				'WooMailerLitePublic',
+			)
+		);
+
+		Checkview_Admin_Logs::add(
+			'ip-logs',
+			'MailerLite kill-switch: removed ' . $removed . ' woo-mailerlite hook callback(s) for test [' . $test_id . '].'
+		);
+	}
+
+	/**
+	 * Returns the active CheckView test ID when MailerLite should be
+	 * suppressed for the current request, false otherwise.
+	 *
+	 * @since 2.5.2
+	 *
+	 * @return string|false
+	 */
+	private function checkview_mailerlite_suppressed_test_id() {
+		if ( get_option( 'cv_suppression_kill_switch' ) === 'true' ) {
+			return false;
+		}
+
+		$test_id = false;
+		if ( defined( 'CV_TEST_ID' ) && CV_TEST_ID ) {
+			$test_id = CV_TEST_ID;
+		} elseif ( wp_doing_ajax() && function_exists( 'get_checkview_test_id' ) ) {
+			$test_id = get_checkview_test_id();
+		}
+
+		if ( ! $test_id ) {
+			return false;
+		}
+
+		$suppress = ( get_option( 'disable_actions_' . $test_id ) === 'true' )
+				|| ( get_option( 'disable_webhooks_' . $test_id ) === 'true' );
+
+		return $suppress ? $test_id : false;
+	}
+
+	/**
+	 * Removes every registered hook callback whose object is an instance of
+	 * one of the given classes. Collect-then-remove so `$wp_filter` is never
+	 * mutated mid-iteration. Absent classes are skipped.
+	 *
+	 * @since 2.5.2
+	 *
+	 * @param string[] $class_names Class names to match.
+	 * @return int Number of callbacks removed.
+	 */
+	private function checkview_remove_hooks_by_instance( array $class_names ) {
+		$class_names = array_values( array_filter( $class_names, 'class_exists' ) );
+		if ( empty( $class_names ) ) {
+			return 0;
+		}
+
+		global $wp_filter;
+		$targets = array();
+
+		foreach ( $wp_filter as $hook_name => $hook ) {
+			if ( ! ( $hook instanceof WP_Hook ) ) {
+				continue;
+			}
+			foreach ( $hook->callbacks as $priority => $callbacks ) {
+				foreach ( $callbacks as $cb ) {
+					$fn = isset( $cb['function'] ) ? $cb['function'] : null;
+					if ( ! is_array( $fn ) || ! isset( $fn[0] ) || ! is_object( $fn[0] ) ) {
+						continue;
+					}
+					foreach ( $class_names as $class_name ) {
+						if ( $fn[0] instanceof $class_name ) {
+							$targets[] = array( $hook_name, $fn, $priority );
+							break;
+						}
+					}
+				}
+			}
+		}
+
+		foreach ( $targets as $target ) {
+			remove_action( $target[0], $target[1], $target[2] );
+		}
+
+		return count( $targets );
+	}
+
+	/**
+	 * Blocks MailerLite for WooCommerce from syncing CheckView test orders.
+	 *
+	 * `WooMailerLiteOrderController::handleOrderStatusChanged` returns early
+	 * when the transient `woo_mailerlite_order_sent:<order_id>` is set (the
+	 * plugin's own dedupe, written via `WooMailerLiteCache`). Setting it for
+	 * test orders covers status changes outside the test request (gateway
+	 * callbacks, cron, admin edits), which the per-request kill-switch never
+	 * sees. Stamped while the test is still active (order creation/save), so
+	 * the block outlives `complete_checkview_test()` deleting the
+	 * `disable_*_<uuid>` options.
+	 *
+	 * Relies on an internal plugin key. If MailerLite renames it, this fails
+	 * open (orders sync, no error).
+	 *
+	 * @since 2.5.2
+	 *
+	 * @param int|WC_Order $order Order ID or order object, depending on hook.
+	 * @return void
+	 */
+	public function checkview_mailerlite_block_order_sync( $order ) {
+		if ( ! class_exists( 'WooMailerLite' ) || ! function_exists( 'cv_is_suppressible_test_order' ) ) {
+			return;
+		}
+		// Cleanup cron deletes test orders; deletion fires save hooks.
+		if ( doing_action( 'checkview_delete_orders_action' ) ) {
+			return;
+		}
+
+		// Cheap meta check first: `woocommerce_after_order_object_save` fires
+		// on every save of every order, real customers included.
+		if ( ! cv_is_suppressible_test_order( $order ) ) {
+			return;
+		}
+
+		$order_id  = is_object( $order ) ? (int) $order->get_id() : (int) $order;
+		$transient = 'woo_mailerlite_order_sent:' . $order_id;
+		if ( get_transient( $transient ) ) {
+			return;
+		}
+
+		set_transient( $transient, true, DAY_IN_SECONDS );
+
+		Checkview_Admin_Logs::add(
+			'ip-logs',
+			'MailerLite kill-switch: blocked order sync for test order [' . $order_id . '].'
+		);
 	}
 
 	/**
