@@ -211,6 +211,7 @@ Support and test configuration are handled through the CheckView platform. Pleas
 * Elementor: Find forms inside a saved template that a page embeds with the Template widget or the [elementor-template] shortcode, including templates nested in templates, and list them against the pages that embed them. Also list a page once per form when the same form appears on it more than once.
 * WooCommerce: Hide CheckView testing product from the public store API.
 * Formidable: Bypass CleanTalk's spam check during CheckView tests.
+* Formidable: On Formidable 7.0 and later, a CheckView test flagged by StopForumSpam, Akismet or the WordPress comment spam check is no longer saved as a spam entry, which also stopped its notification email.
 
 = 2.5.1 =
 * Release the 2.5.0 changes below. 2.5.0 was published with the wrong stable tag, so WordPress.org never offered it to sites.
