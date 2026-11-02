@@ -1426,8 +1426,8 @@ class Checkview_Woo_Automated_Testing {
 	 * the SaaS sent `disable_actions=true` or `disable_webhooks=true` for this
 	 * test. Honors `cv_suppression_kill_switch`.
 	 *
-	 * Test ID source: `CV_TEST_ID` when defined. On admin-ajax requests only,
-	 * falls back to `get_checkview_test_id()` (referer/cookie), because the
+	 * Test ID source: `CHECKVIEW_TEST_ID` when defined. On admin-ajax requests only,
+	 * falls back to `checkview_get_test_id()` (referer/cookie), because the
 	 * checkout AJAX call may not carry the signed-request header that
 	 * `CheckView::is_bot()` requires. A forged cookie only works while a real
 	 * test's `disable_*_<uuid>` option is active, and only suppresses
@@ -1476,10 +1476,10 @@ class Checkview_Woo_Automated_Testing {
 		}
 
 		$test_id = false;
-		if ( defined( 'CV_TEST_ID' ) && CV_TEST_ID ) {
-			$test_id = CV_TEST_ID;
-		} elseif ( wp_doing_ajax() && function_exists( 'get_checkview_test_id' ) ) {
-			$test_id = get_checkview_test_id();
+		if ( defined( 'CHECKVIEW_TEST_ID' ) && CHECKVIEW_TEST_ID ) {
+			$test_id = CHECKVIEW_TEST_ID;
+		} elseif ( wp_doing_ajax() && function_exists( 'checkview_get_test_id' ) ) {
+			$test_id = checkview_get_test_id();
 		}
 
 		if ( ! $test_id ) {
@@ -1547,7 +1547,7 @@ class Checkview_Woo_Automated_Testing {
 	 * test orders covers status changes outside the test request (gateway
 	 * callbacks, cron, admin edits), which the per-request kill-switch never
 	 * sees. Stamped while the test is still active (order creation/save), so
-	 * the block outlives `complete_checkview_test()` deleting the
+	 * the block outlives `checkview_complete_test()` deleting the
 	 * `disable_*_<uuid>` options.
 	 *
 	 * Relies on an internal plugin key. If MailerLite renames it, this fails
@@ -1559,7 +1559,7 @@ class Checkview_Woo_Automated_Testing {
 	 * @return void
 	 */
 	public function checkview_mailerlite_block_order_sync( $order ) {
-		if ( ! class_exists( 'WooMailerLite' ) || ! function_exists( 'cv_is_suppressible_test_order' ) ) {
+		if ( ! class_exists( 'WooMailerLite' ) || ! function_exists( 'checkview_is_suppressible_test_order' ) ) {
 			return;
 		}
 		// Cleanup cron deletes test orders; deletion fires save hooks.
@@ -1569,7 +1569,7 @@ class Checkview_Woo_Automated_Testing {
 
 		// Cheap meta check first: `woocommerce_after_order_object_save` fires
 		// on every save of every order, real customers included.
-		if ( ! cv_is_suppressible_test_order( $order ) ) {
+		if ( ! checkview_is_suppressible_test_order( $order ) ) {
 			return;
 		}
 
