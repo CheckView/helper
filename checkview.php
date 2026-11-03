@@ -222,6 +222,43 @@ function checkview_maybe_bootstrap_logs_folder() {
 add_action( 'init', 'checkview_maybe_bootstrap_logs_folder', 1 );
 
 /**
+ * Removes the per-IP options an older helper left behind.
+ *
+ * Until 2.5.2 every test request stored an autoloaded option named after
+ * the runner's IP with the value `checkview-saas`, read only by the hCaptcha
+ * filter, and a failed test left it in place for good. Nothing reads it any
+ * more. Keyed on its own flag rather than CHECKVIEW_VERSION because
+ * development builds do not bump the version, and hooked on init like the
+ * logs folder move so a dev build can verify it before a release. Stamped
+ * only when the delete ran, so a database error retries on the next request.
+ *
+ * @since 2.5.2
+ *
+ * @return void
+ */
+function checkview_maybe_purge_saas_ip_options() {
+	if ( get_option( 'checkview_saas_ip_options_purged' ) ) {
+		return;
+	}
+
+	global $wpdb;
+
+	// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- One-time cleanup of rows no options API call covers.
+	$deleted = $wpdb->query( "DELETE FROM {$wpdb->options} WHERE option_value = 'checkview-saas'" );
+
+	if ( false === $deleted ) {
+		return;
+	}
+
+	if ( $deleted > 0 ) {
+		wp_cache_delete( 'alloptions', 'options' );
+	}
+
+	update_option( 'checkview_saas_ip_options_purged', 1, true );
+}
+add_action( 'init', 'checkview_maybe_purge_saas_ip_options', 1 );
+
+/**
  * Declares compatibility with WooCommerce high-performance order storage.
  *
  * @link https://woocommerce.com/document/high-performance-order-storage/
