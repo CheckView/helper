@@ -7,7 +7,7 @@ Tested up to: 7.1
 Requires PHP: 8.0
 License: GPLv2 or later
 License URI: http://www.gnu.org/licenses/gpl-2.0.html
-Stable tag: 2.5.2-beta
+Stable tag: 2.6.0
 
 [CheckView](https://checkview.io/) automates WordPress form and WooCommerce testing, monitoring key flows to catch failures early before they cost you leads or sales everyday.
 
@@ -205,12 +205,24 @@ Support and test configuration are handled through the CheckView platform. Pleas
 
 == Changelog ==
 
-= 2.5.2-beta =
+= 2.6.0 =
 * Security: hCaptcha is only skipped for verified CheckView test requests.
 * WooCommerce: When Disable Actions is on, CheckView test checkouts no longer reach MailerLite (MailerLite for WooCommerce): no cart, checkout email, or order sync, including order status changes after the test ends.
 * Elementor: Find forms inside a saved template that a page embeds with the Template widget or the [elementor-template] shortcode, including templates nested in templates, and list them against the pages that embed them. Also list a page once per form when the same form appears on it more than once.
 * WooCommerce: Hide CheckView testing product from the public store API.
 * Formidable: Bypass CleanTalk's spam check during CheckView tests.
+* Formidable: Bypass Formidable's other spam checks during CheckView tests, so they no longer fail tests with no sign of the cause.
+* Formidable: The User Registration action now follows Disable Actions, so tests no longer create a real user account on each run.
+* Formidable: List only forms a visitor can submit. Templates and repeater/embedded child forms are no longer listed, and published forms with a blank status now show up.
+* Form discovery: Find forms placed with the block editor or with quoted shortcodes in Formidable, Ninja Forms, Contact Form 7, Forminator and Everest Forms.
+* Form discovery: Find Gravity Forms placed with the [gravityforms] shortcode or a single-quoted ID, Ninja Forms placed with the [ninja_forms] shortcode or extra shortcode attributes, and Contact Form 7 forms placed with the legacy [contact-form] shortcode.
+* Form discovery: Stop listing another form's pages against a form whose ID is a prefix of it (form 12 no longer picks up pages for form 123). Affects Gravity Forms, Fluent Forms, WS Form, Ninja Forms, Forminator, Everest Forms and Contact Form 7.
+* Contact Form 7: A form missing its hash no longer claims every Contact Form 7 page on the site, and is identified by its post ID instead.
+* Forminator: Forminator forms now appear in CheckView.
+* WP Armour: Unhook WP Armour's honeypot during CheckView tests for Gravity Forms, Fluent Forms, Formidable, Contact Form 7, WPForms and Elementor. The existing spam bypasses could not reach it.
+* WooCommerce: Filter the store products list by product type correctly, and stop caching filtered results as the full list.
+* Uninstall: Remove CheckView's database tables and options on uninstall. They were left behind before.
+* Developer: Plugin functions and constants now use the checkview_/CHECKVIEW_ prefix. For example, CV_TEST_ID is now CHECKVIEW_TEST_ID and TEST_EMAIL is now CHECKVIEW_TEST_EMAIL. Update any custom code that uses the old names.
 
 = 2.5.1 =
 * Release the 2.5.0 changes below. 2.5.0 was published with the wrong stable tag, so WordPress.org never offered it to sites.
