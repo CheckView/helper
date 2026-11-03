@@ -205,6 +205,9 @@ Support and test configuration are handled through the CheckView platform. Pleas
 
 == Changelog ==
 
+= 2.6.1 =
+* Gravity Forms: Forms are now found on sites with no feed add-ons and WP_DEBUG_DISPLAY on, where a database error was breaking the response.
+
 = 2.6.0 =
 * Security: hCaptcha is only skipped for verified CheckView test requests.
 * WooCommerce: When Disable Actions is on, CheckView test checkouts no longer reach MailerLite (MailerLite for WooCommerce): no cart, checkout email, or order sync, including order status changes after the test ends.
