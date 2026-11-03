@@ -205,6 +205,9 @@ Support and test configuration are handled through the CheckView platform. Pleas
 
 == Changelog ==
 
+= 2.6.1 =
+* WPForms: Turn off modern anti-spam during CheckView test runs. Its two hidden decoy fields move to a random position on every page load, which made tests with position-based selectors fail at random. Real visitors keep the protection.
+
 = 2.6.0 =
 * Security: hCaptcha is only skipped for verified CheckView test requests.
 * WooCommerce: When Disable Actions is on, CheckView test checkouts no longer reach MailerLite (MailerLite for WooCommerce): no cart, checkout email, or order sync, including order status changes after the test ends.
