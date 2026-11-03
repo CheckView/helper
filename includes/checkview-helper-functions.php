@@ -29,50 +29,50 @@ if ( ! function_exists( 'checkview_validate_ip' ) ) {
 		return true;
 	}
 }
+if ( ! function_exists( 'checkview_load_bot_check_dependencies' ) ) {
+	/**
+	 * Loads what CheckView::is_bot() needs before load_dependencies() has run.
+	 *
+	 * Some plugins ask the helper to stand down on `plugins_loaded` well before
+	 * priority 10, where the helper normally loads its functions file, the JWT
+	 * library and the logger. Every include here is a require_once that
+	 * load_dependencies() repeats later, so an early call changes nothing
+	 * about the normal load.
+	 *
+	 * @since 2.5.2
+	 *
+	 * @return void
+	 */
+	function checkview_load_bot_check_dependencies() {
+		require_once CHECKVIEW_INC_DIR . 'vendor/autoload.php';
+		require_once CHECKVIEW_INC_DIR . 'checkview-functions.php';
+		require_once CHECKVIEW_ADMIN_DIR . 'class-checkview-admin-logs.php';
+	}
+}
+
 if ( ! function_exists( 'checkview_my_hcap_activate' ) ) {
 	/**
-	 * Disable hCaptcha for checkview tests.
+	 * Disables hCaptcha for CheckView tests.
+	 *
+	 * The hCaptcha for WordPress plugin applies this filter once per request,
+	 * on `plugins_loaded` at a priority far below the helper's own, so the
+	 * answer has to come from the request signature rather than from anything
+	 * the helper sets up later in the request.
 	 *
 	 * @param bool $activate Activate flag.
 	 *
 	 * @return bool
 	 */
 	function checkview_my_hcap_activate( $activate ) {
-		$ip_options = array(
-			'HTTP_CLIENT_IP',
-			'HTTP_CF_CONNECTING_IP',
-			'HTTP_X_FORWARDED_FOR',
-			'HTTP_X_FORWARDED',
-			'HTTP_X_CLUSTER_CLIENT_IP',
-			'HTTP_X_REAL_IP',
-			'HTTP_FORWARDED_FOR',
-			'HTTP_FORWARDED',
-			'REMOTE_ADDR',
-		);
-		foreach ( $ip_options as $key ) {
-			if ( ! isset( $_SERVER[ $key ] ) ) {
-				continue;
-			}
-
-			$key = isset( $_SERVER[ $key ] ) ? wp_strip_all_tags( wp_unslash( $_SERVER[ $key ] ) ) : '';
-			foreach ( explode( ',', $key ) as $ip ) {
-				// Just to be safe.
-				$ip = trim( $ip );
-
-				if ( checkview_validate_ip( $ip ) ) {
-					$ip = sanitize_text_field( $ip );
-				}
-			}
-		}
-		// If validation fails, handle the error appropriately.
-		if ( ! checkview_validate_ip( $ip ) ) {
+		// Only a signed CheckView request may turn hCaptcha off, so everyone
+		// else is answered without loading anything.
+		if ( ! CheckView::has_signature_header() ) {
 			return $activate;
 		}
-		// Deactive for tests.
-		if ( ( function_exists( 'checkview_get_visitor_ip' ) && CheckView::is_bot() ) || 'checkview-saas' === get_option( $ip ) ) {
-			return false;
-		}
-		return $activate;
+
+		checkview_load_bot_check_dependencies();
+
+		return CheckView::is_bot() ? false : $activate;
 	}
 }
 

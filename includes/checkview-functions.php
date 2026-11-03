@@ -316,7 +316,6 @@ if ( ! function_exists( 'checkview_complete_test' ) ) {
 
 		checkview_delete_option( $checkview_test_id . '_wsf_entry_id' );
 		checkview_delete_option( $checkview_test_id . '_wsf_frm_id' );
-		checkview_delete_option( $visitor_ip );
 
 		// setcookie() silently fails when headers have been sent (which is the
 		// norm at shutdown time, the new deferred caller). Form-helper sync
