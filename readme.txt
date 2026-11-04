@@ -205,6 +205,9 @@ Support and test configuration are handled through the CheckView platform. Pleas
 
 == Changelog ==
 
+= 2.6.1 =
+* Formidable: Stop listing forms with no published status. Formidable shows no submit button on them, so a test could never submit.
+
 = 2.6.0 =
 * Security: hCaptcha is only skipped for verified CheckView test requests.
 * WooCommerce: When Disable Actions is on, CheckView test checkouts no longer reach MailerLite (MailerLite for WooCommerce): no cart, checkout email, or order sync, including order status changes after the test ends.
