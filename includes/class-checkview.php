@@ -380,7 +380,7 @@ class CheckView {
 	 * is_bot() needs, so they can skip that load for ordinary visitors.
 	 * Presence is not validity: is_bot() decides that.
 	 *
-	 * @since 2.5.2
+	 * @since 2.6.1
 	 *
 	 * @return bool
 	 */

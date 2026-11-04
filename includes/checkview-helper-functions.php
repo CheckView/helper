@@ -39,7 +39,7 @@ if ( ! function_exists( 'checkview_load_bot_check_dependencies' ) ) {
 	 * load_dependencies() repeats later, so an early call changes nothing
 	 * about the normal load.
 	 *
-	 * @since 2.5.2
+	 * @since 2.6.1
 	 *
 	 * @return void
 	 */

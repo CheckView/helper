@@ -208,10 +208,10 @@ Support and test configuration are handled through the CheckView platform. Pleas
 = 2.6.1 =
 * Formidable: On Formidable 7.0 and later, a CheckView test flagged by StopForumSpam, Akismet or the WordPress comment spam check is no longer saved as a spam entry, which also stopped its notification email.
 * WPForms: Turn off modern anti-spam during CheckView test runs. Its two hidden decoy fields move to a random position on every page load, which made tests with position-based selectors fail at random. Real visitors keep the protection.
+* hCaptcha: hCaptcha for WordPress is now skipped on the first request of a CheckView test, not only after an earlier test from the same runner IP. Fixes alternating pass/fail on sites using it.
 
 = 2.6.0 =
 * Security: hCaptcha is only skipped for verified CheckView test requests.
-* hCaptcha: hCaptcha for WordPress is now skipped on the first request of a CheckView test, not only after an earlier test from the same runner IP. Fixes alternating pass/fail on sites using it.
 * WooCommerce: When Disable Actions is on, CheckView test checkouts no longer reach MailerLite (MailerLite for WooCommerce): no cart, checkout email, or order sync, including order status changes after the test ends.
 * Elementor: Find forms inside a saved template that a page embeds with the Template widget or the [elementor-template] shortcode, including templates nested in templates, and list them against the pages that embed them. Also list a page once per form when the same form appears on it more than once.
 * WooCommerce: Hide CheckView testing product from the public store API.

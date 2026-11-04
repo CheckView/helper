@@ -224,7 +224,7 @@ add_action( 'init', 'checkview_maybe_bootstrap_logs_folder', 1 );
 /**
  * Removes the per-IP options an older helper left behind.
  *
- * Until 2.5.2 every test request stored an autoloaded option named after
+ * Until 2.6.0 every test request stored an autoloaded option named after
  * the runner's IP with the value `checkview-saas`, read only by the hCaptcha
  * filter, and a failed test left it in place for good. Nothing reads it any
  * more. Keyed on its own flag rather than CHECKVIEW_VERSION because
@@ -232,7 +232,7 @@ add_action( 'init', 'checkview_maybe_bootstrap_logs_folder', 1 );
  * logs folder move so a dev build can verify it before a release. Stamped
  * only when the delete ran, so a database error retries on the next request.
  *
- * @since 2.5.2
+ * @since 2.6.0
  *
  * @return void
  */
