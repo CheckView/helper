@@ -7,7 +7,7 @@ Tested up to: 7.1
 Requires PHP: 8.0
 License: GPLv2 or later
 License URI: http://www.gnu.org/licenses/gpl-2.0.html
-Stable tag: 2.6.0
+Stable tag: 2.6.1-beta
 
 [CheckView](https://checkview.io/) automates WordPress form and WooCommerce testing, monitoring key flows to catch failures early before they cost you leads or sales everyday.
 
@@ -206,6 +206,9 @@ Support and test configuration are handled through the CheckView platform. Pleas
 == Changelog ==
 
 = 2.6.1 =
+* Formidable: On Formidable 7.0 and later, a CheckView test flagged by StopForumSpam, Akismet or the WordPress comment spam check is no longer saved as a spam entry, which also stopped its notification email.
+* WPForms: Turn off modern anti-spam during CheckView test runs. Its two hidden decoy fields move to a random position on every page load, which made tests with position-based selectors fail at random. Real visitors keep the protection.
+* hCaptcha: hCaptcha for WordPress is now skipped on the first request of a CheckView test, not only after an earlier test from the same runner IP. Fixes alternating pass/fail on sites using it.
 * Gravity Forms: Forms are now found on sites with no feed add-ons and WP_DEBUG_DISPLAY on, where a database error was breaking the response.
 
 = 2.6.0 =
