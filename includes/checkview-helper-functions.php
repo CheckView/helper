@@ -78,37 +78,6 @@ if ( ! function_exists( 'checkview_my_hcap_activate' ) ) {
 
 add_filter( 'hcap_activate', 'checkview_my_hcap_activate' );
 
-if ( ! function_exists( 'checkview_hcap_whitelist_ip' ) ) {
-	/**
-	 * Whitelists CheckView SaaS IPs in hCaptcha.
-	 *
-	 * @param bool   $whitelisted Whether IP is currently whitelisted.
-	 * @param string $ip IP.
-	 * @return bool
-	 */
-	function checkview_hcap_whitelist_ip( $whitelisted, $ip ) {
-
-		if ( false === $ip ) {
-			return $whitelisted;
-		}
-
-		// Get SaaS IPs.
-		if ( function_exists( 'checkview_get_api_ip' ) ) {
-			$cv_bot_ip = checkview_get_api_ip();
-		} else {
-			return $whitelisted;
-		}
-
-		// Whitelist our IPs.
-		if ( is_array( $cv_bot_ip ) && in_array( $ip, $cv_bot_ip, true ) ) {
-			return true;
-		}
-
-		return $whitelisted;
-	}
-	add_filter( 'hcap_whitelist_ip', 'checkview_hcap_whitelist_ip', 10, 2 );
-}
-
 if ( ! function_exists( 'checkview_request_has_test_credentials' ) ) {
 	/**
 	 * Returns true if the current request is a verified CheckView test with
