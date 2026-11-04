@@ -144,10 +144,16 @@ if ( ! class_exists( 'Checkview_Formidable_Helper' ) ) {
 			 * through `akismet_get_api_key` above — so neither is reachable
 			 * from here. Those are caught by the frm_validate_entry backstop
 			 * instead.
+			 *
+			 * Formidable 7.0 defaults those sources to saving the entry as spam,
+			 * which unsets $errors['spam'] before the backstop runs and skips the
+			 * entry's email actions. frm_save_spam_entry turns the verdict back
+			 * into an error the backstop can clear. No effect before 7.0.
 			 */
 			add_filter( 'frm_run_antispam', '__return_false', PHP_INT_MAX );
 			add_filter( 'frm_check_blacklist', '__return_false', PHP_INT_MAX );
 			add_filter( 'frm_check_denylist', '__return_false', PHP_INT_MAX );
+			add_filter( 'frm_save_spam_entry', '__return_false', PHP_INT_MAX );
 
 			// Bypass hCaptcha. Formidable's own hCaptcha support is the
 			// `captcha` field type already stripped by
