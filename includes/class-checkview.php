@@ -389,6 +389,25 @@ class CheckView {
 	}
 
 	/**
+	 * Keeps a test's response out of page caches.
+	 *
+	 * A test page differs from what ordinary visitors should receive, and a
+	 * cache that ignores the query string would serve them that copy.
+	 *
+	 * @since 2.6.1
+	 *
+	 * @return void
+	 */
+	private static function disable_page_cache(): void {
+		if ( ! defined( 'DONOTCACHEPAGE' ) ) {
+			// phpcs:ignore WordPress.NamingConventions.PrefixAllGlobals -- WordPress constant.
+			define( 'DONOTCACHEPAGE', true );
+		}
+
+		nocache_headers();
+	}
+
+	/**
 	 * Loads plugin dependencies.
 	 *
 	 * Loads WordPress Core dependenceis, vendor files, and CheckView classes.
@@ -528,6 +547,8 @@ class CheckView {
 		}
 
 		if ( self::is_bot() ) {
+			self::disable_page_cache();
+
 			do_action( 'checkview_before_init_current_test' );
 
 			$this->loader->add_action(

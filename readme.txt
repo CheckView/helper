@@ -210,6 +210,8 @@ Support and test configuration are handled through the CheckView platform. Pleas
 * WPForms: Turn off modern anti-spam during CheckView test runs. Its two hidden decoy fields move to a random position on every page load, which made tests with position-based selectors fail at random. Real visitors keep the protection.
 * hCaptcha: hCaptcha for WordPress is now skipped on the first request of a CheckView test, not only after an earlier test from the same runner IP. Fixes alternating pass/fail on sites using it.
 * Gravity Forms: Forms are now found on sites with no feed add-ons and WP_DEBUG_DISPLAY on, where a database error was breaking the response.
+* Security: Hardened how CheckView test requests are verified.
+* Fix: Pages rendered for a CheckView test are no longer stored by page caches.
 
 = 2.6.0 =
 * Security: hCaptcha is only skipped for verified CheckView test requests.

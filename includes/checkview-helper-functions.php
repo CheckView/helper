@@ -88,9 +88,8 @@ if ( ! function_exists( 'checkview_hcap_whitelist_ip' ) ) {
 	 */
 	function checkview_hcap_whitelist_ip( $whitelisted, $ip ) {
 
-		// Whitelist local IPs.
 		if ( false === $ip ) {
-			return true;
+			return $whitelisted;
 		}
 
 		// Get SaaS IPs.
@@ -112,8 +111,8 @@ if ( ! function_exists( 'checkview_hcap_whitelist_ip' ) ) {
 
 if ( ! function_exists( 'checkview_request_has_test_credentials' ) ) {
 	/**
-	 * Returns true if the current request carries a valid CheckView test
-	 * `test_id` + `test_type` pair in the URL query string.
+	 * Returns true if the current request is a verified CheckView test with
+	 * a valid `test_id` + `test_type` pair in the URL query string.
 	 *
 	 * Used by `gform_loaded` bootstrap-time add-on removers that need to
 	 * fire very early in the request lifecycle — before the helper plugin's
@@ -150,10 +149,16 @@ if ( ! function_exists( 'checkview_request_has_test_credentials' ) ) {
 		}
 		$test_id = sanitize_text_field( wp_unslash( $_GET[ CheckView::PARAM_TEST_ID ] ) );
 		// phpcs:enable WordPress.Security.NonceVerification.Recommended
-		return (bool) preg_match(
+		if ( ! preg_match(
 			'/^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/i',
 			$test_id
-		);
+		) ) {
+			return false;
+		}
+
+		checkview_load_bot_check_dependencies();
+
+		return CheckView::is_bot();
 	}
 }
 
@@ -195,9 +200,8 @@ if ( ! function_exists( 'checkview_remove_gravityforms_turnstile_addon' ) ) {
 	 * `Checkview_Gforms_Helper::maybe_hide_recaptcha()` strips
 	 * `turnstile`-typed fields on `gform_pre_validation`, and
 	 * `is_anti_bot_failure()` covers the type in its allowlist. This
-	 * function targets the initial-GET path (where `checkview_test_id`
-	 * is in `$_REQUEST`); AJAX submissions resolve via the field-strip
-	 * path instead.
+	 * function targets the initial GET of a verified test; AJAX submissions
+	 * resolve via the field-strip path instead.
 	 *
 	 * @since 2.0.35
 	 * @return void

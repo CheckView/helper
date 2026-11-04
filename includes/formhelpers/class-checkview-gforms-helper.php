@@ -560,7 +560,7 @@ if ( ! class_exists( 'Checkview_Gforms_Helper' ) ) {
 		 * Complements `checkview_remove_gravityforms_recaptcha_addon()` in
 		 * `includes/checkview-helper-functions.php`, which removes the
 		 * add-on's bootstrap from `gform_loaded` on the initial GET request
-		 * (when `$_REQUEST['checkview_test_id']` is present). That early
+		 * (when the request is a verified test). That early
 		 * path doesn't fire on the AJAX form submission, where `test_id`
 		 * is only in the cookie/referer; by then the add-on has loaded
 		 * normally and we need to remove its callbacks at runtime instead.
