@@ -1566,10 +1566,10 @@ class CheckView_Api {
 			} else {
 				$results = $wpdb->get_results(
 					$wpdb->prepare(
-						"SELECT * FROM %i
+						'SELECT * FROM %i
 						WHERE is_template = %d
 						AND status = %s
-						AND ( parent_form_id IS NULL OR parent_form_id = %d )",
+						AND ( parent_form_id IS NULL OR parent_form_id = %d )',
 						$tablename,
 						0,
 						'published',
