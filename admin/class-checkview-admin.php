@@ -559,8 +559,6 @@ class Checkview_Admin {
 		if ( isset( $_SERVER['REQUEST_URI'] ) && strpos( sanitize_url( wp_unslash( $_SERVER['REQUEST_URI'] ) ), 'admin-ajax.php' ) === false && '' !== $cv_test_id ) {
 			// Create session for later use when form submit VIA AJAX.
 			checkview_create_cv_session( $visitor_ip, $cv_test_id );
-
-			checkview_update_option( $visitor_ip, 'checkview-saas', true );
 		}
 
 		if ( ! empty( $cv_test_id ) && ! checkview_is_valid_uuid( $cv_test_id ) ) {

@@ -1236,15 +1236,21 @@ class CheckView_Api {
 			$tablename = $wpdb->prefix . 'gf_form';
 			$results   = $wpdb->get_results( $wpdb->prepare( 'Select * from %i where is_active=%d and is_trash=%d order by ID ASC', $tablename, 1, 0 ) );
 			if ( $results ) {
+				// Gravity Forms creates this table only once a feed add-on registers.
+				// wpdb prints query errors with WP_DEBUG_DISPLAY on, whatever
+				// display_errors says, and that output would break this JSON response.
+				$feed_table     = $wpdb->prefix . 'gf_addon_feed';
+				$has_feed_table = null !== $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $wpdb->esc_like( $feed_table ) ) );
 				foreach ( $results as $row ) {
 					$forms['GravityForms'][ $row->id ] = array(
 						'ID'   => $row->id,
 						'Name' => $row->title,
 					);
-					$tablename                         = $wpdb->prefix . 'gf_addon_feed';
-					$addons                            = $wpdb->get_results( $wpdb->prepare( 'Select * from %i where is_active=%d and form_id=%d', $tablename, 1, $row->id ) );
-					foreach ( $addons as $addon ) {
-						$forms['GravityForms'][ $row->id ]['addons'][] = $addon->addon_slug;
+					if ( $has_feed_table ) {
+						$addons = $wpdb->get_results( $wpdb->prepare( 'Select * from %i where is_active=%d and form_id=%d', $feed_table, 1, $row->id ) );
+						foreach ( $addons as $addon ) {
+							$forms['GravityForms'][ $row->id ]['addons'][] = $addon->addon_slug;
+						}
 					}
 					// Gravity Forms registers BOTH `[gravityform]` and
 					// `[gravityforms]` to the same callback

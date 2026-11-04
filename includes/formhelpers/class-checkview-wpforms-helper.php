@@ -118,6 +118,17 @@ if ( ! class_exists( 'Checkview_Wpforms_Helper' ) ) {
 			// Bypass hCaptcha.
 			add_filter( 'hcap_activate', '__return_false' );
 
+			// Disable WPForms modern anti-spam (1.9.0+). It renders two hidden
+			// decoy fields at random positions on every load, which shifts
+			// positional selectors. Off here, it also stops the client-side
+			// decoy: wpforms.js only inserts one when `hn_data` names a
+			// server-rendered decoy.
+			add_filter(
+				'wpforms_forms_anti_spam_v3_is_honeypot_enabled',
+				'__return_false',
+				999
+			);
+
 			// Bypass Akismet.
 			add_filter(
 				'akismet_get_api_key',

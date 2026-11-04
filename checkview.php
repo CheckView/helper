@@ -11,7 +11,7 @@
  * Plugin Name:       CheckView
  * Plugin URI:        https://checkview.io
  * Description:       CheckView is the #1 fully automated solution to test your WordPress forms and detect form problems fast.  Automatically test your WordPress forms to ensure you never miss a lead again.
- * Version:           2.6.0
+ * Version:           2.6.1-beta
  * Author:            CheckView
  * Author URI:        https://checkview.io/
  * License:           GPL-2.0+
@@ -34,7 +34,7 @@ if ( ! defined( 'WPINC' ) ) {
  *
  * @link https://semver.org
  */
-define( 'CHECKVIEW_VERSION', '2.6.0' );
+define( 'CHECKVIEW_VERSION', '2.6.1-beta' );
 
 if ( ! defined( 'CHECKVIEW_BASE_DIR' ) ) {
 	define( 'CHECKVIEW_BASE_DIR', plugin_basename( __FILE__ ) );
@@ -220,6 +220,43 @@ function checkview_maybe_bootstrap_logs_folder() {
 	update_option( 'checkview_logs_folder_version', CHECKVIEW_VERSION, true );
 }
 add_action( 'init', 'checkview_maybe_bootstrap_logs_folder', 1 );
+
+/**
+ * Removes the per-IP options an older helper left behind.
+ *
+ * Until 2.6.0 every test request stored an autoloaded option named after
+ * the runner's IP with the value `checkview-saas`, read only by the hCaptcha
+ * filter, and a failed test left it in place for good. Nothing reads it any
+ * more. Keyed on its own flag rather than CHECKVIEW_VERSION because
+ * development builds do not bump the version, and hooked on init like the
+ * logs folder move so a dev build can verify it before a release. Stamped
+ * only when the delete ran, so a database error retries on the next request.
+ *
+ * @since 2.6.0
+ *
+ * @return void
+ */
+function checkview_maybe_purge_saas_ip_options() {
+	if ( get_option( 'checkview_saas_ip_options_purged' ) ) {
+		return;
+	}
+
+	global $wpdb;
+
+	// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- One-time cleanup of rows no options API call covers.
+	$deleted = $wpdb->query( "DELETE FROM {$wpdb->options} WHERE option_value = 'checkview-saas'" );
+
+	if ( false === $deleted ) {
+		return;
+	}
+
+	if ( $deleted > 0 ) {
+		wp_cache_delete( 'alloptions', 'options' );
+	}
+
+	update_option( 'checkview_saas_ip_options_purged', 1, true );
+}
+add_action( 'init', 'checkview_maybe_purge_saas_ip_options', 1 );
 
 /**
  * Declares compatibility with WooCommerce high-performance order storage.

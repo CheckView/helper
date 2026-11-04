@@ -374,6 +374,21 @@ class CheckView {
 	}
 
 	/**
+	 * Whether the request carries a CheckView signature header at all.
+	 *
+	 * A presence check for callers that run before the helper has loaded what
+	 * is_bot() needs, so they can skip that load for ordinary visitors.
+	 * Presence is not validity: is_bot() decides that.
+	 *
+	 * @since 2.6.1
+	 *
+	 * @return bool
+	 */
+	public static function has_signature_header(): bool {
+		return ! empty( $_SERVER['HTTP_X_CHECKVIEW_SIGNATURE'] );
+	}
+
+	/**
 	 * Loads plugin dependencies.
 	 *
 	 * Loads WordPress Core dependenceis, vendor files, and CheckView classes.
