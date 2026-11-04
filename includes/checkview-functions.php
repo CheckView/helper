@@ -458,12 +458,12 @@ if ( ! function_exists( 'checkview_get_publickey' ) ) {
 	 *
 	 * @since 1.0.0
 	 *
-	 * @return array
+	 * @return string The public key, or an empty string if it could not be fetched.
 	 */
 	function checkview_get_publickey() {
 		$public_key = get_transient( 'checkview_saas_pk' );
 		if ( null === $public_key || '' === $public_key || empty( $public_key ) ) {
-			$response   = wp_safe_remote_get(
+			$response = wp_safe_remote_get(
 				'https://app.checkview.io/api/helper/public_key',
 				array(
 					'method'  => 'GET',
