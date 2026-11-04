@@ -206,6 +206,7 @@ Support and test configuration are handled through the CheckView platform. Pleas
 == Changelog ==
 
 = 2.6.1 =
+* Formidable: On Formidable 7.0 and later, a CheckView test flagged by StopForumSpam, Akismet or the WordPress comment spam check is no longer saved as a spam entry, which also stopped its notification email.
 
 = 2.6.0 =
 * Security: hCaptcha is only skipped for verified CheckView test requests.
