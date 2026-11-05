@@ -206,6 +206,7 @@ Support and test configuration are handled through the CheckView platform. Pleas
 == Changelog ==
 
 = 2.6.1 =
+* Formidable: Stop listing forms with no published status. Formidable shows no submit button on them, so a test could never submit.
 * Formidable: On Formidable 7.0 and later, a CheckView test flagged by StopForumSpam, Akismet or the WordPress comment spam check is no longer saved as a spam entry, which also stopped its notification email.
 * WPForms: Turn off modern anti-spam during CheckView test runs. Its two hidden decoy fields move to a random position on every page load, which made tests with position-based selectors fail at random. Real visitors keep the protection.
 * hCaptcha: hCaptcha for WordPress is now skipped on the first request of a CheckView test, not only after an earlier test from the same runner IP. Fixes alternating pass/fail on sites using it.
