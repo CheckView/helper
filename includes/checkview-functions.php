@@ -154,7 +154,7 @@ if ( ! function_exists( 'checkview_validate_jwt_token' ) ) {
 
 			JWT::$leeway = $leeway;
 			$decoded     = JWT::decode( $token, new Key( $key, 'RS256' ) );
-		} catch ( Exception $e ) {
+		} catch ( \Throwable $e ) {
 			Checkview_Admin_Logs::add( 'api-logs', esc_html( $e->getMessage() ) );
 			return new WP_Error(
 				'invalid_auth_header',
@@ -458,19 +458,27 @@ if ( ! function_exists( 'checkview_get_publickey' ) ) {
 	 *
 	 * @since 1.0.0
 	 *
-	 * @return array
+	 * @return string The public key, or an empty string if it could not be fetched.
 	 */
 	function checkview_get_publickey() {
 		$public_key = get_transient( 'checkview_saas_pk' );
 		if ( null === $public_key || '' === $public_key || empty( $public_key ) ) {
-			$response   = wp_safe_remote_get(
+			$response = wp_safe_remote_get(
 				'https://app.checkview.io/api/helper/public_key',
 				array(
 					'method'  => 'GET',
-					'timeout' => 500,
+					'timeout' => 10,
 				)
 			);
-			$public_key = $response['body'];
+			if ( is_wp_error( $response ) || 200 !== wp_remote_retrieve_response_code( $response ) ) {
+				return '';
+			}
+
+			$public_key = wp_remote_retrieve_body( $response );
+			if ( false === strpos( $public_key, 'BEGIN PUBLIC KEY' ) ) {
+				return '';
+			}
+
 			set_transient( 'checkview_saas_pk', $public_key, 12 * HOUR_IN_SECONDS );
 		}
 		return $public_key;
