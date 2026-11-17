@@ -205,6 +205,9 @@ Support and test configuration are handled through the CheckView platform. Pleas
 
 == Changelog ==
 
+= 2.6.2 =
+* WPForms: Forms added with the WPForms Divi module or Elementor widget now stay on the page for the whole CheckView test. They disappeared after the first page load of a test, for example when the page address redirected.
+
 = 2.6.1 =
 * Formidable: Stop listing forms with no published status. Formidable shows no submit button on them, so a test could never submit.
 * Formidable: On Formidable 7.0 and later, a CheckView test flagged by StopForumSpam, Akismet or the WordPress comment spam check is no longer saved as a spam entry, which also stopped its notification email.
