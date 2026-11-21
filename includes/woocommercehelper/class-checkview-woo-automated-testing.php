@@ -106,6 +106,27 @@ class Checkview_Woo_Automated_Testing {
 				$this,
 				'checkview_after_delete_product'
 			);
+			// The product list is cached for 12 hours and carries stock status.
+			$this->loader->add_action(
+				'woocommerce_product_set_stock_status',
+				$this,
+				'checkview_clear_products_cache'
+			);
+			$this->loader->add_action(
+				'woocommerce_variation_set_stock_status',
+				$this,
+				'checkview_clear_products_cache'
+			);
+			// Stock syncs that write the meta directly skip the two hooks above.
+			foreach ( array( 'added_post_meta', 'updated_post_meta', 'deleted_post_meta' ) as $meta_hook ) {
+				$this->loader->add_action(
+					$meta_hook,
+					$this,
+					'checkview_clear_products_cache_on_stock_meta',
+					10,
+					3
+				);
+			}
 			$this->loader->add_action(
 				'template_redirect',
 				$this,
@@ -357,6 +378,33 @@ class Checkview_Woo_Automated_Testing {
 		if ( $product_id && (int) $post_id === (int) $product_id ) {
 			// Delete the option storing the product ID if the deleted post is the test product.
 			delete_option( 'checkview_woo_product_id' );
+		}
+	}
+
+	/**
+	 * Clears the cached product list so CheckView sees a stock change right away.
+	 *
+	 * @since 2.6.2
+	 *
+	 * @return void
+	 */
+	public function checkview_clear_products_cache() {
+		delete_transient( 'checkview_store_products_transient' );
+	}
+
+	/**
+	 * Clears the cached product list when a stock status is written as post meta.
+	 *
+	 * @since 2.6.2
+	 *
+	 * @param int|array $meta_id   Meta ID, or IDs when deleting.
+	 * @param int       $object_id Post ID.
+	 * @param string    $meta_key  Meta key.
+	 * @return void
+	 */
+	public function checkview_clear_products_cache_on_stock_meta( $meta_id, $object_id, $meta_key ) { // phpcs:ignore Generic.CodeAnalysis.UnusedFunctionParameter.FoundBeforeLastUsed -- Hook signature.
+		if ( '_stock_status' === $meta_key ) {
+			$this->checkview_clear_products_cache();
 		}
 	}
 

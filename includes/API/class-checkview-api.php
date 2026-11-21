@@ -735,7 +735,8 @@ class CheckView_Api {
 		if ( ! empty( $loop->posts ) ) {
 			foreach ( $loop->posts as $post ) {
 				// Initialize an array to store variations.
-				$variations = array();
+				$variations             = array();
+				$any_variation_in_stock = false;
 
 				// Get product object.
 				$product = wc_get_product( $post );
@@ -746,10 +747,16 @@ class CheckView_Api {
 
 					foreach ( $product_variations as $variation ) {
 						// Collect variation data.
-						$variations[] = array(
+						$entry = array(
 							'id'         => $variation['variation_id'],
 							'attributes' => $variation['attributes'],
 						);
+						// A filter on woocommerce_available_variation can drop the key; absent means unknown.
+						if ( isset( $variation['is_in_stock'] ) ) {
+							$entry['in_stock']      = (bool) $variation['is_in_stock'];
+							$any_variation_in_stock = $any_variation_in_stock || $entry['in_stock'];
+						}
+						$variations[] = $entry;
 					}
 				}
 				$products[] = array(
@@ -759,6 +766,9 @@ class CheckView_Api {
 					'url'        => get_permalink( $post->ID ),
 					'thumb_url'  => get_the_post_thumbnail_url( $post->ID ),
 					'variations' => $variations,
+					// Backorders count as in stock: they can still be bought. A variation is
+					// checked on its own stock at add to cart, so one in stock is enough.
+					'in_stock'   => $product ? ( $product->is_in_stock() || $any_variation_in_stock ) : true,
 				);
 			}
 		}
