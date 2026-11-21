@@ -40,6 +40,13 @@ class Checkview_Woo_Automated_Testing {
 	const STAMP_PRIORITY = 1;
 
 	/**
+	 * Slug the test product is created with.
+	 *
+	 * @since 2.6.2
+	 */
+	const TEST_PRODUCT_SLUG = 'checkview-testing-product';
+
+	/**
 	 * Plugin name.
 	 *
 	 * @since 1.0.0
@@ -86,10 +93,14 @@ class Checkview_Woo_Automated_Testing {
 		$this->loader      = $loader;
 
 		if ( $this->loader ) {
+			// The test product is no longer created on every Woo site: CheckView
+			// creates it, as a draft, the first time it needs it (product list or
+			// set-status). This one-time pass drafts the published product older
+			// helpers created on sites that never run Woo tests.
 			$this->loader->add_action(
 				'admin_init',
 				$this,
-				'checkview_create_test_product',
+				'checkview_maybe_draft_legacy_test_product',
 				200
 			);
 
@@ -165,10 +176,14 @@ class Checkview_Woo_Automated_Testing {
 				'checkview_hide_product_from_sitemap',
 			);
 
+			// Jetpack passes ($should_publicize, $post); with the loader's default of
+			// one argument the callback was called without $post.
 			$this->loader->add_filter(
 				'publicize_should_publicize_published_post',
 				$this,
 				'checkview_seo_hide_product_from_jetpack',
+				10,
+				2
 			);
 
 			$this->loader->add_filter(
@@ -526,15 +541,36 @@ class Checkview_Woo_Automated_Testing {
 	/**
 	 * Creates the CheckView testing product.
 	 *
-	 * If a testing product exists, return it.
+	 * Kept for callers of the old instance method; see
+	 * `checkview_ensure_test_product()`.
 	 *
-	 * @return WC_Product
+	 * @return WC_Product|false
 	 */
 	public function checkview_create_test_product() {
-		$product = $this->checkview_get_test_product();
+		return self::checkview_ensure_test_product();
+	}
+
+	/**
+	 * Returns the CheckView test product, creating it as a draft if missing.
+	 *
+	 * Created as a draft so it never shows on a store that does not run Woo
+	 * tests. CheckView publishes it through set-status right before each Woo
+	 * setup and test run.
+	 *
+	 * @since 2.6.2
+	 *
+	 * @param bool $created Set to true when this call created the product.
+	 * @return WC_Product|false
+	 */
+	public static function checkview_ensure_test_product( &$created = false ) {
+		$created = false;
+		$product = self::checkview_get_test_product();
 		if ( ! $product ) {
 			$product = new WC_Product();
-			$product->set_status( 'publish' );
+			$product->set_status( 'draft' );
+			// Set explicitly: WordPress only generates a slug on publish, and the
+			// product list reports this product's URL while it is still a draft.
+			$product->set_slug( self::TEST_PRODUCT_SLUG );
 			$product->set_name( 'CheckView Testing Product' );
 			$product->set_short_description( 'An example product for automated testing.' );
 			$product->set_description( 'This is a placeholder product used for automatically testing your WooCommerce store. It\'s designed to be hidden from all customers.' );
@@ -552,10 +588,84 @@ class Checkview_Woo_Automated_Testing {
 			add_filter( 'publicize_should_publicize_published_post', '__return_false' );
 
 			$product_id = $product->save();
+			if ( ! $product_id ) {
+				Checkview_Admin_Logs::add( 'api-logs', 'Failed to create the CheckView test product.' );
+				return false;
+			}
 			update_option( 'checkview_woo_product_id', $product_id, true );
+			delete_transient( 'checkview_store_products_transient' );
+			Checkview_Admin_Logs::add( 'api-logs', 'Created the CheckView test product [' . $product_id . '] as a draft.' );
+			$created = true;
 		}
 
 		return $product;
+	}
+
+	/**
+	 * Returns the test product's normal permalink, even while it is a draft.
+	 *
+	 * For a draft, `get_permalink()` returns `/?post_type=product&p=ID`. CheckView
+	 * stores and visits the published URL, so build it as if published.
+	 *
+	 * @since 2.6.2
+	 *
+	 * @param int $product_id Product ID.
+	 * @return string|false
+	 */
+	public static function checkview_test_product_permalink( $product_id ) {
+		$post = get_post( $product_id );
+		if ( ! $post ) {
+			return false;
+		}
+		if ( in_array( $post->post_status, array( 'draft', 'pending', 'auto-draft' ), true ) ) {
+			$post              = clone $post;
+			$post->post_status = 'publish';
+			if ( '' === $post->post_name ) {
+				$post->post_name = self::TEST_PRODUCT_SLUG;
+			}
+		}
+		return get_permalink( $post );
+	}
+
+	/**
+	 * Records that CheckView just published the test product for a run.
+	 *
+	 * @since 2.6.2
+	 *
+	 * @return void
+	 */
+	public static function checkview_mark_test_product_published() {
+		update_option( 'checkview_test_product_published_at', time(), false );
+	}
+
+	/**
+	 * Drafts the published test product that older helpers created on every
+	 * WooCommerce site, once.
+	 *
+	 * Safe for stores that do run Woo tests: CheckView publishes the product
+	 * before each setup and test run. Skipped, and retried later, if CheckView
+	 * published it in the last 30 minutes, so a run in progress keeps it.
+	 *
+	 * @since 2.6.2
+	 *
+	 * @return void
+	 */
+	public function checkview_maybe_draft_legacy_test_product() {
+		if ( get_option( 'checkview_test_product_draft_done' ) || ! class_exists( 'WooCommerce' ) ) {
+			return;
+		}
+
+		$product_id = (int) get_option( 'checkview_woo_product_id' );
+		if ( $product_id && 'publish' === get_post_status( $product_id ) ) {
+			$published_at = (int) get_option( 'checkview_test_product_published_at', 0 );
+			if ( time() - $published_at < 30 * MINUTE_IN_SECONDS ) {
+				return;
+			}
+			checkview_update_woocommerce_product_status( $product_id, 'draft' );
+			Checkview_Admin_Logs::add( 'api-logs', 'Drafted the test product [' . $product_id . '] that an older helper published.' );
+		}
+
+		update_option( 'checkview_test_product_draft_done', '1', false );
 	}
 
 	/**
@@ -601,11 +711,12 @@ class Checkview_Woo_Automated_Testing {
 	 *
 	 * @return bool|array
 	 */
-	public function checkview_seo_hide_product_from_jetpack( $should_publicize, $post ) {
-		if ( $post ) {
-			$product_id = get_option( 'checkview_woo_product_id' );
+	public function checkview_seo_hide_product_from_jetpack( $should_publicize, $post = null ) {
+		if ( $post instanceof \WP_Post ) {
+			$product_id = (int) get_option( 'checkview_woo_product_id' );
 
-			if ( $product_id === $post->ID ) {
+			// The option is stored as a string, so compare as integers.
+			if ( $product_id && $product_id === (int) $post->ID ) {
 				return false;
 			}
 		}
