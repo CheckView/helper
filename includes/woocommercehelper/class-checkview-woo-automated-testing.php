@@ -578,6 +578,11 @@ class Checkview_Woo_Automated_Testing {
 		if ( ! add_option( $lock, time(), '', false ) ) {
 			for ( $attempt = 0; $attempt < 10 && ! $product; $attempt++ ) {
 				usleep( 500000 );
+				// Without a persistent object cache, this request still holds the
+				// missing option and the empty product query from its first look.
+				wp_cache_delete( 'notoptions', 'options' );
+				wp_cache_delete( 'alloptions', 'options' );
+				wp_cache_set_posts_last_changed();
 				$product = self::checkview_get_test_product();
 			}
 			return $product;
