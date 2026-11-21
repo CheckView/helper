@@ -565,7 +565,25 @@ class Checkview_Woo_Automated_Testing {
 	public static function checkview_ensure_test_product( &$created = false ) {
 		$created = false;
 		$product = self::checkview_get_test_product();
-		if ( ! $product ) {
+		if ( $product ) {
+			return $product;
+		}
+
+		// Parallel runs can all find no product at once; only one may create it,
+		// or each makes a draft with the same slug and publishing one renames it.
+		$lock = 'checkview_test_product_creating';
+		if ( (int) get_option( $lock, 0 ) < time() - MINUTE_IN_SECONDS ) {
+			delete_option( $lock );
+		}
+		if ( ! add_option( $lock, time(), '', false ) ) {
+			for ( $attempt = 0; $attempt < 10 && ! $product; $attempt++ ) {
+				usleep( 500000 );
+				$product = self::checkview_get_test_product();
+			}
+			return $product;
+		}
+
+		try {
 			$product = new WC_Product();
 			$product->set_status( 'draft' );
 			// Set explicitly: WordPress only generates a slug on publish, and the
@@ -596,6 +614,8 @@ class Checkview_Woo_Automated_Testing {
 			delete_transient( 'checkview_store_products_transient' );
 			Checkview_Admin_Logs::add( 'api-logs', 'Created the CheckView test product [' . $product_id . '] as a draft.' );
 			$created = true;
+		} finally {
+			delete_option( $lock );
 		}
 
 		return $product;
@@ -639,6 +659,28 @@ class Checkview_Woo_Automated_Testing {
 	}
 
 	/**
+	 * Publishes a drafted test product when a CheckView Woo test reaches the site.
+	 *
+	 * CheckView publishes the product through set-status before each run, and
+	 * the SaaS ignores a failed call. Runs only for signed CheckView Woo test
+	 * requests, and never creates the product.
+	 *
+	 * @since 2.6.2
+	 *
+	 * @return void
+	 */
+	public static function checkview_publish_test_product_for_run() {
+		$product_id = (int) get_option( 'checkview_woo_product_id' );
+		if ( ! $product_id || 'draft' !== get_post_status( $product_id ) ) {
+			return;
+		}
+		if ( checkview_update_woocommerce_product_status( $product_id, 'publish' ) ) {
+			self::checkview_mark_test_product_published();
+			Checkview_Admin_Logs::add( 'ip-logs', 'Published the drafted test product [' . $product_id . '] for a Woo test.' );
+		}
+	}
+
+	/**
 	 * Drafts the published test product that older helpers created on every
 	 * WooCommerce site, once.
 	 *
@@ -655,17 +697,41 @@ class Checkview_Woo_Automated_Testing {
 			return;
 		}
 
+		// Look up the published product only: checkview_get_test_product() would
+		// untrash one the store owner trashed.
 		$product_id = (int) get_option( 'checkview_woo_product_id' );
-		if ( $product_id && 'publish' === get_post_status( $product_id ) ) {
+		if ( ! $product_id || 'publish' !== get_post_status( $product_id ) ) {
+			$product_ids = wc_get_products(
+				array(
+					'name'   => 'CheckView Testing Product',
+					'status' => 'publish',
+					'limit'  => 1,
+					'return' => 'ids',
+				)
+			);
+			$product_id  = ! empty( $product_ids ) ? (int) $product_ids[0] : 0;
+		}
+
+		if ( $product_id ) {
+			// A run started under an older helper never recorded its publish, so
+			// wait 30 minutes from the first look before drafting.
 			$published_at = (int) get_option( 'checkview_test_product_published_at', 0 );
+			if ( ! $published_at ) {
+				self::checkview_mark_test_product_published();
+				return;
+			}
 			if ( time() - $published_at < 30 * MINUTE_IN_SECONDS ) {
 				return;
 			}
-			checkview_update_woocommerce_product_status( $product_id, 'draft' );
+			if ( ! checkview_update_woocommerce_product_status( $product_id, 'draft' ) ) {
+				Checkview_Admin_Logs::add( 'api-logs', 'Could not draft the test product [' . $product_id . ']; retrying in 30 minutes.' );
+				self::checkview_mark_test_product_published();
+				return;
+			}
 			Checkview_Admin_Logs::add( 'api-logs', 'Drafted the test product [' . $product_id . '] that an older helper published.' );
 		}
 
-		update_option( 'checkview_test_product_draft_done', '1', false );
+		update_option( 'checkview_test_product_draft_done', '1', true );
 	}
 
 	/**
@@ -920,6 +986,8 @@ class Checkview_Woo_Automated_Testing {
 		Checkview_Admin_Logs::add( 'ip-logs', 'Running Woo checkout hooks, detected test type [' . $test_type . '].' );
 
 		if ( ! is_admin() && class_exists( 'WooCommerce' ) ) {
+			add_action( 'wp_loaded', array( __CLASS__, 'checkview_publish_test_product_for_run' ) );
+
 			// Always use Stripe test mode when on dev or staging.
 			add_filter(
 				'option_woocommerce_stripe_settings',
