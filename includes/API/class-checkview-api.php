@@ -692,6 +692,17 @@ class CheckView_Api {
 				esc_html__( 'Invalid request.', 'checkview' ),
 			);
 		}
+		// The test product is created on demand, as a draft, the first time
+		// CheckView asks for the store's products (a Woo flow being set up).
+		$test_product_id = 0;
+		if ( class_exists( 'Checkview_Woo_Automated_Testing' ) ) {
+			$test_product_created = false;
+			$test_product         = Checkview_Woo_Automated_Testing::checkview_ensure_test_product( $test_product_created );
+			$test_product_id      = $test_product ? (int) $test_product->get_id() : 0;
+			if ( $test_product_created ) {
+				$products = false;
+			}
+		}
 		if ( '' !== $products && null !== $products && false !== $products ) {
 			return new WP_REST_Response(
 				array(
@@ -763,7 +774,10 @@ class CheckView_Api {
 					'id'         => $post->ID,
 					'name'       => $post->post_title,
 					'slug'       => $post->post_name,
-					'url'        => get_permalink( $post->ID ),
+					// The test product may be a draft between runs; report its normal URL.
+					'url'        => ( $test_product_id && (int) $post->ID === $test_product_id )
+						? Checkview_Woo_Automated_Testing::checkview_test_product_permalink( $post->ID )
+						: get_permalink( $post->ID ),
 					'thumb_url'  => get_the_post_thumbnail_url( $post->ID ),
 					'variations' => $variations,
 					// Backorders count as in stock: they can still be bought. A variation is
@@ -1190,8 +1204,8 @@ class CheckView_Api {
 				esc_html__( 'Invalid request.', 'checkview' ),
 			);
 		}
-		$product                              = Checkview_Woo_Automated_Testing::checkview_get_test_product();
-		$product_details['checkview_product'] = $product ? get_permalink( $product->get_id() ) : false;
+		$product                              = Checkview_Woo_Automated_Testing::checkview_ensure_test_product();
+		$product_details['checkview_product'] = $product ? Checkview_Woo_Automated_Testing::checkview_test_product_permalink( $product->get_id() ) : false;
 		if ( ! empty( $product_details ) && false !== $product_details['checkview_product'] ) {
 			return new WP_REST_Response(
 				array(
@@ -2847,10 +2861,14 @@ class CheckView_Api {
 				array( 'status' => 400 )
 			);
 		}
-		$product    = Checkview_Woo_Automated_Testing::checkview_get_test_product();
-		$product_id = ! empty( $product->get_id() ) ? $product->get_id() : false;
-		$status     = checkview_update_woocommerce_product_status( $product_id, $checkview_status );
-		if ( 0 !== $status && ! is_wp_error( $product_id ) ) {
+		// Created on demand if missing: the product is no longer made on every Woo site.
+		$product    = Checkview_Woo_Automated_Testing::checkview_ensure_test_product();
+		$product_id = $product ? $product->get_id() : false;
+		$status     = $product_id ? checkview_update_woocommerce_product_status( $product_id, $checkview_status ) : 0;
+		if ( 0 !== $status && ! is_wp_error( $status ) ) {
+			if ( 'publish' === $checkview_status ) {
+				Checkview_Woo_Automated_Testing::checkview_mark_test_product_published();
+			}
 			return new WP_REST_Response(
 				array(
 					'_checkview_status' => 'updated',
