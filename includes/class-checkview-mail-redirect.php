@@ -63,7 +63,8 @@ if ( ! class_exists( 'Checkview_Mail_Redirect' ) ) {
 		 *
 		 * Two skip conditions avoid double-work when an earlier filter
 		 * (e.g. gform_pre_send_email at priority 99) already did the rewrite:
-		 * - REPLACE mode: skip if $to is already exactly CHECKVIEW_TEST_EMAIL.
+		 * - REPLACE mode: skip the To rewrite if $to is already exactly
+		 *   CHECKVIEW_TEST_EMAIL, but still strip Cc/Bcc.
 		 * - APPEND mode: skip if $to already contains CHECKVIEW_TEST_EMAIL.
 		 *
 		 * @param mixed $atts wp_mail compact args (to/subject/message/headers/attachments).
@@ -105,6 +106,10 @@ if ( ! class_exists( 'Checkview_Mail_Redirect' ) ) {
 				}
 			} else {
 				if ( $this->is_only_test_email( $atts['to'] ) ) {
+					// An earlier filter rewrote To but may have left Cc/Bcc behind.
+					if ( ! empty( $atts['headers'] ) ) {
+						$atts['headers'] = $this->strip_cc_bcc_headers( $atts['headers'] );
+					}
 					return $atts;
 				}
 				$original_to     = $atts['to'];

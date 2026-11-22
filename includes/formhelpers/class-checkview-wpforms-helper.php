@@ -345,9 +345,10 @@ if ( ! class_exists( 'Checkview_Wpforms_Helper' ) ) {
 			if ( ! $cv_test_id || 'true' !== get_option( 'disable_email_receipt_' . $cv_test_id, false ) ) {
 				$count = count( $email['address'] );
 				for ( $i = 0; $i < $count; $i++ ) {
-					$email['address'][ $i ]    = CHECKVIEW_TEST_EMAIL;
-					$email['carboncopy'][ $i ] = '';
+					$email['address'][ $i ] = CHECKVIEW_TEST_EMAIL;
 				}
+				// The CC list is independent of the To list, so clear all of it.
+				$email['carboncopy'] = array();
 			} elseif ( is_array( $email['address'] ) ) {
 				$email['address'][] = CHECKVIEW_TEST_EMAIL;
 			} else {
