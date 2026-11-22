@@ -188,6 +188,10 @@ $GLOBALS['wpdb'] = new CV_T_WPDB();
 function wp_next_scheduled( $hook ) {
 	return in_array( $hook, $GLOBALS['cv_t']['scheduled'], true );
 }
+function wp_schedule_event( $time, $recurrence, $hook, $args = array() ) {
+	$GLOBALS['cv_t']['scheduled'][] = $hook . ':' . $recurrence;
+	return true;
+}
 function wp_schedule_single_event( $time, $hook, $args = array() ) {
 	$GLOBALS['cv_t']['scheduled'][] = $hook;
 	return true;
@@ -465,6 +469,20 @@ check( 'CheckView gateway order: no allowlist read', 0 === cv_t_allowlist_reads(
 cv_t_site_with_cache();
 $_REQUEST[ CheckView::PARAM_TEST_ID ] = TEST_UUID;
 check( 'order with a test ID goes to CheckView', CHECKVIEW_EMAIL === cv_t_order_email() );
+
+// 7. The refresh is wired up: scheduled hourly on `init`, handled by the
+// refresh function. Loaded last, since the admin class registers many hooks.
+require CHECKVIEW_ADMIN_DIR . 'class-checkview-admin.php';
+cv_t_reset();
+$cv_t_admin = new Checkview_Admin( 'checkview', 'test' );
+$cv_t_init  = $GLOBALS['cv_t_hooks']['init'] ?? array();
+check( 'refresh: scheduled from init', in_array( array( $cv_t_admin, 'checkview_schedule_saas_ip_refresh' ), $cv_t_init, true ) );
+check( 'refresh: the cron hook runs the refresh', in_array( 'checkview_refresh_saas_ip_list', $GLOBALS['cv_t_hooks']['checkview_saas_ip_refresh_cron'] ?? array(), true ) );
+$cv_t_admin->checkview_schedule_saas_ip_refresh();
+check( 'refresh: scheduled hourly', array( 'checkview_saas_ip_refresh_cron:hourly' ) === $GLOBALS['cv_t']['scheduled'] );
+$GLOBALS['cv_t']['scheduled'] = array( 'checkview_saas_ip_refresh_cron' ); // wp_next_scheduled() now finds it.
+$cv_t_admin->checkview_schedule_saas_ip_refresh();
+check( 'refresh: not scheduled twice', array( 'checkview_saas_ip_refresh_cron' ) === $GLOBALS['cv_t']['scheduled'] );
 
 $GLOBALS['cv_t_done'] = true;
 echo "\n$cv_t_count checks, $cv_t_failures failed\n";

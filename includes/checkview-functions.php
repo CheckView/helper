@@ -675,8 +675,9 @@ if ( ! function_exists( 'checkview_get_api_ip' ) ) {
 	 * Cached for 12 hours. When the cache is empty, one request at a time asks
 	 * the SaaS, with a short timeout. A failed or invalid response is not
 	 * retried for five minutes, and meanwhile the last list fetched
-	 * successfully (up to seven days old) is used. This runs on nearly every
-	 * request, so a slow or unreachable SaaS must never make a page wait on it.
+	 * successfully (up to seven days old) is used. It runs in test requests and
+	 * in an hourly WP-Cron event (ordinary visitors' requests skip it), so a
+	 * slow or unreachable SaaS must never make a request wait long on it.
 	 *
 	 * @since 1.0.0
 	 *
@@ -712,7 +713,7 @@ if ( ! function_exists( 'checkview_get_api_ip' ) ) {
 }
 if ( ! function_exists( 'checkview_refresh_saas_ip_list' ) ) {
 	/**
-	 * Daily WP-Cron refresh of the SaaS IP allowlist.
+	 * Hourly WP-Cron refresh of the SaaS IP allowlist.
 	 *
 	 * Ordinary visitors' requests no longer read the allowlist, so without this
 	 * only test requests would refresh it. Reading it here downloads a new list

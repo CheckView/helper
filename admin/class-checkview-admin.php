@@ -108,8 +108,10 @@ class Checkview_Admin {
 			'checkview_sweep_test_users'
 		);
 
+		// On `init`, not `wp`: `wp` fires only for front-end page loads, which a
+		// headless or fully page-cached site may never run through.
 		add_action(
-			'wp',
+			'init',
 			array( $this, 'checkview_schedule_saas_ip_refresh' )
 		);
 
@@ -209,7 +211,11 @@ class Checkview_Admin {
 	}
 
 	/**
-	 * Schedules the daily refresh of the SaaS IP allowlist.
+	 * Schedules the hourly refresh of the SaaS IP allowlist.
+	 *
+	 * Hourly, not daily: the list is cached for 12 hours, so a daily run would
+	 * leave it expired for up to half of every day. A run that finds the cache
+	 * fresh costs one transient read.
 	 *
 	 * @since 2.6.2
 	 *
@@ -217,7 +223,7 @@ class Checkview_Admin {
 	 */
 	public function checkview_schedule_saas_ip_refresh() {
 		if ( ! wp_next_scheduled( 'checkview_saas_ip_refresh_cron' ) ) {
-			wp_schedule_event( time(), 'daily', 'checkview_saas_ip_refresh_cron' );
+			wp_schedule_event( time(), 'hourly', 'checkview_saas_ip_refresh_cron' );
 		}
 	}
 	/**
