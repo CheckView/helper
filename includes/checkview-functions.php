@@ -475,6 +475,14 @@ if ( ! function_exists( 'checkview_acquire_fetch_lock' ) ) {
 		$now   = microtime( true );
 		$token = sprintf( '%d-%06d', (int) $now, (int) ( ( $now - (int) $now ) * 1000000 ) );
 
+		// A live lock is the common case while a fetch runs; spot it with a read
+		// so the requests that lose do not write.
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- Lock row; never read through the options API.
+		$held = $wpdb->get_var( $wpdb->prepare( "SELECT option_value FROM {$wpdb->options} WHERE option_name = %s", $option ) );
+		if ( null !== $held && (int) $held >= time() - $ttl ) {
+			return false;
+		}
+
 		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- Atomic lock; never read through the options API.
 		$inserted = $wpdb->query( $wpdb->prepare( "INSERT IGNORE INTO {$wpdb->options} (option_name, option_value, autoload) VALUES (%s, %s, 'no')", $option, $token ) );
 		if ( false === $inserted ) {
@@ -617,11 +625,13 @@ if ( ! function_exists( 'checkview_get_publickey' ) ) {
 		if ( get_transient( 'checkview_saas_pk_fetch_failed' ) ) {
 			return $last_good;
 		}
-		$lock = checkview_acquire_fetch_lock( 'pk', 15 );
+		$lock = checkview_acquire_fetch_lock( 'pk', 45 );
 		if ( false === $lock ) {
 			return $last_good;
 		}
-		// Another request may have finished while this one waited for the lock.
+		// Another request may have finished meanwhile. Forget this request's
+		// remembered option misses so the re-read reaches the database.
+		wp_cache_delete( 'notoptions', 'options' );
 		$public_key = get_transient( 'checkview_saas_pk' );
 		if ( get_transient( 'checkview_saas_pk_fetch_failed' ) || ( is_string( $public_key ) && '' !== $public_key ) ) {
 			checkview_release_fetch_lock( 'pk', $lock );
@@ -734,11 +744,13 @@ if ( ! function_exists( 'checkview_fetch_api_ip' ) ) {
 		if ( get_transient( 'checkview_saas_ip_fetch_failed' ) ) {
 			return $remember( $last_good );
 		}
-		$lock = checkview_acquire_fetch_lock( 'ip_address', 15 );
+		$lock = checkview_acquire_fetch_lock( 'ip_address', 45 );
 		if ( false === $lock ) {
 			return $remember( $last_good );
 		}
-		// Another request may have finished while this one waited for the lock.
+		// Another request may have finished meanwhile. Forget this request's
+		// remembered option misses so the re-read reaches the database.
+		wp_cache_delete( 'notoptions', 'options' );
 		$cached = get_transient( 'checkview_saas_ip_address' );
 		if ( get_transient( 'checkview_saas_ip_fetch_failed' ) || false !== $cached ) {
 			checkview_release_fetch_lock( 'ip_address', $lock );
@@ -762,13 +774,16 @@ if ( ! function_exists( 'checkview_fetch_api_ip' ) ) {
 		} elseif ( 200 !== wp_remote_retrieve_response_code( $request ) ) {
 			Checkview_Admin_Logs::add( 'ip-logs', 'Request for new IP addresses answered HTTP ' . wp_remote_retrieve_response_code( $request ) . '.' );
 		} else {
-			$data = json_decode( wp_remote_retrieve_body( $request ), true );
-			$list = is_array( $data ) && array_key_exists( 'ipAddresses', $data ) ? $data['ipAddresses'] : null;
+			// Decoded without `assoc`, a JSON object stays an object, so `{}` is
+			// never mistaken for an empty list.
+			$data   = json_decode( wp_remote_retrieve_body( $request ) );
+			$fields = is_object( $data ) ? get_object_vars( $data ) : array();
+			$list   = array_key_exists( 'ipAddresses', $fields ) ? $fields['ipAddresses'] : null;
 			// A single IP may come as a string; anything else must be a list.
 			if ( is_string( $list ) ) {
 				$list = array( $list );
 			}
-			if ( ! is_array( $list ) || ( array() !== $list && array_keys( $list ) !== range( 0, count( $list ) - 1 ) ) ) {
+			if ( ! is_array( $list ) ) {
 				Checkview_Admin_Logs::add( 'ip-logs', 'IP addresses not found in request for new IP addresses.' );
 			} else {
 				$ip_address = $list;
