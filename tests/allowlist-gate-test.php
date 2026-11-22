@@ -331,7 +331,6 @@ foreach ( array( 'fresh', 'expired', 'empty' ) as $cache ) {
 	check( "visitor ($cache cache): order email goes to the shop", 'shop@example.test' === $email );
 	check( "visitor ($cache cache): no allowlist reads", 0 === cv_t_allowlist_reads() );
 	check( "visitor ($cache cache): no HTTP calls", array() === $GLOBALS['cv_t']['http'] );
-	check( "visitor ($cache cache): nothing scheduled", array() === $GLOBALS['cv_t']['scheduled'] );
 }
 
 // 2. Real signed test request is recognized.
@@ -358,6 +357,19 @@ foreach ( array( 'expired', 'empty' ) as $cache ) {
 	check( "signed test ($cache cache): fetched the list once", 1 === count( $GLOBALS['cv_t']['http'] ) );
 	check( "signed test ($cache cache): stored the fresh list", array( BOT_IP ) === ( $GLOBALS['cv_t']['store']['_transient_checkview_saas_ip_address'] ?? null ) );
 }
+
+// 2c. The daily WP-Cron refresh keeps the list and the last good copy current
+// now that visitors no longer do.
+cv_t_site_with_cache( 'expired' );
+checkview_refresh_saas_ip_list();
+check( 'daily refresh (expired cache): fetched the list once', 1 === count( $GLOBALS['cv_t']['http'] ) );
+check( 'daily refresh (expired cache): stored the fresh list', array( BOT_IP ) === ( $GLOBALS['cv_t']['store']['_transient_checkview_saas_ip_address'] ?? null ) );
+$cv_t_copy = $GLOBALS['cv_t']['store']['checkview_saas_ip_address_last_good'] ?? null;
+check( 'daily refresh (expired cache): last good copy is current', is_array( $cv_t_copy ) && array( BOT_IP ) === $cv_t_copy['value'] && $cv_t_copy['fetched_at'] >= time() - 5 );
+
+cv_t_site_with_cache( 'fresh' );
+checkview_refresh_saas_ip_list();
+check( 'daily refresh (fresh cache): no download', array() === $GLOBALS['cv_t']['http'] );
 
 // 2b. Signed test whose test type comes from the referrer (AJAX submit).
 cv_t_site_with_cache();

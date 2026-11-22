@@ -710,6 +710,25 @@ if ( ! function_exists( 'checkview_get_api_ip' ) ) {
 		return $ip_address;
 	}
 }
+if ( ! function_exists( 'checkview_refresh_saas_ip_list' ) ) {
+	/**
+	 * Daily WP-Cron refresh of the SaaS IP allowlist.
+	 *
+	 * Ordinary visitors' requests no longer read the allowlist, so without this
+	 * only test requests would refresh it. Reading it here downloads a new list
+	 * when the 12-hour copy has run out and keeps the last good copy recent, so
+	 * a test still has a list if the download fails at that moment. Runs as a
+	 * normal request, so the copy lands in the same store (options table or
+	 * persistent object cache) that test requests read.
+	 *
+	 * @since 2.6.2
+	 *
+	 * @return void
+	 */
+	function checkview_refresh_saas_ip_list() {
+		checkview_get_api_ip();
+	}
+}
 if ( ! function_exists( 'checkview_fetch_api_ip' ) ) {
 	/**
 	 * Requests the SaaS' IP addresses, unless a request failed in the last

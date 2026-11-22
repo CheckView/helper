@@ -108,6 +108,16 @@ class Checkview_Admin {
 			'checkview_sweep_test_users'
 		);
 
+		add_action(
+			'wp',
+			array( $this, 'checkview_schedule_saas_ip_refresh' )
+		);
+
+		add_action(
+			'checkview_saas_ip_refresh_cron',
+			'checkview_refresh_saas_ip_list'
+		);
+
 		add_filter(
 			'all_plugins',
 			array( $this, 'checkview_hide_me' )
@@ -195,6 +205,19 @@ class Checkview_Admin {
 	public function checkview_schedule_test_users_cleanup() {
 		if ( ! wp_next_scheduled( 'checkview_test_users_cleanup_cron' ) ) {
 			wp_schedule_event( time(), 'daily', 'checkview_test_users_cleanup_cron' );
+		}
+	}
+
+	/**
+	 * Schedules the daily refresh of the SaaS IP allowlist.
+	 *
+	 * @since 2.6.2
+	 *
+	 * @return void
+	 */
+	public function checkview_schedule_saas_ip_refresh() {
+		if ( ! wp_next_scheduled( 'checkview_saas_ip_refresh_cron' ) ) {
+			wp_schedule_event( time(), 'daily', 'checkview_saas_ip_refresh_cron' );
 		}
 	}
 	/**

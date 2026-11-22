@@ -2968,12 +2968,6 @@ class CheckView_Api {
 				);
 			}
 		}
-		// Ordinary visitors no longer read the SaaS IP allowlist, so refresh it
-		// here instead: the SaaS calls this API at the start of every test, so
-		// the test's own requests find a current list (and a last good copy).
-		if ( function_exists( 'checkview_get_api_ip' ) ) {
-			checkview_get_api_ip();
-		}
 		return array(
 			'code' => 'jwt_auth_valid_token',
 			'data' => array(
