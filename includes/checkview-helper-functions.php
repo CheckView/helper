@@ -252,8 +252,8 @@ add_filter(
 		return $exceptions;
 	}
 );
-// Bypass WP Security.
-if ( is_plugin_active( 'better-wp-security/better-wp-security.php' ) ) {
+// Bypass Solid Security (formerly iThemes Security), free and Pro.
+if ( is_plugin_active( 'better-wp-security/better-wp-security.php' ) || is_plugin_active( 'ithemes-security-pro/ithemes-security-pro.php' ) ) {
 	add_filter(
 		'itsec_white_ips',
 		function ( $whitelisted_ips ) {
@@ -277,8 +277,9 @@ if ( is_plugin_active( 'better-wp-security/better-wp-security.php' ) ) {
 		0
 	);
 }
-// Bypass WP Defender.
-if ( is_plugin_active( 'defender-security/wp-defender.php' ) ) {
+// Bypass WP Defender (free and Pro). Its firewall reads this list before any
+// lockout or block list check, for this request only; nothing is stored.
+if ( is_plugin_active( 'defender-security/wp-defender.php' ) || is_plugin_active( 'wp-defender/wp-defender.php' ) ) {
 	add_filter(
 		'ip_lockout_default_whitelist_ip',
 		function ( $whitelisted_ips ) {

@@ -9,7 +9,6 @@
  */
 
 use AIOWPS\Firewall\Allow_List;
-use WP_Defender\Component\IP\Global_IP;
 /**
  * Handles various admin area features.
  *
@@ -472,17 +471,6 @@ class Checkview_Admin {
 			} else {
 				$aiowps_firewall_allow_list::add_ips( $validated_ip_list_array );
 			}
-		}
-
-		if ( is_plugin_active( 'defender-security/wp-defender.php' ) ) {
-			$data                         = array();
-			$data['allow_list']           = (array) $visitor_ip;
-			$data['block_list']           = array();
-			$data['last_update_time']     = '';
-			$data['last_update_time_utc'] = '';
-
-			$global_ip_component = wd_di()->get( Global_IP::class );
-			$result              = $global_ip_component->set_global_ip_list( $data );
 		}
 
 		if ( is_plugin_active( 'enhanced-cloudflare-turnstile/enhanced-cloudflare-turnstile.php' ) ) {
