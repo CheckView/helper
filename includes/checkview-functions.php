@@ -488,19 +488,23 @@ if ( ! function_exists( 'checkview_fetch_api_ip' ) ) {
 	/**
 	 * Requests the SaaS' IP addresses and caches them.
 	 *
-	 * A good list is cached for 12 hours and kept as the last good copy, which
-	 * visitors' requests use while a scheduled event refreshes it. A failed
-	 * request is remembered for 5 minutes, so an unreachable whitelist host
-	 * costs at most one request per 5 minutes instead of every page load.
+	 * The list the SaaS sends, an empty one included, is cached for 12 hours and
+	 * kept as the last good copy, which visitors' requests use while a scheduled
+	 * event refreshes it. A failed request, or a list with an invalid IP, is
+	 * remembered for 5 minutes, so an unreachable whitelist host costs at most one
+	 * request per 5 minutes instead of every page load.
 	 *
 	 * @since 2.6.2
 	 *
-	 * @return string[]|null|false IPs; an empty list when the response has none; `null` when the
-	 *                             request failed; `false` when an IP is invalid.
+	 * @return string[]|null|false IPs (an empty list when the SaaS sends none);
+	 *                             `null` when the request failed; `false` when an
+	 *                             IP is invalid.
 	 */
 	function checkview_fetch_api_ip() {
-		if ( get_transient( 'checkview_saas_ip_fetch_failed' ) ) {
-			return null;
+		$failed = get_transient( 'checkview_saas_ip_fetch_failed' );
+
+		if ( $failed ) {
+			return 'invalid' === $failed ? false : null;
 		}
 
 		$request = wp_remote_get(
@@ -511,34 +515,34 @@ if ( ! function_exists( 'checkview_fetch_api_ip' ) ) {
 			)
 		);
 
-		if ( is_wp_error( $request ) || 200 !== wp_remote_retrieve_response_code( $request ) ) {
-			$message = is_wp_error( $request ) ? $request->get_error_code() . '] ' . $request->get_error_message() : 'HTTP ' . wp_remote_retrieve_response_code( $request ) . ']';
+		$code = is_wp_error( $request ) ? 0 : (int) wp_remote_retrieve_response_code( $request );
+		$data = 200 === $code ? json_decode( wp_remote_retrieve_body( $request ), true ) : null;
 
-			Checkview_Admin_Logs::add( 'ip-logs', 'Request for new IP addresses failed with code [' . $message . ' Not retrying for 5 minutes.' );
-			set_transient( 'checkview_saas_ip_fetch_failed', 1, 5 * MINUTE_IN_SECONDS );
+		// Only a well-formed list counts. Anything else keeps the last good copy.
+		if ( ! is_array( $data ) || ! array_key_exists( 'ipAddresses', $data ) ) {
+			$reason = is_wp_error( $request ) ? $request->get_error_code() . '] ' . $request->get_error_message() : 'HTTP ' . $code . ']';
+
+			Checkview_Admin_Logs::add( 'ip-logs', 'Request for new IP addresses failed with code [' . $reason . ' Not retrying for 5 minutes.' );
+			set_transient( 'checkview_saas_ip_fetch_failed', 'failed', 5 * MINUTE_IN_SECONDS );
 
 			return null;
 		}
 
-		$data = json_decode( wp_remote_retrieve_body( $request ), true );
+		$ip_address = empty( $data['ipAddresses'] ) ? array() : (array) $data['ipAddresses'];
 
-		if ( empty( $data ) || empty( $data['ipAddresses'] ) ) {
-			Checkview_Admin_Logs::add( 'ip-logs', 'IP addresses not found in request for new IP addresses.' );
-			set_transient( 'checkview_saas_ip_fetch_failed', 1, 5 * MINUTE_IN_SECONDS );
-
-			return array();
-		}
-
-		$ip_address = $data['ipAddresses'];
-
-		foreach ( (array) $ip_address as $ip ) {
+		foreach ( $ip_address as $ip ) {
 			if ( ! checkview_validate_ip( $ip ) ) {
+				Checkview_Admin_Logs::add( 'ip-logs', 'Whitelist contained an invalid IP address. Not retrying for 5 minutes.' );
+				set_transient( 'checkview_saas_ip_fetch_failed', 'invalid', 5 * MINUTE_IN_SECONDS );
+
 				return false;
 			}
 		}
 
+		// An empty list is a real answer: it replaces both copies, so removed IPs stop being trusted.
 		set_transient( 'checkview_saas_ip_address', $ip_address, 12 * HOUR_IN_SECONDS );
 		update_option( 'checkview_saas_ip_address_last_good', $ip_address, false );
+		unset( $GLOBALS['checkview_api_ip_memo'] );
 
 		Checkview_Admin_Logs::add( 'ip-logs', 'Set bot IP address list transient to response data [' . wp_json_encode( $ip_address ) . ']' );
 
@@ -555,7 +559,8 @@ if ( ! function_exists( 'checkview_get_api_ip' ) ) {
 	 * list answers this request and a scheduled event fetches a new one, so a
 	 * visitor never waits on the whitelist host. Only a site that has never
 	 * fetched the list, or whose cache was reset, fetches it during the request.
-	 * The answer is kept for the rest of the request, which asks several times.
+	 * The answer is kept for the rest of the request, which asks several times;
+	 * checkview_reset_cache() and a new download clear that copy.
 	 *
 	 * If there is an issue retrieving the IPs from the SaaS, returns `null`. If
 	 * there is an issue validating the IPs, returns `false`.
@@ -566,18 +571,17 @@ if ( ! function_exists( 'checkview_get_api_ip' ) ) {
 	 * @return string[]|null|false
 	 */
 	function checkview_get_api_ip() {
-		static $memo = array();
-
-		if ( array_key_exists( 'ips', $memo ) ) {
-			return $memo['ips'];
+		if ( isset( $GLOBALS['checkview_api_ip_memo'] ) && array_key_exists( 'ips', $GLOBALS['checkview_api_ip_memo'] ) ) {
+			return $GLOBALS['checkview_api_ip_memo']['ips'];
 		}
 
+		// `false` means no cached copy; an empty array is a cached empty list.
 		$ip_address = get_transient( 'checkview_saas_ip_address' );
 
-		if ( empty( $ip_address ) ) {
-			$last_good = get_option( 'checkview_saas_ip_address_last_good', array() );
+		if ( false === $ip_address ) {
+			$last_good = get_option( 'checkview_saas_ip_address_last_good', null );
 
-			if ( ! empty( $last_good ) ) {
+			if ( is_array( $last_good ) ) {
 				$ip_address = $last_good;
 
 				if ( ! wp_next_scheduled( 'checkview_refresh_api_ip' ) ) {
@@ -588,8 +592,8 @@ if ( ! function_exists( 'checkview_get_api_ip' ) ) {
 
 				$ip_address = checkview_fetch_api_ip();
 
-				if ( ! is_array( $ip_address ) && ! is_string( $ip_address ) ) {
-					$memo['ips'] = $ip_address;
+				if ( ! is_array( $ip_address ) ) {
+					$GLOBALS['checkview_api_ip_memo'] = array( 'ips' => $ip_address );
 
 					return $ip_address;
 				}
@@ -607,7 +611,7 @@ if ( ! function_exists( 'checkview_get_api_ip' ) ) {
 		// whitelist (verify.checkview.io).
 		$ip_address[] = '::1';
 
-		$memo['ips'] = $ip_address;
+		$GLOBALS['checkview_api_ip_memo'] = array( 'ips' => $ip_address );
 
 		return $ip_address;
 	}
@@ -1557,6 +1561,7 @@ if ( ! function_exists( 'checkview_reset_cache' ) ) {
 		checkview_delete_transient_everywhere( 'checkview_saas_ip_address' );
 		checkview_delete_transient_everywhere( 'checkview_saas_ip_fetch_failed' );
 		delete_option( 'checkview_saas_ip_address_last_good' );
+		unset( $GLOBALS['checkview_api_ip_memo'] );
 		checkview_delete_transient_everywhere( 'checkview_forms_list_transient' );
 		checkview_delete_transient_everywhere( 'checkview_forms_test_transient' );
 		checkview_delete_transient_everywhere( 'checkview_store_orders_transient' );
