@@ -1277,10 +1277,17 @@ class Checkview_Woo_Automated_Testing {
 
 		$payment_method  = ( \is_object( $order ) && \method_exists( $order, 'get_payment_method' ) ) ? $order->get_payment_method() : false;
 		$payment_made_by = is_object( $order ) ? $order->get_meta( 'payment_made_by' ) : '';
-		$visitor_ip      = checkview_get_visitor_ip();
-		// Check view Bot IP.
-		$cv_bot_ip = checkview_get_api_ip();
-		if ( ( checkview_get_test_id() || ( is_array( $cv_bot_ip ) && in_array( $visitor_ip, $cv_bot_ip, true ) ) ) || ( 'checkview' === $payment_method || 'checkview' === $payment_made_by ) ) {
+		$is_test_order   = 'checkview' === $payment_method || 'checkview' === $payment_made_by || checkview_get_test_id();
+
+		// The SaaS IP allowlist is read only for a request that could be a
+		// CheckView test, so a shopper's order email never waits on it.
+		if ( ! $is_test_order && CheckView::may_be_test() ) {
+			$visitor_ip    = checkview_get_visitor_ip();
+			$cv_bot_ip     = checkview_get_api_ip();
+			$is_test_order = is_array( $cv_bot_ip ) && in_array( $visitor_ip, $cv_bot_ip, true );
+		}
+
+		if ( $is_test_order ) {
 			// New: append-mode — deliver to BOTH real recipient and test inbox.
 			if ( checkview_should_allow_original_recipients() && defined( 'CHECKVIEW_TEST_EMAIL' ) ) {
 				return checkview_append_test_email_string( $recipient );

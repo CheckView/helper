@@ -252,56 +252,74 @@ add_filter(
 		return $exceptions;
 	}
 );
+if ( ! function_exists( 'checkview_is_checkview_rest_uri' ) ) {
+	/**
+	 * Whether the request URL points at CheckView's REST namespace.
+	 *
+	 * A loose text match on the URL, usable before WordPress parses the
+	 * request. It only decides whether to look at the allowlist, never whether
+	 * to trust the request, so a false match costs one allowlist read.
+	 *
+	 * @since 2.6.2
+	 *
+	 * @return bool
+	 */
+	function checkview_is_checkview_rest_uri() {
+		// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Read-only routing check; no state change.
+		$rest_route = isset( $_GET['rest_route'] ) && is_string( $_GET['rest_route'] ) ? sanitize_text_field( wp_unslash( $_GET['rest_route'] ) ) : '';
+		if ( 0 === stripos( ltrim( $rest_route, '/' ), 'checkview/' ) ) {
+			return true;
+		}
+
+		$uri    = isset( $_SERVER['REQUEST_URI'] ) && is_string( $_SERVER['REQUEST_URI'] ) ? sanitize_text_field( wp_unslash( $_SERVER['REQUEST_URI'] ) ) : '';
+		$prefix = function_exists( 'rest_get_url_prefix' ) ? rest_get_url_prefix() : 'wp-json';
+
+		return false !== stripos( $uri, '/' . trim( $prefix, '/' ) . '/checkview/' );
+	}
+}
+
+if ( ! function_exists( 'checkview_allowlist_saas_ip_for_firewall' ) ) {
+	/**
+	 * Adds the visitor's IP to a security plugin's per-request allowlist when it
+	 * is on the CheckView SaaS allowlist.
+	 *
+	 * Ordinary visitors' requests carry no test type, no signature header and
+	 * no CheckView REST route, so they return the list unchanged without
+	 * reading the SaaS allowlist.
+	 *
+	 * @since 2.6.2
+	 *
+	 * @param array $whitelisted_ips IPs the security plugin allows.
+	 * @return array
+	 */
+	function checkview_allowlist_saas_ip_for_firewall( $whitelisted_ips ) {
+		if ( ! function_exists( 'checkview_get_visitor_ip' ) || ! function_exists( 'checkview_get_api_ip' ) ) {
+			return $whitelisted_ips;
+		}
+
+		if ( ! CheckView::may_be_test() && ! checkview_is_checkview_rest_uri() ) {
+			return $whitelisted_ips;
+		}
+
+		$visitor_ip = checkview_get_visitor_ip();
+		$cv_bot_ip  = checkview_get_api_ip();
+
+		if ( is_array( $cv_bot_ip ) && in_array( $visitor_ip, $cv_bot_ip, true ) ) {
+			return array_merge( (array) $whitelisted_ips, (array) $visitor_ip );
+		}
+
+		return $whitelisted_ips;
+	}
+}
+
 // Bypass Solid Security (formerly iThemes Security), free and Pro.
 if ( is_plugin_active( 'better-wp-security/better-wp-security.php' ) || is_plugin_active( 'ithemes-security-pro/ithemes-security-pro.php' ) ) {
-	add_filter(
-		'itsec_white_ips',
-		function ( $whitelisted_ips ) {
-			if ( ! function_exists( 'checkview_get_visitor_ip' ) ) {
-				return $whitelisted_ips;
-			}
-			$visitor_ip = checkview_get_visitor_ip();
-			// Get SaaS IPs.
-			if ( function_exists( 'checkview_get_api_ip' ) ) {
-				$cv_bot_ip = checkview_get_api_ip();
-			} else {
-				return $whitelisted_ips;
-			}
-
-			// Whitelist our IPs.
-			if ( is_array( $cv_bot_ip ) && in_array( $visitor_ip, $cv_bot_ip, true ) ) {
-				return array_merge( $whitelisted_ips, (array) $visitor_ip );
-			}
-			return $whitelisted_ips;
-		},
-		0
-	);
+	add_filter( 'itsec_white_ips', 'checkview_allowlist_saas_ip_for_firewall', 0 );
 }
 // Bypass WP Defender (free and Pro). Its firewall reads this list before any
 // lockout or block list check, for this request only; nothing is stored.
 if ( is_plugin_active( 'defender-security/wp-defender.php' ) || is_plugin_active( 'wp-defender/wp-defender.php' ) ) {
-	add_filter(
-		'ip_lockout_default_whitelist_ip',
-		function ( $whitelisted_ips ) {
-			if ( ! function_exists( 'checkview_get_visitor_ip' ) ) {
-				return $whitelisted_ips;
-			}
-			$visitor_ip = checkview_get_visitor_ip();
-			// Get SaaS IPs.
-			if ( function_exists( 'checkview_get_api_ip' ) ) {
-				$cv_bot_ip = checkview_get_api_ip();
-			} else {
-				return $whitelisted_ips;
-			}
-
-			// Whitelist our IPs.
-			if ( is_array( $cv_bot_ip ) && in_array( $visitor_ip, $cv_bot_ip, true ) ) {
-				return array_merge( $whitelisted_ips, (array) $visitor_ip );
-			}
-			return $whitelisted_ips;
-		},
-		10
-	);
+	add_filter( 'ip_lockout_default_whitelist_ip', 'checkview_allowlist_saas_ip_for_firewall', 10 );
 }
 // Bypass WP Force Login.
 if ( is_plugin_active( 'wp-force-login/wp-force-login.php' ) ) {
