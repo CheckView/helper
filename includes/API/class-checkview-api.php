@@ -2382,18 +2382,17 @@ class CheckView_Api {
 			$result        = $wpdb->get_row( $query ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- Prepared above. Expect object.
 
 			if ( is_null( $result ) ) {
-				// The session is created when the test page loads and deleted
-				// by checkview_complete_test() once an entry is captured. A
-				// lingering session proves only that the page loaded: the form
-				// may never have submitted, or it submitted and the form
-				// plugin's save step, or CheckView's hook on it, did not run.
+				// The session is created by the first test request that reaches
+				// WordPress outside admin-ajax (normally the page load) and
+				// deleted by checkview_complete_test(). A lingering session does
+				// not show that the form submitted.
 				$session_table = $wpdb->prefix . 'cv_session';
 				$session       = $wpdb->get_row(
 					$wpdb->prepare( 'SELECT * FROM %i WHERE test_id = %s LIMIT 1', $session_table, $uid )
 				);
 
 				if ( ! is_null( $session ) ) {
-					$detail = 'No entry captured for test ID [' . $uid . ']. The test page loaded, but either the form never submitted or the submission was not saved (the save step of the form plugin, or the CheckView hook on it, did not run).';
+					$detail = 'No entry captured yet for test ID [' . $uid . ']. The test page loaded, but the form has not submitted, or its submission was rejected or not saved (the save step of the form plugin, or the CheckView hook on it, did not run).';
 					Checkview_Admin_Logs::add( 'api-logs', $detail );
 
 					return new WP_Error(
