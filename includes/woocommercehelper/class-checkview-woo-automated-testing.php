@@ -118,14 +118,15 @@ class Checkview_Woo_Automated_Testing {
 				'checkview_after_delete_product'
 			);
 			// The product list is cached for 12 hours. Refresh it when a product
-			// enters or leaves it, or is deleted.
-			$this->loader->add_action(
-				'transition_post_status',
-				$this,
-				'checkview_clear_products_cache_on_status',
-				10,
-				3
-			);
+			// or variation is saved (created, renamed, published, trashed,
+			// restored) or permanently deleted.
+			foreach ( array( 'save_post_product', 'save_post_product_variation' ) as $save_hook ) {
+				$this->loader->add_action(
+					$save_hook,
+					$this,
+					'checkview_clear_products_cache'
+				);
+			}
 			$this->loader->add_action(
 				'after_delete_post',
 				$this,
@@ -413,7 +414,8 @@ class Checkview_Woo_Automated_Testing {
 	}
 
 	/**
-	 * Clears the cached product list so CheckView sees a stock change right away.
+	 * Clears the cached product list so CheckView sees a product or stock change
+	 * right away.
 	 *
 	 * @since 2.6.2
 	 *
@@ -424,30 +426,7 @@ class Checkview_Woo_Automated_Testing {
 	}
 
 	/**
-	 * Clears the cached product list when a product enters or leaves it.
-	 *
-	 * The list holds published and draft products, so a product that is trashed,
-	 * restored, made private or first saved changes it.
-	 *
-	 * @since 2.6.2
-	 *
-	 * @param string  $new_status New post status.
-	 * @param string  $old_status Old post status.
-	 * @param WP_Post $post       Post object.
-	 * @return void
-	 */
-	public function checkview_clear_products_cache_on_status( $new_status, $old_status, $post ) {
-		if ( ! $post instanceof \WP_Post || 'product' !== $post->post_type ) {
-			return;
-		}
-		$listed = array( 'publish', 'draft' );
-		if ( in_array( $new_status, $listed, true ) !== in_array( $old_status, $listed, true ) ) {
-			$this->checkview_clear_products_cache();
-		}
-	}
-
-	/**
-	 * Clears the cached product list when a product is permanently deleted.
+	 * Clears the cached product list when a product or variation is permanently deleted.
 	 *
 	 * @since 2.6.2
 	 *
@@ -456,7 +435,7 @@ class Checkview_Woo_Automated_Testing {
 	 * @return void
 	 */
 	public function checkview_clear_products_cache_on_delete( $post_id, $post = null ) { // phpcs:ignore Generic.CodeAnalysis.UnusedFunctionParameter.FoundBeforeLastUsed -- Hook signature.
-		if ( $post instanceof \WP_Post && 'product' === $post->post_type ) {
+		if ( $post instanceof \WP_Post && in_array( $post->post_type, array( 'product', 'product_variation' ), true ) ) {
 			$this->checkview_clear_products_cache();
 		}
 	}
