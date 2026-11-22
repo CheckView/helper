@@ -591,11 +591,12 @@ if ( ! function_exists( 'checkview_seed_last_good_copy' ) ) {
 	function checkview_seed_last_good_copy( $name, $value ) {
 		if ( get_option( 'checkview_saas_' . $name . '_seeded' ) ) {
 			$copy = get_option( 'checkview_saas_' . $name . '_last_good', null );
-			// Missing (withdrawn on purpose) or in the current format: done.
-			if ( null === $copy || ( is_array( $copy ) && isset( $copy['value'], $copy['fetched_at'] ) ) ) {
+			// Missing (withdrawn on purpose), or current and not expired: done.
+			if ( null === $copy || ( is_array( $copy ) && isset( $copy['value'], $copy['fetched_at'] ) && (int) $copy['fetched_at'] >= time() - 7 * DAY_IN_SECONDS ) ) {
 				return;
 			}
-			// A copy from an earlier development build: replace it below.
+			// Expired (e.g. after a downgrade and re-upgrade) or from an
+			// earlier development build: replace it below.
 		}
 		checkview_last_good_copy( $name, $value, time() - 12 * HOUR_IN_SECONDS );
 	}
@@ -629,9 +630,12 @@ if ( ! function_exists( 'checkview_get_publickey' ) ) {
 		if ( false === $lock ) {
 			return $last_good;
 		}
-		// Another request may have finished meanwhile. Forget this request's
-		// remembered option misses so the re-read reaches the database.
-		wp_cache_delete( 'notoptions', 'options' );
+		// Another request may have finished meanwhile. Where transients are
+		// options, forget this request's remembered misses so the re-read
+		// reaches the database.
+		if ( ! wp_using_ext_object_cache() ) {
+			wp_cache_delete( 'notoptions', 'options' );
+		}
 		$public_key = get_transient( 'checkview_saas_pk' );
 		if ( get_transient( 'checkview_saas_pk_fetch_failed' ) || ( is_string( $public_key ) && '' !== $public_key ) ) {
 			checkview_release_fetch_lock( 'pk', $lock );
@@ -641,9 +645,10 @@ if ( ! function_exists( 'checkview_get_publickey' ) ) {
 		$response   = wp_safe_remote_get(
 			'https://app.checkview.io/api/helper/public_key',
 			array(
-				'method'      => 'GET',
-				'timeout'     => 5,
-				'redirection' => 1,
+				'method'              => 'GET',
+				'timeout'             => 5,
+				'redirection'         => 1,
+				'limit_response_size' => 256 * KB_IN_BYTES,
 			)
 		);
 		$public_key = is_wp_error( $response ) || 200 !== wp_remote_retrieve_response_code( $response )
@@ -726,12 +731,14 @@ if ( ! function_exists( 'checkview_fetch_api_ip' ) ) {
 		// The outcome is reused for a minute (most callers run in one request),
 		// then fetched again, so a long-running process (WP-CLI, Action
 		// Scheduler) is not stuck with it. checkview_reset_cache() clears it.
-		$memo = isset( $GLOBALS['checkview_api_ip_fetch_memo'] ) ? $GLOBALS['checkview_api_ip_fetch_memo'] : null;
+		// Kept per blog, since a multisite loop may switch_to_blog().
+		$blog = get_current_blog_id();
+		$memo = isset( $GLOBALS['checkview_api_ip_fetch_memo'][ $blog ] ) ? $GLOBALS['checkview_api_ip_fetch_memo'][ $blog ] : null;
 		if ( is_array( $memo ) && isset( $memo['at'], $memo['ips'] ) && $memo['at'] > time() - MINUTE_IN_SECONDS ) {
 			return $memo['ips'];
 		}
-		$remember = function ( $ips ) {
-			$GLOBALS['checkview_api_ip_fetch_memo'] = array(
+		$remember = function ( $ips ) use ( $blog ) {
+			$GLOBALS['checkview_api_ip_fetch_memo'][ $blog ] = array(
 				'at'  => time(),
 				'ips' => $ips,
 			);
@@ -748,9 +755,12 @@ if ( ! function_exists( 'checkview_fetch_api_ip' ) ) {
 		if ( false === $lock ) {
 			return $remember( $last_good );
 		}
-		// Another request may have finished meanwhile. Forget this request's
-		// remembered option misses so the re-read reaches the database.
-		wp_cache_delete( 'notoptions', 'options' );
+		// Another request may have finished meanwhile. Where transients are
+		// options, forget this request's remembered misses so the re-read
+		// reaches the database.
+		if ( ! wp_using_ext_object_cache() ) {
+			wp_cache_delete( 'notoptions', 'options' );
+		}
 		$cached = get_transient( 'checkview_saas_ip_address' );
 		if ( get_transient( 'checkview_saas_ip_fetch_failed' ) || false !== $cached ) {
 			checkview_release_fetch_lock( 'ip_address', $lock );
@@ -762,9 +772,10 @@ if ( ! function_exists( 'checkview_fetch_api_ip' ) ) {
 		$request = wp_safe_remote_get(
 			'https://verify.checkview.io/whitelist.json',
 			array(
-				'method'      => 'GET',
-				'timeout'     => 5,
-				'redirection' => 1,
+				'method'              => 'GET',
+				'timeout'             => 5,
+				'redirection'         => 1,
+				'limit_response_size' => 256 * KB_IN_BYTES,
 			)
 		);
 
