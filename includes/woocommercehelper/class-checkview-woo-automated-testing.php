@@ -77,6 +77,17 @@ class Checkview_Woo_Automated_Testing {
 	private $loader;
 
 	/**
+	 * Per-request answers to "does this parent order carry this test's id",
+	 * keyed by parent order id. Set to true as soon as an order is seen with,
+	 * or given, this test's stamp; a stamp cannot be removed within the request.
+	 *
+	 * @since 2.6.2
+	 *
+	 * @var array<int, bool>
+	 */
+	private $parent_is_test_order = array();
+
+	/**
 	 * Constructor.
 	 *
 	 * Initiates class properties, adds hooks.
@@ -1211,6 +1222,17 @@ class Checkview_Woo_Automated_Testing {
 				1
 			);
 
+			// Stamps a new checkout order on the object before WC writes it,
+			// so the meta is stored by the same insert and is already there
+			// when `woocommerce_new_order` fires.
+			$this->loader->add_action(
+				'woocommerce_before_order_object_save',
+				$this,
+				'checkview_stamp_new_order_object',
+				self::STAMP_PRIORITY,
+				1
+			);
+
 			$this->loader->add_action(
 				'woocommerce_order_status_changed',
 				$this,
@@ -2072,6 +2094,12 @@ class Checkview_Woo_Automated_Testing {
 	 * we keep the original stamp instead of overwriting. Preserves the original
 	 * test association.
 	 *
+	 * Only stamps the test's own order (see `checkview_is_test_checkout_order`).
+	 * Another plugin can save or create a real order during the bot's request
+	 * (a subscription renewal, a status sync, inline WP-Cron); stamping it
+	 * would let the order clean-up delete it. New checkout orders are stamped
+	 * earlier, by `checkview_stamp_new_order_object`.
+	 *
 	 * @since 2.0.34
 	 *
 	 * @param int $order_id WooCommerce order ID.
@@ -2111,12 +2139,27 @@ class Checkview_Woo_Automated_Testing {
 			// Idempotency guard — first-wins on `checkview_test_id`. Keeps the
 			// original test association on failed-payment retries where the
 			// same order is touched twice.
-			if ( $order->get_meta( CheckView::PARAM_TEST_ID ) ) {
+			$stamp = $order->get_meta( CheckView::PARAM_TEST_ID );
+			if ( $stamp ) {
+				if ( CHECKVIEW_TEST_ID === $stamp ) {
+					$this->parent_is_test_order[ (int) $order->get_id() ] = true;
+				}
+				return;
+			}
+
+			if ( ! $this->checkview_is_test_checkout_order( $order ) ) {
+				// On the CPT store a `save_post` callback can load the order
+				// before `create()` has written its props; it is not known yet.
+				if ( $order->get_created_via( 'edit' ) || $order->get_payment_method( 'edit' ) ) {
+					$this->checkview_log_order_not_stamped( $order->get_id() );
+				}
 				return;
 			}
 
 			$order->update_meta_data( 'payment_made_by', 'checkview' );
 			$order->update_meta_data( CheckView::PARAM_TEST_ID, CHECKVIEW_TEST_ID );
+			// Before the save: hooks it fires may re-save this order's sub-orders.
+			$this->parent_is_test_order[ (int) $order->get_id() ] = true;
 			$order->save();
 
 			Checkview_Admin_Logs::add( 'ip-logs', 'Stamped CheckView meta on order [' . $order->get_id() . '] for test [' . CHECKVIEW_TEST_ID . '].' );
@@ -2146,6 +2189,116 @@ class Checkview_Woo_Automated_Testing {
 			return;
 		}
 		$this->checkview_stamp_order_meta( $order->get_id() );
+	}
+
+	/**
+	 * Stamps a new order on the object, before its first save, when it is the
+	 * test's checkout order: created by the classic checkout (`checkout`) or
+	 * the Store API (`store-api`, including the Block Checkout draft, which is
+	 * created before any billing email is filled in), or otherwise the test's
+	 * own by `checkview_is_test_checkout_order`.
+	 *
+	 * Both order stores write the object's meta inside `create()`, before
+	 * `woocommerce_new_order` fires, so no second save is needed.
+	 *
+	 * @since 2.6.2
+	 *
+	 * @param mixed $order Order object passed by WC.
+	 * @return void
+	 */
+	public function checkview_stamp_new_order_object( $order ) {
+		if ( ! defined( 'CHECKVIEW_TEST_ID' ) || ! CHECKVIEW_TEST_ID ) {
+			return;
+		}
+		if ( ! $order instanceof WC_Order || $order->get_id() ) {
+			return;
+		}
+		if ( $order->get_meta( CheckView::PARAM_TEST_ID ) ) {
+			return;
+		}
+		$created_via = (string) $order->get_created_via( 'edit' );
+		if ( ! in_array( $created_via, array( 'checkout', 'store-api' ), true ) && ! $this->checkview_is_test_checkout_order( $order ) ) {
+			return;
+		}
+
+		$order->update_meta_data( 'payment_made_by', 'checkview' );
+		$order->update_meta_data( CheckView::PARAM_TEST_ID, CHECKVIEW_TEST_ID );
+
+		Checkview_Admin_Logs::add( 'ip-logs', 'Stamped CheckView meta on new order (created via [' . $created_via . '], status [' . ( $order->get_status( 'edit' ) ? $order->get_status( 'edit' ) : 'pending' ) . ']) for test [' . CHECKVIEW_TEST_ID . '].' );
+	}
+
+	/**
+	 * Whether an order saved during a CheckView test request is the test's
+	 * own order. True when any of these holds:
+	 *   - it was paid with the CheckView gateway;
+	 *   - its billing email is this test's inbox (`<test id>@test-mail.checkview.io`,
+	 *     which generated checkout steps fill in);
+	 *   - it is the order this visitor's checkout is working on (the Block
+	 *     Checkout draft or the classic checkout's pending order in the
+	 *     Woo session);
+	 *   - its parent order carries this test's id (sub-orders that
+	 *     marketplace or order-splitting plugins create for the checkout).
+	 *
+	 * @since 2.6.2
+	 *
+	 * @param mixed $order Order.
+	 * @return bool
+	 */
+	private function checkview_is_test_checkout_order( $order ) {
+		if ( ! $order instanceof WC_Order ) {
+			return false;
+		}
+
+		if ( 'checkview' === $order->get_payment_method( 'edit' ) ) {
+			return true;
+		}
+
+		$billing_email = strtolower( trim( (string) $order->get_billing_email( 'edit' ) ) );
+		if ( '' !== $billing_email && strtolower( CHECKVIEW_TEST_ID ) . '@test-mail.checkview.io' === $billing_email ) {
+			return true;
+		}
+
+		$order_id = (int) $order->get_id();
+		$session  = function_exists( 'WC' ) && WC() && isset( WC()->session ) ? WC()->session : null;
+		if ( $order_id > 0 && $session ) {
+			foreach ( array( 'store_api_draft_order', 'order_awaiting_payment' ) as $key ) {
+				if ( (int) $session->get( $key, 0 ) === $order_id ) {
+					return true;
+				}
+			}
+		}
+
+		$parent_id = (int) $order->get_parent_id( 'edit' );
+		if ( $parent_id > 0 && $parent_id !== $order_id ) {
+			if ( ! isset( $this->parent_is_test_order[ $parent_id ] ) ) {
+				$parent = wc_get_order( $parent_id );
+
+				$this->parent_is_test_order[ $parent_id ] = $parent && CHECKVIEW_TEST_ID === $parent->get_meta( CheckView::PARAM_TEST_ID );
+			}
+			if ( $this->parent_is_test_order[ $parent_id ] ) {
+				return true;
+			}
+		}
+
+		return false;
+	}
+
+	/**
+	 * Logs, once per order per request, that an order saved during a test was
+	 * not stamped because it is not the test's own.
+	 *
+	 * @since 2.6.2
+	 *
+	 * @param int $order_id Order ID.
+	 * @return void
+	 */
+	private function checkview_log_order_not_stamped( $order_id ) {
+		static $logged = array();
+		if ( isset( $logged[ $order_id ] ) ) {
+			return;
+		}
+		$logged[ $order_id ] = true;
+		Checkview_Admin_Logs::add( 'ip-logs', 'Not stamping order [' . $order_id . '] during test [' . CHECKVIEW_TEST_ID . ']: not the test checkout order.' );
 	}
 
 	/**
