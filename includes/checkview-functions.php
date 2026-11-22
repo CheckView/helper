@@ -491,8 +491,8 @@ if ( ! function_exists( 'checkview_fetch_api_ip' ) ) {
 	 * The list the SaaS sends, an empty one included, is cached for 12 hours and
 	 * kept as the last good copy, which visitors' requests use while a scheduled
 	 * event refreshes it. A failed request, or a list with an invalid IP, is
-	 * remembered for 5 minutes, so an unreachable whitelist host costs at most one
-	 * request per 5 minutes instead of every page load.
+	 * remembered for 5 minutes, and the last good copy answers until then, so an
+	 * unreachable whitelist host costs one request per 5 minutes.
 	 *
 	 * @since 2.6.2
 	 *
@@ -507,39 +507,34 @@ if ( ! function_exists( 'checkview_fetch_api_ip' ) ) {
 			return 'invalid' === $failed ? false : null;
 		}
 
-		$request = wp_remote_get(
-			'https://verify.checkview.io/whitelist.json',
-			array(
-				'method'  => 'GET',
-				'timeout' => 5,
-			)
-		);
+		Checkview_Admin_Logs::add( 'ip-logs', 'Requesting new IP addresses.' );
 
-		$code = is_wp_error( $request ) ? 0 : (int) wp_remote_retrieve_response_code( $request );
-		$data = 200 === $code ? json_decode( wp_remote_retrieve_body( $request ), true ) : null;
+		$request = wp_remote_get( 'https://verify.checkview.io/whitelist.json', array( 'timeout' => 5 ) );
+		$code    = is_wp_error( $request ) ? 0 : (int) wp_remote_retrieve_response_code( $request );
+		$data    = 200 === $code ? json_decode( wp_remote_retrieve_body( $request ), true ) : null;
 
-		// Only a well-formed list counts. Anything else keeps the last good copy.
-		if ( ! is_array( $data ) || ! array_key_exists( 'ipAddresses', $data ) ) {
-			$reason = is_wp_error( $request ) ? $request->get_error_code() . '] ' . $request->get_error_message() : 'HTTP ' . $code . ']';
+		// Only a well-formed list counts. An empty one is a real answer and replaces the old list.
+		$ip_address = is_array( $data ) && array_key_exists( 'ipAddresses', $data )
+			? ( empty( $data['ipAddresses'] ) ? array() : (array) $data['ipAddresses'] )
+			: null;
 
-			Checkview_Admin_Logs::add( 'ip-logs', 'Request for new IP addresses failed with code [' . $reason . ' Not retrying for 5 minutes.' );
-			set_transient( 'checkview_saas_ip_fetch_failed', 'failed', 5 * MINUTE_IN_SECONDS );
+		$invalid = is_array( $ip_address ) && array_filter( $ip_address, fn( $ip ) => ! checkview_validate_ip( $ip ) );
 
-			return null;
-		}
+		if ( null === $ip_address || $invalid ) {
+			$reason = $invalid ? 'an invalid IP address' : ( is_wp_error( $request ) ? $request->get_error_code() . ': ' . $request->get_error_message() : 'HTTP ' . $code );
 
-		$ip_address = empty( $data['ipAddresses'] ) ? array() : (array) $data['ipAddresses'];
+			Checkview_Admin_Logs::add( 'ip-logs', 'Request for new IP addresses failed [' . $reason . ']. Not retrying for 5 minutes.' );
+			set_transient( 'checkview_saas_ip_fetch_failed', $invalid ? 'invalid' : 'failed', 5 * MINUTE_IN_SECONDS );
 
-		foreach ( $ip_address as $ip ) {
-			if ( ! checkview_validate_ip( $ip ) ) {
-				Checkview_Admin_Logs::add( 'ip-logs', 'Whitelist contained an invalid IP address. Not retrying for 5 minutes.' );
-				set_transient( 'checkview_saas_ip_fetch_failed', 'invalid', 5 * MINUTE_IN_SECONDS );
-
-				return false;
+			// Answer from the last good list until the retry, rather than scheduling a refresh on every request.
+			$last_good = get_option( 'checkview_saas_ip_address_last_good', null );
+			if ( is_array( $last_good ) ) {
+				set_transient( 'checkview_saas_ip_address', $last_good, 5 * MINUTE_IN_SECONDS );
 			}
+
+			return $invalid ? false : null;
 		}
 
-		// An empty list is a real answer: it replaces both copies, so removed IPs stop being trusted.
 		set_transient( 'checkview_saas_ip_address', $ip_address, 12 * HOUR_IN_SECONDS );
 		update_option( 'checkview_saas_ip_address_last_good', $ip_address, false );
 		unset( $GLOBALS['checkview_api_ip_memo'] );
@@ -571,8 +566,8 @@ if ( ! function_exists( 'checkview_get_api_ip' ) ) {
 	 * @return string[]|null|false
 	 */
 	function checkview_get_api_ip() {
-		if ( isset( $GLOBALS['checkview_api_ip_memo'] ) && array_key_exists( 'ips', $GLOBALS['checkview_api_ip_memo'] ) ) {
-			return $GLOBALS['checkview_api_ip_memo']['ips'];
+		if ( array_key_exists( 'checkview_api_ip_memo', $GLOBALS ) ) {
+			return $GLOBALS['checkview_api_ip_memo'];
 		}
 
 		// `false` means no cached copy; an empty array is a cached empty list.
@@ -588,30 +583,25 @@ if ( ! function_exists( 'checkview_get_api_ip' ) ) {
 					wp_schedule_single_event( time(), 'checkview_refresh_api_ip' );
 				}
 			} else {
-				Checkview_Admin_Logs::add( 'ip-logs', 'Bot IP address list transient empty, requesting new IP addresses.' );
-
 				$ip_address = checkview_fetch_api_ip();
-
-				if ( ! is_array( $ip_address ) ) {
-					$GLOBALS['checkview_api_ip_memo'] = array( 'ips' => $ip_address );
-
-					return $ip_address;
-				}
 			}
 		}
 
-		$ip_address = (array) $ip_address;
+		// Versions before 2.6.2 could cache a single IP as a string.
+		if ( null !== $ip_address && false !== $ip_address ) {
+			$ip_address = (array) $ip_address;
 
-		// Loopback only. Do NOT hardcode public IPs here. This allowlist is
-		// matched against client-supplied forwarding headers (X-Forwarded-For,
-		// etc.) in checkview_get_visitor_ip(), so any hardcoded public IP
-		// becomes a permanent, unauthenticated bypass of CheckView::is_bot()
-		// — and therefore of WooCommerce "test mode" and its $0 checkout
-		// gateway. Trusted bot IPs must come only from the authenticated SaaS
-		// whitelist (verify.checkview.io).
-		$ip_address[] = '::1';
+			// Loopback only. Do NOT hardcode public IPs here. This allowlist is
+			// matched against client-supplied forwarding headers (X-Forwarded-For,
+			// etc.) in checkview_get_visitor_ip(), so any hardcoded public IP
+			// becomes a permanent, unauthenticated bypass of CheckView::is_bot()
+			// — and therefore of WooCommerce "test mode" and its $0 checkout
+			// gateway. Trusted bot IPs must come only from the authenticated SaaS
+			// whitelist (verify.checkview.io).
+			$ip_address[] = '::1';
+		}
 
-		$GLOBALS['checkview_api_ip_memo'] = array( 'ips' => $ip_address );
+		$GLOBALS['checkview_api_ip_memo'] = $ip_address;
 
 		return $ip_address;
 	}
