@@ -672,7 +672,7 @@ class Checkview_Admin {
 		}
 
 		delete_transient( 'checkview_forms_test_transient' );
-		delete_transient( 'checkview_store_orders_transient' );
+		checkview_delete_transient_everywhere( 'checkview_store_orders_transient' );
 
 		// Form-plugin-agnostic wp_mail backstop. Loaded before any form helper so
 		// the wp_mail filter is registered regardless of which form plugin is
