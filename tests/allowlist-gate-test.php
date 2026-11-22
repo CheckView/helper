@@ -421,7 +421,31 @@ foreach ( array( '/wp-json/checkview/v1/forms/formslist', '/?rest_route=/checkvi
 	check( "REST $uri from elsewhere: not allowlisted", array( 'existing' ) === cv_t_firewall( 'ip_lockout_default_whitelist_ip' ) );
 }
 
+// 5b. Known limit, kept on purpose: with a test type, the firewall filters
+// still compare the (spoofable) visitor IP. Requiring the signature there is
+// a separate change. This check documents the limit; it is not a goal.
+cv_t_site_with_cache();
+$_REQUEST[ CheckView::PARAM_TEST_TYPE ] = 'form';
+$_SERVER['HTTP_X_FORWARDED_FOR']        = BOT_IP;
+check( 'known limit: test type + spoofed XFF still reaches the firewall IP comparison', in_array( BOT_IP, cv_t_firewall( 'itsec_white_ips' ), true ) );
+
+// 5c. A test continued by cookie only (e.g. back from a payment provider) is still a possible test.
+cv_t_site_with_cache();
+$_COOKIE[ CheckView::PARAM_TEST_ID ]   = TEST_UUID;
+$_COOKIE[ CheckView::PARAM_TEST_TYPE ] = 'woo';
+check( 'cookie-only test: may be a test', true === CheckView::may_be_test() );
+$_SERVER['REMOTE_ADDR'] = BOT_IP;
+check( 'cookie-only test: Defender allowlists the bot IP', in_array( BOT_IP, cv_t_firewall( 'ip_lockout_default_whitelist_ip' ), true ) );
+unset( $_COOKIE[ CheckView::PARAM_TEST_TYPE ] );
+check( 'test ID cookie without a test type: not a possible test', false === CheckView::may_be_test() );
+
 // 6. Order emails: test orders still go to CheckView without the allowlist.
+// 6a. A shopper's order email sent from a server-side request over IPv6
+// loopback (WP-Cron) used to go to CheckView, because ::1 is always listed.
+cv_t_site_with_cache();
+$_SERVER['REMOTE_ADDR'] = '::1';
+check( 'order email from a ::1 cron request goes to the shop', 'shop@example.test' === cv_t_order_email() );
+
 cv_t_site_with_cache();
 check( 'order paid with the CheckView gateway goes to CheckView', CHECKVIEW_EMAIL === cv_t_order_email( 'checkview' ) );
 check( 'CheckView gateway order: no allowlist read', 0 === cv_t_allowlist_reads() );
