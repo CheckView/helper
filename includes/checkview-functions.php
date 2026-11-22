@@ -453,112 +453,152 @@ if ( ! function_exists( 'checkview_get_publickey' ) ) {
 	/**
 	 * Gets the SaaS' public key.
 	 *
-	 * Firstly, retrieve the public key from cache. If no cached key is found,
-	 * request the public key from the SaaS.
+	 * Cached for 12 hours. When the cache is empty, it is requested from the
+	 * SaaS with a short timeout. A failed request is not retried for a minute,
+	 * and meanwhile the last key fetched successfully is used, so a slow or
+	 * unreachable SaaS cannot stall the requests that verify a signature.
 	 *
 	 * @since 1.0.0
 	 *
-	 * @return string The public key, or an empty string if it could not be fetched.
+	 * @return string The public key, or an empty string if none is known.
 	 */
 	function checkview_get_publickey() {
 		$public_key = get_transient( 'checkview_saas_pk' );
-		if ( null === $public_key || '' === $public_key || empty( $public_key ) ) {
-			$response = wp_safe_remote_get(
-				'https://app.checkview.io/api/helper/public_key',
-				array(
-					'method'  => 'GET',
-					'timeout' => 10,
-				)
-			);
-			if ( is_wp_error( $response ) || 200 !== wp_remote_retrieve_response_code( $response ) ) {
-				return '';
-			}
-
-			$public_key = wp_remote_retrieve_body( $response );
-			if ( false === strpos( $public_key, 'BEGIN PUBLIC KEY' ) ) {
-				return '';
-			}
-
-			set_transient( 'checkview_saas_pk', $public_key, 12 * HOUR_IN_SECONDS );
+		if ( is_string( $public_key ) && '' !== $public_key ) {
+			return $public_key;
 		}
+
+		$last_good = (string) get_option( 'checkview_saas_pk_last_good', '' );
+		if ( get_transient( 'checkview_saas_pk_fetch_failed' ) ) {
+			return $last_good;
+		}
+
+		$response   = wp_safe_remote_get(
+			'https://app.checkview.io/api/helper/public_key',
+			array(
+				'method'  => 'GET',
+				'timeout' => 5,
+			)
+		);
+		$public_key = is_wp_error( $response ) || 200 !== wp_remote_retrieve_response_code( $response )
+			? ''
+			: (string) wp_remote_retrieve_body( $response );
+		if ( false === strpos( $public_key, 'BEGIN PUBLIC KEY' ) ) {
+			set_transient( 'checkview_saas_pk_fetch_failed', 1, MINUTE_IN_SECONDS );
+			if ( class_exists( 'Checkview_Admin_Logs' ) ) {
+				Checkview_Admin_Logs::add( 'api-logs', 'Could not fetch the CheckView public key; ' . ( '' !== $last_good ? 'using the last one fetched.' : 'none known yet.' ) );
+			}
+			return $last_good;
+		}
+
+		set_transient( 'checkview_saas_pk', $public_key, 12 * HOUR_IN_SECONDS );
+		update_option( 'checkview_saas_pk_last_good', $public_key, false );
 		return $public_key;
 	}
 }
 if ( ! function_exists( 'checkview_get_api_ip' ) ) {
 	/**
-	 * Gets the SaaS' IP addressees.
+	 * Gets the SaaS' IP addresses.
 	 *
-	 * Firstly, checks to see if the IP addresses are cached. If none are found
-	 * in the cache, requests the IPs from the SaaS' API and caches the results.
-	 * If there is an issue retrieving the IPs from the SaaS, returns `null`. If
-	 * there is an issue validating the IPs, returns `false`.
+	 * Cached for 12 hours. When the cache is empty, they are requested from the
+	 * SaaS with a short timeout. A failed or invalid response is not retried for
+	 * five minutes, and meanwhile the last list fetched successfully is used.
+	 * This runs on nearly every request, so a slow or unreachable SaaS must
+	 * never make a page wait on it.
 	 *
 	 * @since 1.0.0
 	 *
-	 * @return string[]|null|false
+	 * @return string[]|null The IPs plus the IPv6 loopback, or `null` if no
+	 *                       list is known.
 	 */
 	function checkview_get_api_ip() {
-		$ip_address = get_transient( 'checkview_saas_ip_address' ) ? get_transient( 'checkview_saas_ip_address' ) : array();
+		$ip_address = get_transient( 'checkview_saas_ip_address' );
 
 		if ( empty( $ip_address ) ) {
-			Checkview_Admin_Logs::add( 'ip-logs', 'Bot IP address list transient empty, requesting new IP addresses.' );
+			$ip_address = checkview_fetch_api_ip();
+		}
 
-			$request = wp_remote_get(
-				'https://verify.checkview.io/whitelist.json',
-				array(
-					'method'  => 'GET',
-					'timeout' => 500,
-				)
-			);
+		if ( empty( $ip_address ) ) {
+			return null;
+		}
 
-			if ( is_wp_error( $request ) ) {
-				$code    = $request->get_error_code();
-				$message = $request->get_error_message();
+		$ip_address = (array) $ip_address;
 
-				Checkview_Admin_Logs::add( 'ip-logs', 'Request for new IP addresses failed with code [' . $code . ']. Message: ' . $message );
+		// Loopback only. Do NOT hardcode public IPs here. This allowlist is
+		// matched against client-supplied forwarding headers (X-Forwarded-For,
+		// etc.) in checkview_get_visitor_ip(), so any hardcoded public IP
+		// becomes a permanent, unauthenticated bypass of CheckView::is_bot()
+		// — and therefore of WooCommerce "test mode" and its $0 checkout
+		// gateway. Trusted bot IPs must come only from the authenticated SaaS
+		// whitelist (verify.checkview.io).
+		$ip_address[] = '::1';
 
-				return null;
-			}
+		return $ip_address;
+	}
+}
+if ( ! function_exists( 'checkview_fetch_api_ip' ) ) {
+	/**
+	 * Requests the SaaS' IP addresses, unless a request failed in the last
+	 * five minutes.
+	 *
+	 * On success the list is cached for 12 hours and kept as the last good
+	 * list. On failure, or when any entry is not a valid IP, the last good list
+	 * is returned instead (empty if there is none).
+	 *
+	 * @since 2.6.2
+	 *
+	 * @return string[]
+	 */
+	function checkview_fetch_api_ip() {
+		$last_good = get_option( 'checkview_saas_ip_address_last_good', array() );
+		$last_good = is_array( $last_good ) ? $last_good : array();
 
-			$body = wp_remote_retrieve_body( $request );
-			$data = json_decode( $body, true );
+		if ( get_transient( 'checkview_saas_ip_fetch_failed' ) ) {
+			return $last_good;
+		}
 
-			if ( ! empty( $data ) && ! empty( $data['ipAddresses'] ) ) {
-				$ip_address = $data['ipAddresses'];
+		Checkview_Admin_Logs::add( 'ip-logs', 'Bot IP address list transient empty, requesting new IP addresses.' );
 
-				if ( ! empty( $ip_address ) && is_array( $ip_address ) ) {
-					foreach ( $ip_address as $ip ) {
-						// If validation fails, handle the error appropriately.
-						if ( ! checkview_validate_ip( $ip ) ) {
-							return false;
-						}
-					}
-				} elseif ( ! checkview_validate_ip( $ip_address ) ) {
-					return false;
+		$request = wp_remote_get(
+			'https://verify.checkview.io/whitelist.json',
+			array(
+				'method'  => 'GET',
+				'timeout' => 5,
+			)
+		);
+
+		$ip_address = array();
+		if ( is_wp_error( $request ) ) {
+			Checkview_Admin_Logs::add( 'ip-logs', 'Request for new IP addresses failed with code [' . $request->get_error_code() . ']. Message: ' . $request->get_error_message() );
+		} elseif ( 200 !== wp_remote_retrieve_response_code( $request ) ) {
+			Checkview_Admin_Logs::add( 'ip-logs', 'Request for new IP addresses answered HTTP ' . wp_remote_retrieve_response_code( $request ) . '.' );
+		} else {
+			$data       = json_decode( wp_remote_retrieve_body( $request ), true );
+			$ip_address = isset( $data['ipAddresses'] ) ? (array) $data['ipAddresses'] : array();
+			foreach ( $ip_address as $ip ) {
+				if ( ! is_string( $ip ) || ! checkview_validate_ip( $ip ) ) {
+					Checkview_Admin_Logs::add( 'ip-logs', 'Rejected the IP address list: it contains an invalid entry.' );
+					$ip_address = array();
+					break;
 				}
-
-				set_transient( 'checkview_saas_ip_address', $ip_address, 12 * HOUR_IN_SECONDS );
-
-				Checkview_Admin_Logs::add( 'ip-logs', 'Set bot IP address list transient to response data [' . wp_json_encode( $ip_address ) . ']' );
-			} else {
+			}
+			if ( array() === $ip_address ) {
 				Checkview_Admin_Logs::add( 'ip-logs', 'IP addresses not found in request for new IP addresses.' );
 			}
 		}
 
-		if ( ! is_array( $ip_address ) ) {
-			$ip_address = (array) $ip_address;
+		if ( array() === $ip_address ) {
+			set_transient( 'checkview_saas_ip_fetch_failed', 1, 5 * MINUTE_IN_SECONDS );
+			if ( array() !== $last_good ) {
+				Checkview_Admin_Logs::add( 'ip-logs', 'Using the last IP address list fetched successfully until the next attempt.' );
+			}
+			return $last_good;
 		}
 
-		if ( is_array( $ip_address ) ) {
-			// Loopback only. Do NOT hardcode public IPs here. This allowlist is
-			// matched against client-supplied forwarding headers (X-Forwarded-For,
-			// etc.) in checkview_get_visitor_ip(), so any hardcoded public IP
-			// becomes a permanent, unauthenticated bypass of CheckView::is_bot()
-			// — and therefore of WooCommerce "test mode" and its $0 checkout
-			// gateway. Trusted bot IPs must come only from the authenticated SaaS
-			// whitelist (verify.checkview.io).
-			$ip_address[] = '::1';
-		}
+		$ip_address = array_values( $ip_address );
+		set_transient( 'checkview_saas_ip_address', $ip_address, 12 * HOUR_IN_SECONDS );
+		update_option( 'checkview_saas_ip_address_last_good', $ip_address, false );
+		Checkview_Admin_Logs::add( 'ip-logs', 'Set bot IP address list transient to response data [' . wp_json_encode( $ip_address ) . ']' );
 
 		return $ip_address;
 	}
@@ -1506,6 +1546,8 @@ if ( ! function_exists( 'checkview_reset_cache' ) ) {
 	function checkview_reset_cache( $sync ) {
 		checkview_delete_transient_everywhere( 'checkview_saas_pk' );
 		checkview_delete_transient_everywhere( 'checkview_saas_ip_address' );
+		checkview_delete_transient_everywhere( 'checkview_saas_pk_fetch_failed' );
+		checkview_delete_transient_everywhere( 'checkview_saas_ip_fetch_failed' );
 		checkview_delete_transient_everywhere( 'checkview_forms_list_transient' );
 		checkview_delete_transient_everywhere( 'checkview_forms_test_transient' );
 		checkview_delete_transient_everywhere( 'checkview_store_orders_transient' );
