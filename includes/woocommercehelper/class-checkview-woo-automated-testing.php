@@ -404,7 +404,7 @@ class Checkview_Woo_Automated_Testing {
 	 * @return void
 	 */
 	public function checkview_clear_products_cache() {
-		delete_transient( 'checkview_store_products_transient' );
+		checkview_delete_transient_everywhere( 'checkview_store_products_transient' );
 	}
 
 	/**
@@ -616,7 +616,7 @@ class Checkview_Woo_Automated_Testing {
 				return false;
 			}
 			update_option( 'checkview_woo_product_id', $product_id, true );
-			delete_transient( 'checkview_store_products_transient' );
+			checkview_delete_transient_everywhere( 'checkview_store_products_transient' );
 			Checkview_Admin_Logs::add( 'api-logs', 'Created the CheckView test product [' . $product_id . '] as a draft.' );
 			$created = true;
 		} finally {

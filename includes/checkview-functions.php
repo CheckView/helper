@@ -1462,6 +1462,42 @@ if ( ! function_exists( 'checkview_get_elementor_template_shortcode_ids' ) ) {
 	}
 }
 
+if ( ! function_exists( 'checkview_delete_transient_everywhere' ) ) {
+	/**
+	 * Deletes a CheckView transient from both places it can be stored.
+	 *
+	 * CheckView's REST requests turn off the persistent object cache (see
+	 * `CheckView_Admin::bypass_rest_authentication()`), so on a site with Redis
+	 * or Memcached they keep transients in the options table while the rest of
+	 * the site keeps them in the object cache. `delete_transient()` only clears
+	 * the store the current request uses, which left CheckView reading a stale
+	 * product list for up to 12 hours after a stock change on such sites.
+	 *
+	 * @since 2.6.2
+	 *
+	 * @param string $transient Transient name.
+	 * @return void
+	 */
+	function checkview_delete_transient_everywhere( $transient ) {
+		static $cleared = array();
+
+		delete_transient( $transient );
+
+		// The other store only needs clearing once per request (bulk stock updates).
+		if ( isset( $cleared[ $transient ] ) ) {
+			return;
+		}
+		$cleared[ $transient ] = true;
+
+		if ( wp_using_ext_object_cache() ) {
+			delete_option( '_transient_' . $transient );
+			delete_option( '_transient_timeout_' . $transient );
+		} else {
+			wp_cache_delete( $transient, 'transient' );
+		}
+	}
+}
+
 if ( ! function_exists( 'checkview_reset_cache' ) ) {
 	/**
 	 * Deletes CheckView transients.
@@ -1470,15 +1506,15 @@ if ( ! function_exists( 'checkview_reset_cache' ) ) {
 	 * @return bool
 	 */
 	function checkview_reset_cache( $sync ) {
-		delete_transient( 'checkview_saas_pk' );
-		delete_transient( 'checkview_saas_ip_address' );
-		delete_transient( 'checkview_forms_list_transient' );
-		delete_transient( 'checkview_forms_test_transient' );
-		delete_transient( 'checkview_store_orders_transient' );
-		delete_transient( 'checkview_store_products_transient' );
-		delete_transient( 'checkview_store_shipping_transient' );
-		delete_transient( 'checkview_whitelisted_ips_spamfirewall' );
-		delete_transient( 'checkview_whitelisted_ips_antispam' );
+		checkview_delete_transient_everywhere( 'checkview_saas_pk' );
+		checkview_delete_transient_everywhere( 'checkview_saas_ip_address' );
+		checkview_delete_transient_everywhere( 'checkview_forms_list_transient' );
+		checkview_delete_transient_everywhere( 'checkview_forms_test_transient' );
+		checkview_delete_transient_everywhere( 'checkview_store_orders_transient' );
+		checkview_delete_transient_everywhere( 'checkview_store_products_transient' );
+		checkview_delete_transient_everywhere( 'checkview_store_shipping_transient' );
+		checkview_delete_transient_everywhere( 'checkview_whitelisted_ips_spamfirewall' );
+		checkview_delete_transient_everywhere( 'checkview_whitelisted_ips_antispam' );
 		$sync = true;
 		return $sync;
 	}
@@ -1906,7 +1942,7 @@ if ( ! function_exists( 'checkview_update_woocommerce_product_status' ) ) {
 					'post_status' => $status,
 				)
 			);
-			delete_transient( 'checkview_store_products_transient' );
+			checkview_delete_transient_everywhere( 'checkview_store_products_transient' );
 			Checkview_Admin_Logs::add( 'api-logs', 'Updated status of test product and cleared product caches.' );
 		} else {
 			Checkview_Admin_Logs::add( 'api-logs', 'Called [checkview_update_woocommerce_product_status] on invalid post type or with invalid status (accepts ' . implode( ', ', $allowed_status ) . ', got ' . $status . ').' );
