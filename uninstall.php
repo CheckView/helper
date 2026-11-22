@@ -33,6 +33,8 @@ if ( $checkview_delete_all ) {
 	delete_option( 'checkview_saas_ip_address_last_good' );
 	delete_option( 'checkview_fetch_lock_pk' );
 	delete_option( 'checkview_fetch_lock_ip_address' );
+	delete_option( 'checkview_saas_ip_address_seeded' );
+	delete_option( 'checkview_saas_pk_seeded' );
 	delete_site_option( 'checkview_admin_menu_title' );
 
 	$checkview_tables = array( 'cv_entry', 'cv_entry_meta', 'cv_session', 'cv_used_nonces' );
