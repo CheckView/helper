@@ -470,7 +470,10 @@ if ( ! function_exists( 'checkview_acquire_fetch_lock' ) ) {
 		global $wpdb;
 
 		$option = 'checkview_fetch_lock_' . $name;
-		$token  = sprintf( '%.6F', microtime( true ) );
+		// Whole seconds first, so CAST(... AS UNSIGNED) reads the age the same
+		// way on MySQL and MariaDB; the microseconds keep tokens unique.
+		$now   = microtime( true );
+		$token = sprintf( '%d-%06d', (int) $now, (int) ( ( $now - (int) $now ) * 1000000 ) );
 
 		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- Atomic lock; never read through the options API.
 		$inserted = $wpdb->query( $wpdb->prepare( "INSERT IGNORE INTO {$wpdb->options} (option_name, option_value, autoload) VALUES (%s, %s, 'no')", $option, $token ) );
@@ -549,7 +552,14 @@ if ( ! function_exists( 'checkview_last_good_copy' ) ) {
 		}
 
 		$copy = get_option( $option, null );
+		if ( null === $copy ) {
+			return null;
+		}
 		if ( ! is_array( $copy ) || ! isset( $copy['value'], $copy['fetched_at'] ) ) {
+			// Not in this format (an earlier development build): drop it so a
+			// warm cache seeds a proper copy.
+			delete_option( $option );
+			delete_option( 'checkview_saas_' . $name . '_seeded' );
 			return null;
 		}
 		if ( (int) $copy['fetched_at'] < time() - 7 * DAY_IN_SECONDS ) {
@@ -698,34 +708,41 @@ if ( ! function_exists( 'checkview_fetch_api_ip' ) ) {
 	 * @return string[]
 	 */
 	function checkview_fetch_api_ip() {
-		static $outcome = null;
-		if ( null !== $outcome ) {
-			return $outcome;
+		// The outcome is reused for a minute (most callers run in one request),
+		// then fetched again, so a long-running process (WP-CLI, Action
+		// Scheduler) is not stuck with it. checkview_reset_cache() clears it.
+		$memo = isset( $GLOBALS['checkview_api_ip_fetch_memo'] ) ? $GLOBALS['checkview_api_ip_fetch_memo'] : null;
+		if ( is_array( $memo ) && isset( $memo['at'], $memo['ips'] ) && $memo['at'] > time() - MINUTE_IN_SECONDS ) {
+			return $memo['ips'];
 		}
+		$remember = function ( $ips ) {
+			$GLOBALS['checkview_api_ip_fetch_memo'] = array(
+				'at'  => time(),
+				'ips' => $ips,
+			);
+			return $ips;
+		};
 
 		$last_good = checkview_last_good_copy( 'ip_address' );
 		$last_good = is_array( $last_good ) ? $last_good : array();
 
 		if ( get_transient( 'checkview_saas_ip_fetch_failed' ) ) {
-			$outcome = $last_good;
-			return $outcome;
+			return $remember( $last_good );
 		}
 		$lock = checkview_acquire_fetch_lock( 'ip_address', 15 );
 		if ( false === $lock ) {
-			$outcome = $last_good;
-			return $outcome;
+			return $remember( $last_good );
 		}
 		// Another request may have finished while this one waited for the lock.
 		$cached = get_transient( 'checkview_saas_ip_address' );
 		if ( get_transient( 'checkview_saas_ip_fetch_failed' ) || false !== $cached ) {
 			checkview_release_fetch_lock( 'ip_address', $lock );
-			$outcome = false !== $cached ? array_values( (array) $cached ) : $last_good;
-			return $outcome;
+			return $remember( false !== $cached ? array_values( (array) $cached ) : $last_good );
 		}
 
 		Checkview_Admin_Logs::add( 'ip-logs', 'Bot IP address list transient empty, requesting new IP addresses.' );
 
-		$request = wp_remote_get(
+		$request = wp_safe_remote_get(
 			'https://verify.checkview.io/whitelist.json',
 			array(
 				'method'      => 'GET',
@@ -766,8 +783,7 @@ if ( ! function_exists( 'checkview_fetch_api_ip' ) ) {
 			if ( array() !== $last_good ) {
 				Checkview_Admin_Logs::add( 'ip-logs', 'Using the last IP address list fetched successfully until the next attempt.' );
 			}
-			$outcome = $last_good;
-			return $outcome;
+			return $remember( $last_good );
 		}
 
 		if ( array() === $ip_address ) {
@@ -782,8 +798,7 @@ if ( ! function_exists( 'checkview_fetch_api_ip' ) ) {
 		}
 		checkview_release_fetch_lock( 'ip_address', $lock );
 
-		$outcome = $ip_address;
-		return $outcome;
+		return $remember( $ip_address );
 	}
 }
 if ( ! function_exists( 'checkview_get_custom_header_keys_for_ip' ) ) {
@@ -1731,6 +1746,7 @@ if ( ! function_exists( 'checkview_reset_cache' ) ) {
 		checkview_delete_transient_everywhere( 'checkview_saas_ip_address' );
 		checkview_delete_transient_everywhere( 'checkview_saas_pk_fetch_failed' );
 		checkview_delete_transient_everywhere( 'checkview_saas_ip_fetch_failed' );
+		unset( $GLOBALS['checkview_api_ip_fetch_memo'] );
 		checkview_delete_transient_everywhere( 'checkview_forms_list_transient' );
 		checkview_delete_transient_everywhere( 'checkview_forms_test_transient' );
 		checkview_delete_transient_everywhere( 'checkview_store_orders_transient' );
