@@ -9,7 +9,6 @@
  */
 
 use AIOWPS\Firewall\Allow_List;
-use WP_Defender\Component\IP\Global_IP;
 /**
  * Handles various admin area features.
  *
@@ -102,6 +101,14 @@ class Checkview_Admin {
 		add_filter(
 			'all_plugins',
 			array( $this, 'checkview_hide_me' )
+		);
+
+		// Defender (free and Pro) runs its firewall on after_setup_theme, before
+		// a test reaches checkview_init_current_test() on init, so the bot's IP
+		// is added to Defender's allowlist for the request itself.
+		add_filter(
+			'ip_lockout_default_whitelist_ip',
+			array( __CLASS__, 'checkview_defender_allow_bot_ip' )
 		);
 
 		add_filter(
@@ -417,6 +424,81 @@ class Checkview_Admin {
 	}
 
 	/**
+	 * Adds the IP of a verified CheckView request to Defender's allowlist for
+	 * this request: a test visit (`CheckView::is_bot()`) or a call to the
+	 * helper's REST endpoints carrying a valid CheckView token.
+	 *
+	 * Hooked on Defender's `ip_lockout_default_whitelist_ip`, which its firewall
+	 * reads before any lockout or block list check. Nothing is stored. The
+	 * helper used to write Defender's Global IP list instead, which replaced the
+	 * site's Hub-managed allow and block lists with the bot's IP alone, and
+	 * did so on init, after Defender's firewall had already run.
+	 *
+	 * @since 2.6.2
+	 *
+	 * @param mixed $ips IPs Defender never locks out.
+	 * @return mixed
+	 */
+	public static function checkview_defender_allow_bot_ip( $ips ) {
+		// Defender asks once per IP it checks; verify the request once.
+		static $bot_ip = null;
+		if ( null === $bot_ip ) {
+			$verified = ( class_exists( 'CheckView' ) && CheckView::is_bot() )
+				|| self::checkview_is_signed_helper_api_request();
+			$bot_ip   = $verified && function_exists( 'checkview_get_visitor_ip' ) ? (string) checkview_get_visitor_ip() : '';
+		}
+		if ( '' === $bot_ip ) {
+			return $ips;
+		}
+
+		$ips = is_array( $ips ) ? $ips : (array) $ips;
+		if ( ! in_array( $bot_ip, $ips, true ) ) {
+			$ips[] = $bot_ip;
+		}
+		return $ips;
+	}
+
+	/**
+	 * Whether this request calls the helper's REST endpoints with a valid
+	 * CheckView token.
+	 *
+	 * Usable before WordPress parses the request (Defender's firewall runs on
+	 * after_setup_theme), so the route is read from the request URI. The token
+	 * is checked the same way the endpoints check it, by signature, site and
+	 * expiry; its nonce is not spent here.
+	 *
+	 * @since 2.6.2
+	 *
+	 * @return bool
+	 */
+	private static function checkview_is_signed_helper_api_request(): bool {
+		if ( ! function_exists( 'checkview_validate_jwt_token' ) ) {
+			return false;
+		}
+
+		// phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized -- Compared against a fixed string only.
+		$uri = isset( $_SERVER['REQUEST_URI'] ) ? rawurldecode( wp_unslash( $_SERVER['REQUEST_URI'] ) ) : '';
+		if ( false === stripos( $uri, '/checkview/v1/' ) ) {
+			return false;
+		}
+
+		$auth = '';
+		if ( ! empty( $_SERVER['HTTP_AUTHORIZATION'] ) ) {
+			$auth = sanitize_text_field( wp_unslash( $_SERVER['HTTP_AUTHORIZATION'] ) );
+		} elseif ( ! empty( $_SERVER['REDIRECT_HTTP_AUTHORIZATION'] ) ) {
+			$auth = sanitize_text_field( wp_unslash( $_SERVER['REDIRECT_HTTP_AUTHORIZATION'] ) );
+		} elseif ( ! empty( $_GET['_checkview_token'] ) ) { // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Signed CheckView token, verified below.
+			$auth = 'Bearer ' . sanitize_text_field( wp_unslash( $_GET['_checkview_token'] ) ); // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Signed CheckView token, verified below.
+		}
+		if ( '' === $auth ) {
+			return false;
+		}
+
+		$nonce = checkview_validate_jwt_token( $auth );
+		return is_string( $nonce ) && '' !== $nonce;
+	}
+
+	/**
 	 * Initializes a test.
 	 *
 	 * Should only be called if the request is a verified CheckView bot.
@@ -472,17 +554,6 @@ class Checkview_Admin {
 			} else {
 				$aiowps_firewall_allow_list::add_ips( $validated_ip_list_array );
 			}
-		}
-
-		if ( is_plugin_active( 'defender-security/wp-defender.php' ) ) {
-			$data                         = array();
-			$data['allow_list']           = (array) $visitor_ip;
-			$data['block_list']           = array();
-			$data['last_update_time']     = '';
-			$data['last_update_time_utc'] = '';
-
-			$global_ip_component = wd_di()->get( Global_IP::class );
-			$result              = $global_ip_component->set_global_ip_list( $data );
 		}
 
 		if ( is_plugin_active( 'enhanced-cloudflare-turnstile/enhanced-cloudflare-turnstile.php' ) ) {
