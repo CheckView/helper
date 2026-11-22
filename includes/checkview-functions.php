@@ -1479,16 +1479,11 @@ if ( ! function_exists( 'checkview_delete_transient_everywhere' ) ) {
 	 * @return void
 	 */
 	function checkview_delete_transient_everywhere( $transient ) {
-		static $cleared = array();
-
 		delete_transient( $transient );
 
-		// The other store only needs clearing once per request (bulk stock updates).
-		if ( isset( $cleared[ $transient ] ) ) {
-			return;
-		}
-		$cleared[ $transient ] = true;
-
+		// Then the store this request does not use. Not remembered per request:
+		// a long import, or a switch to another site of a network, has to clear
+		// it again.
 		if ( wp_using_ext_object_cache() ) {
 			delete_option( '_transient_' . $transient );
 			delete_option( '_transient_timeout_' . $transient );

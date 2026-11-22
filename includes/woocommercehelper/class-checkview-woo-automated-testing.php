@@ -117,7 +117,23 @@ class Checkview_Woo_Automated_Testing {
 				$this,
 				'checkview_after_delete_product'
 			);
-			// The product list is cached for 12 hours and carries stock status.
+			// The product list is cached for 12 hours. Refresh it when a product
+			// enters or leaves it, or is deleted.
+			$this->loader->add_action(
+				'transition_post_status',
+				$this,
+				'checkview_clear_products_cache_on_status',
+				10,
+				3
+			);
+			$this->loader->add_action(
+				'after_delete_post',
+				$this,
+				'checkview_clear_products_cache_on_delete',
+				10,
+				2
+			);
+			// The list also carries stock status.
 			$this->loader->add_action(
 				'woocommerce_product_set_stock_status',
 				$this,
@@ -405,6 +421,44 @@ class Checkview_Woo_Automated_Testing {
 	 */
 	public function checkview_clear_products_cache() {
 		checkview_delete_transient_everywhere( 'checkview_store_products_transient' );
+	}
+
+	/**
+	 * Clears the cached product list when a product enters or leaves it.
+	 *
+	 * The list holds published and draft products, so a product that is trashed,
+	 * restored, made private or first saved changes it.
+	 *
+	 * @since 2.6.2
+	 *
+	 * @param string  $new_status New post status.
+	 * @param string  $old_status Old post status.
+	 * @param WP_Post $post       Post object.
+	 * @return void
+	 */
+	public function checkview_clear_products_cache_on_status( $new_status, $old_status, $post ) {
+		if ( ! $post instanceof \WP_Post || 'product' !== $post->post_type ) {
+			return;
+		}
+		$listed = array( 'publish', 'draft' );
+		if ( in_array( $new_status, $listed, true ) !== in_array( $old_status, $listed, true ) ) {
+			$this->checkview_clear_products_cache();
+		}
+	}
+
+	/**
+	 * Clears the cached product list when a product is permanently deleted.
+	 *
+	 * @since 2.6.2
+	 *
+	 * @param int     $post_id Post ID.
+	 * @param WP_Post $post    The deleted post.
+	 * @return void
+	 */
+	public function checkview_clear_products_cache_on_delete( $post_id, $post = null ) { // phpcs:ignore Generic.CodeAnalysis.UnusedFunctionParameter.FoundBeforeLastUsed -- Hook signature.
+		if ( $post instanceof \WP_Post && 'product' === $post->post_type ) {
+			$this->checkview_clear_products_cache();
+		}
 	}
 
 	/**
