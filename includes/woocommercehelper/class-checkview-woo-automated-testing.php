@@ -40,6 +40,13 @@ class Checkview_Woo_Automated_Testing {
 	const STAMP_PRIORITY = 1;
 
 	/**
+	 * Slug the test product is created with.
+	 *
+	 * @since 2.6.2
+	 */
+	const TEST_PRODUCT_SLUG = 'checkview-testing-product';
+
+	/**
 	 * Plugin name.
 	 *
 	 * @since 1.0.0
@@ -86,10 +93,14 @@ class Checkview_Woo_Automated_Testing {
 		$this->loader      = $loader;
 
 		if ( $this->loader ) {
+			// The test product is no longer created on every Woo site: CheckView
+			// creates it, as a draft, the first time it needs it (product list or
+			// set-status). This one-time pass drafts the published product older
+			// helpers created on sites that never run Woo tests.
 			$this->loader->add_action(
 				'admin_init',
 				$this,
-				'checkview_create_test_product',
+				'checkview_maybe_draft_legacy_test_product',
 				200
 			);
 
@@ -106,6 +117,59 @@ class Checkview_Woo_Automated_Testing {
 				$this,
 				'checkview_after_delete_product'
 			);
+			// The product list is cached for 12 hours. Refresh it when a product
+			// or variation is saved (created, renamed, published, trashed,
+			// restored) or permanently deleted. WooCommerce skips save_post when
+			// a save changes only product data, so its own hooks are needed too.
+			$save_hooks = array(
+				'save_post_product',
+				'save_post_product_variation',
+				'woocommerce_update_product',
+				'woocommerce_update_product_variation',
+			);
+			foreach ( $save_hooks as $save_hook ) {
+				$this->loader->add_action(
+					$save_hook,
+					$this,
+					'checkview_clear_products_cache'
+				);
+			}
+			$this->loader->add_action(
+				'after_delete_post',
+				$this,
+				'checkview_clear_products_cache_on_delete',
+				10,
+				2
+			);
+			// The list is built in a CheckView REST request, which reads
+			// WooCommerce's own cache of a product's variations from the store
+			// WooCommerce does not clear on an object-cache site.
+			$this->loader->add_action(
+				'woocommerce_delete_product_transients',
+				$this,
+				'checkview_clear_woo_children_cache'
+			);
+			// The list also carries stock status.
+			$this->loader->add_action(
+				'woocommerce_product_set_stock_status',
+				$this,
+				'checkview_clear_products_cache'
+			);
+			$this->loader->add_action(
+				'woocommerce_variation_set_stock_status',
+				$this,
+				'checkview_clear_products_cache'
+			);
+			// Stock syncs that write the meta directly skip the two hooks above.
+			foreach ( array( 'added_post_meta', 'updated_post_meta', 'deleted_post_meta' ) as $meta_hook ) {
+				$this->loader->add_action(
+					$meta_hook,
+					$this,
+					'checkview_clear_products_cache_on_stock_meta',
+					10,
+					3
+				);
+			}
 			$this->loader->add_action(
 				'template_redirect',
 				$this,
@@ -144,10 +208,14 @@ class Checkview_Woo_Automated_Testing {
 				'checkview_hide_product_from_sitemap',
 			);
 
+			// Jetpack passes ($should_publicize, $post); with the loader's default of
+			// one argument the callback was called without $post.
 			$this->loader->add_filter(
 				'publicize_should_publicize_published_post',
 				$this,
 				'checkview_seo_hide_product_from_jetpack',
+				10,
+				2
 			);
 
 			$this->loader->add_filter(
@@ -361,6 +429,77 @@ class Checkview_Woo_Automated_Testing {
 	}
 
 	/**
+	 * Clears the cached product list so CheckView sees a product or stock change
+	 * right away.
+	 *
+	 * @since 2.6.2
+	 *
+	 * @return void
+	 */
+	public function checkview_clear_products_cache() {
+		checkview_delete_transient_everywhere( 'checkview_store_products_transient' );
+	}
+
+	/**
+	 * Clears the cached product list when a product or variation is permanently deleted.
+	 *
+	 * @since 2.6.2
+	 *
+	 * @param int     $post_id Post ID.
+	 * @param WP_Post $post    The deleted post.
+	 * @return void
+	 */
+	public function checkview_clear_products_cache_on_delete( $post_id, $post = null ) { // phpcs:ignore Generic.CodeAnalysis.UnusedFunctionParameter.FoundBeforeLastUsed -- Hook signature.
+		if ( $post instanceof \WP_Post && in_array( $post->post_type, array( 'product', 'product_variation' ), true ) ) {
+			$this->checkview_clear_products_cache();
+		}
+	}
+
+	/**
+	 * Clears the cached product list when a stock status or product image is
+	 * written as post meta.
+	 *
+	 * @since 2.6.2
+	 *
+	 * @param int|array $meta_id   Meta ID, or IDs when deleting.
+	 * @param int       $object_id Post ID.
+	 * @param string    $meta_key  Meta key.
+	 * @return void
+	 */
+	public function checkview_clear_products_cache_on_stock_meta( $meta_id, $object_id, $meta_key ) { // phpcs:ignore Generic.CodeAnalysis.UnusedFunctionParameter.FoundBeforeLastUsed -- Hook signature.
+		if ( '_stock_status' === $meta_key ) {
+			$this->checkview_clear_products_cache();
+			return;
+		}
+		// The list carries each product's image, which can be set without a save.
+		if ( '_thumbnail_id' === $meta_key && 'product' === get_post_type( $object_id ) ) {
+			$this->checkview_clear_products_cache();
+		}
+	}
+
+	/**
+	 * Clears WooCommerce's cached list of a product's variations from both
+	 * transient stores, when WooCommerce clears it from one.
+	 *
+	 * WooCommerce keeps `wc_product_children_<id>` for 30 days and clears it
+	 * with `delete_transient()`. CheckView's REST requests read the copy that
+	 * call does not reach on an object-cache site (see
+	 * `checkview_delete_transient_everywhere()`), so the product list kept
+	 * missing a new variation.
+	 *
+	 * @since 2.6.2
+	 *
+	 * @param int $post_id Product ID; 0 when WooCommerce clears store-wide caches only.
+	 * @return void
+	 */
+	public function checkview_clear_woo_children_cache( $post_id ) {
+		$post_id = (int) $post_id;
+		if ( $post_id > 0 ) {
+			checkview_delete_transient_everywhere( 'wc_product_children_' . $post_id );
+		}
+	}
+
+	/**
 	 * Untrashes CheckView Test product if it was accidentally trashed.
 	 *
 	 * @param int $post_id The ID of the post being trashed.
@@ -478,15 +617,59 @@ class Checkview_Woo_Automated_Testing {
 	/**
 	 * Creates the CheckView testing product.
 	 *
-	 * If a testing product exists, return it.
+	 * Kept for callers of the old instance method; see
+	 * `checkview_ensure_test_product()`.
 	 *
-	 * @return WC_Product
+	 * @return WC_Product|false
 	 */
 	public function checkview_create_test_product() {
-		$product = $this->checkview_get_test_product();
-		if ( ! $product ) {
+		return self::checkview_ensure_test_product();
+	}
+
+	/**
+	 * Returns the CheckView test product, creating it as a draft if missing.
+	 *
+	 * Created as a draft so it never shows on a store that does not run Woo
+	 * tests. CheckView publishes it through set-status right before each Woo
+	 * setup and test run.
+	 *
+	 * @since 2.6.2
+	 *
+	 * @param bool $created Set to true when this call created the product.
+	 * @return WC_Product|false
+	 */
+	public static function checkview_ensure_test_product( &$created = false ) {
+		$created = false;
+		$product = self::checkview_get_test_product();
+		if ( $product ) {
+			return $product;
+		}
+
+		// Parallel runs can all find no product at once; only one may create it,
+		// or each makes a draft with the same slug and publishing one renames it.
+		$lock = 'checkview_test_product_creating';
+		if ( (int) get_option( $lock, 0 ) < time() - MINUTE_IN_SECONDS ) {
+			delete_option( $lock );
+		}
+		if ( ! add_option( $lock, time(), '', false ) ) {
+			for ( $attempt = 0; $attempt < 10 && ! $product; $attempt++ ) {
+				usleep( 500000 );
+				// Without a persistent object cache, this request still holds the
+				// missing option and the empty product query from its first look.
+				wp_cache_delete( 'notoptions', 'options' );
+				wp_cache_delete( 'alloptions', 'options' );
+				wp_cache_set_posts_last_changed();
+				$product = self::checkview_get_test_product();
+			}
+			return $product;
+		}
+
+		try {
 			$product = new WC_Product();
-			$product->set_status( 'publish' );
+			$product->set_status( 'draft' );
+			// Set explicitly: WordPress only generates a slug on publish, and the
+			// product list reports this product's URL while it is still a draft.
+			$product->set_slug( self::TEST_PRODUCT_SLUG );
 			$product->set_name( 'CheckView Testing Product' );
 			$product->set_short_description( 'An example product for automated testing.' );
 			$product->set_description( 'This is a placeholder product used for automatically testing your WooCommerce store. It\'s designed to be hidden from all customers.' );
@@ -504,10 +687,132 @@ class Checkview_Woo_Automated_Testing {
 			add_filter( 'publicize_should_publicize_published_post', '__return_false' );
 
 			$product_id = $product->save();
+			if ( ! $product_id ) {
+				Checkview_Admin_Logs::add( 'api-logs', 'Failed to create the CheckView test product.' );
+				return false;
+			}
 			update_option( 'checkview_woo_product_id', $product_id, true );
+			checkview_delete_transient_everywhere( 'checkview_store_products_transient' );
+			Checkview_Admin_Logs::add( 'api-logs', 'Created the CheckView test product [' . $product_id . '] as a draft.' );
+			$created = true;
+		} finally {
+			delete_option( $lock );
 		}
 
 		return $product;
+	}
+
+	/**
+	 * Returns the test product's normal permalink, even while it is a draft.
+	 *
+	 * For a draft, `get_permalink()` returns `/?post_type=product&p=ID`. CheckView
+	 * stores and visits the published URL, so build it as if published.
+	 *
+	 * @since 2.6.2
+	 *
+	 * @param int $product_id Product ID.
+	 * @return string|false
+	 */
+	public static function checkview_test_product_permalink( $product_id ) {
+		$post = get_post( $product_id );
+		if ( ! $post ) {
+			return false;
+		}
+		if ( in_array( $post->post_status, array( 'draft', 'pending', 'auto-draft' ), true ) ) {
+			$post              = clone $post;
+			$post->post_status = 'publish';
+			if ( '' === $post->post_name ) {
+				$post->post_name = self::TEST_PRODUCT_SLUG;
+			}
+		}
+		return get_permalink( $post );
+	}
+
+	/**
+	 * Records that CheckView just published the test product for a run.
+	 *
+	 * @since 2.6.2
+	 *
+	 * @return void
+	 */
+	public static function checkview_mark_test_product_published() {
+		update_option( 'checkview_test_product_published_at', time(), false );
+	}
+
+	/**
+	 * Publishes a drafted test product when a CheckView Woo test reaches the site.
+	 *
+	 * CheckView publishes the product through set-status before each run, and
+	 * the SaaS ignores a failed call. Runs only for signed CheckView Woo test
+	 * requests, and never creates the product.
+	 *
+	 * @since 2.6.2
+	 *
+	 * @return void
+	 */
+	public static function checkview_publish_test_product_for_run() {
+		$product_id = (int) get_option( 'checkview_woo_product_id' );
+		if ( ! $product_id || 'draft' !== get_post_status( $product_id ) ) {
+			return;
+		}
+		if ( checkview_update_woocommerce_product_status( $product_id, 'publish' ) ) {
+			self::checkview_mark_test_product_published();
+			Checkview_Admin_Logs::add( 'ip-logs', 'Published the drafted test product [' . $product_id . '] for a Woo test.' );
+		}
+	}
+
+	/**
+	 * Drafts the published test product that older helpers created on every
+	 * WooCommerce site, once.
+	 *
+	 * Safe for stores that do run Woo tests: CheckView publishes the product
+	 * before each setup and test run. Skipped, and retried later, if CheckView
+	 * published it in the last 30 minutes, so a run in progress keeps it.
+	 *
+	 * @since 2.6.2
+	 *
+	 * @return void
+	 */
+	public function checkview_maybe_draft_legacy_test_product() {
+		if ( get_option( 'checkview_test_product_draft_done' ) || ! class_exists( 'WooCommerce' ) ) {
+			return;
+		}
+
+		// Look up the published product only: checkview_get_test_product() would
+		// untrash one the store owner trashed.
+		$product_id = (int) get_option( 'checkview_woo_product_id' );
+		if ( ! $product_id || 'publish' !== get_post_status( $product_id ) ) {
+			$product_ids = wc_get_products(
+				array(
+					'name'   => 'CheckView Testing Product',
+					'status' => 'publish',
+					'limit'  => 1,
+					'return' => 'ids',
+				)
+			);
+			$product_id  = ! empty( $product_ids ) ? (int) $product_ids[0] : 0;
+		}
+
+		if ( $product_id ) {
+			// A run started under an older helper never recorded its publish, so
+			// wait 30 minutes from the first look before drafting.
+			$published_at = (int) get_option( 'checkview_test_product_published_at', 0 );
+			if ( ! $published_at ) {
+				self::checkview_mark_test_product_published();
+				return;
+			}
+			if ( time() - $published_at < 30 * MINUTE_IN_SECONDS ) {
+				return;
+			}
+			if ( ! checkview_update_woocommerce_product_status( $product_id, 'draft' ) ) {
+				Checkview_Admin_Logs::add( 'api-logs', 'Could not draft the test product [' . $product_id . ']; retrying in 30 minutes.' );
+				self::checkview_mark_test_product_published();
+				return;
+			}
+			Checkview_Admin_Logs::add( 'api-logs', 'Drafted the test product [' . $product_id . '] that an older helper published.' );
+		}
+
+		update_option( 'checkview_test_product_draft_done', '1', true );
 	}
 
 	/**
@@ -553,11 +858,12 @@ class Checkview_Woo_Automated_Testing {
 	 *
 	 * @return bool|array
 	 */
-	public function checkview_seo_hide_product_from_jetpack( $should_publicize, $post ) {
-		if ( $post ) {
-			$product_id = get_option( 'checkview_woo_product_id' );
+	public function checkview_seo_hide_product_from_jetpack( $should_publicize, $post = null ) {
+		if ( $post instanceof \WP_Post ) {
+			$product_id = (int) get_option( 'checkview_woo_product_id' );
 
-			if ( $product_id === $post->ID ) {
+			// The option is stored as a string, so compare as integers.
+			if ( $product_id && $product_id === (int) $post->ID ) {
 				return false;
 			}
 		}
@@ -761,6 +1067,8 @@ class Checkview_Woo_Automated_Testing {
 		Checkview_Admin_Logs::add( 'ip-logs', 'Running Woo checkout hooks, detected test type [' . $test_type . '].' );
 
 		if ( ! is_admin() && class_exists( 'WooCommerce' ) ) {
+			add_action( 'wp_loaded', array( __CLASS__, 'checkview_publish_test_product_for_run' ) );
+
 			// Always use Stripe test mode when on dev or staging.
 			add_filter(
 				'option_woocommerce_stripe_settings',
@@ -872,6 +1180,17 @@ class Checkview_Woo_Automated_Testing {
 				$this,
 				'checkview_stamp_order_meta',
 				self::STAMP_PRIORITY,
+				1
+			);
+
+			// Stores that require an account create a real customer during
+			// the test checkout. Stamp it so the order clean-up and the daily
+			// test-user sweep can prove it is ours before deleting it.
+			$this->loader->add_action(
+				'woocommerce_created_customer',
+				$this,
+				'checkview_stamp_test_customer',
+				10,
 				1
 			);
 
@@ -1169,10 +1488,9 @@ class Checkview_Woo_Automated_Testing {
 
 	/**
 	 * Returns the IDs of CheckView test orders currently in the store,
-	 * identified by the durable marker set at order creation. Mirrors the
-	 * two-query include pattern in `checkview_delete_orders()` (WooCommerce
-	 * offers no single query that ORs a meta key with the `payment_method`
-	 * property). Both are indexed lookups returning the small, short-lived set
+	 * identified by the durable marker set at order creation. Uses two queries
+	 * because WooCommerce offers no single query that ORs a meta key with the
+	 * `payment_method` property. Both are indexed lookups returning the small, short-lived set
 	 * of live test orders.
 	 *
 	 * @since 2.2.2
@@ -1625,138 +1943,83 @@ class Checkview_Woo_Automated_Testing {
 
 
 	/**
-	 * Handles deleting orders from the backend.
+	 * Deletes one CheckView test order and, optionally, its test customer.
 	 *
-	 * Doesn't run on AJAX requests.
+	 * Called by the per-order wp-cron event scheduled in
+	 * `checkview_schedule_delete_orders` (one hour after the order), by the
+	 * `store/deleteorders` REST endpoint, and by the daily test-user sweep
+	 * (which deletes the customer itself). The order is deleted only if it
+	 * carries the `payment_made_by=checkview` marker or was paid with the
+	 * `checkview` gateway. The customer goes through
+	 * `checkview_delete_test_customer()`, which refuses anyone a CheckView
+	 * test did not create.
 	 *
-	 * @return boolean
-	 */
-	public static function delete_orders_from_backend() {
-		if ( defined( 'DOING_AJAX' ) && DOING_AJAX ) {
-			return false;
-		}
-
-		return self::checkview_delete_orders();
-	}
-
-	/**
-	 * Deletes CheckView orders from the database.
-	 *
-	 * If `$order_id` is supplied (the wp-cron-scheduled case from
-	 * `checkview_schedule_delete_orders`), delete only that one order +
-	 * its customer. If empty (the legacy admin-init sweep + manual call
-	 * sites), fall back to deleting ALL orders that carry the
-	 * `payment_made_by=checkview` marker or `payment_method=checkview`.
-	 *
-	 * Before deleting each test order we set a 1h transient
+	 * Before deleting the order we set a 3-day transient
 	 * `cv_deleted_test_order_<id>=1`, which is read by
 	 * `checkview_filter_webhooks` to suppress the resulting
 	 * `order.deleted` webhook — otherwise Shippo et al. receive a
 	 * deletion event for an order they never got `order.created` for
 	 * (we suppressed that earlier during the test).
 	 *
-	 * @param integer $order_id Woocommerce Order ID (optional). When set,
-	 *                          delete only this order. When empty, sweep
-	 *                          all CheckView-marked orders.
-	 * @return bool
+	 * @param int  $order_id        WooCommerce order ID.
+	 * @param bool $delete_customer Also delete the order's test customer.
+	 * @return int Number of orders deleted (0 or 1).
 	 */
-	public static function checkview_delete_orders( $order_id = '' ) {
-		Checkview_Admin_Logs::add( 'ip-logs', 'Deleting CheckView orders from the database...' );
+	public static function checkview_delete_orders( $order_id = 0, $delete_customer = true ) {
+		$order_id = (int) $order_id;
 
-		$orders = array();
-
-		// Targeted deletion: if a specific $order_id was scheduled (the
-		// per-order wp-cron path from checkview_schedule_delete_orders),
-		// honor it. Without this, a 1h cron tick fired for Test A's order
-		// would sweep ALL marked orders including any in-flight Test B
-		// order from a concurrent test on the same site.
-		if ( '' !== $order_id && (int) $order_id > 0 ) {
-			$orders = array( (int) $order_id );
-		} elseif ( function_exists( 'wc_get_orders' ) ) {
-			$args   = array(
-				'limit'        => -1,
-				'type'         => 'shop_order',
-				// phpcs:ignore WordPress.DB.SlowDBQuery.slow_db_query_meta_key -- Test order cleanup cron only.
-				'meta_key'     => 'payment_made_by', // Postmeta key field.
-				// phpcs:ignore WordPress.DB.SlowDBQuery.slow_db_query_meta_value -- Test order cleanup cron only.
-				'meta_value'   => 'checkview',       // Postmeta value field.
-				'meta_compare' => '=',
-				'return'       => 'ids',
-			);
-			$orders = wc_get_orders( $args );
-
-			$orders_cv = wc_get_orders(
-				array(
-					'limit'          => -1,
-					'type'           => 'shop_order',
-					'payment_method' => 'checkview',
-					'return'         => 'ids',
-				)
-			);
-
-			$orders = array_unique( array_merge( $orders, $orders_cv ) );
+		if ( $order_id <= 0 || ! function_exists( 'wc_get_order' ) ) {
+			Checkview_Admin_Logs::add( 'cron-logs', 'Skipped CheckView order deletion: no order id, or WooCommerce not loaded.' );
+			return 0;
 		}
 
-		Checkview_Admin_Logs::add( 'cron-logs', 'Found ' . count( $orders ) . ' CheckView orders to delete.' );
+		$order_object = wc_get_order( $order_id );
 
-		// Delete orders.
-		if ( ! empty( $orders ) ) {
-			foreach ( $orders as $order ) {
-				$order_object = wc_get_order( $order );
+		if ( ! $order_object ) {
+			Checkview_Admin_Logs::add( 'cron-logs', 'CheckView order [' . $order_id . '] not found.' );
+			return 0;
+		}
 
-				// Delete order.
-				try {
-					if ( $order_object && method_exists( $order_object, 'get_customer_id' ) ) {
-						if ( $order_object->get_meta( 'payment_made_by' ) !== 'checkview' && 'checkview' !== $order_object->get_payment_method() ) {
-							continue;
-						}
+		if ( 'checkview' !== $order_object->get_meta( 'payment_made_by' ) && 'checkview' !== $order_object->get_payment_method() ) {
+			Checkview_Admin_Logs::add( 'cron-logs', 'Did not delete order [' . $order_id . ']: it has no CheckView marker.' );
+			return 0;
+		}
 
-						$customer_id = $order_object->get_customer_id();
+		try {
+			$customer_id = (int) $order_object->get_customer_id();
 
-						// Mark this order as a CheckView-driven deletion so
-						// the WC webhook filter can suppress the resulting
-						// `order.deleted` event (the order is gone by then,
-						// so the filter has no other way to identify it).
-						// TTL is generous — WC's webhook retry schedule can
-						// extend to multiple days on a failing endpoint, and
-						// each retry re-runs `should_deliver`. Three days
-						// covers the published WC AS backoff schedule.
-						set_transient( 'cv_deleted_test_order_' . (int) $order, 1, 3 * DAY_IN_SECONDS );
+			// Mark this order as a CheckView-driven deletion so
+			// the WC webhook filter can suppress the resulting
+			// `order.deleted` event (the order is gone by then,
+			// so the filter has no other way to identify it).
+			// TTL is generous — WC's webhook retry schedule can
+			// extend to multiple days on a failing endpoint, and
+			// each retry re-runs `should_deliver`. Three days
+			// covers the published WC AS backoff schedule.
+			set_transient( 'cv_deleted_test_order_' . $order_id, 1, 3 * DAY_IN_SECONDS );
 
-						$order_object->delete( true );
+			$order_object->delete( true );
+			$order_object = null;
 
-						delete_transient( 'checkview_store_orders_transient' );
-
-						$order_object = null;
-						$current_user = get_user_by( 'id', $customer_id );
-
-						// Delete customer if available.
-						if ( $customer_id && isset( $current_user->roles ) && isset( $current_user->roles ) && ! in_array( 'administrator', $current_user->roles, true ) ) {
-							$customer = new WC_Customer( $customer_id );
-
-							if ( ! function_exists( 'wp_delete_user' ) ) {
-								require_once ABSPATH . 'wp-admin/includes/user.php';
-							}
-
-							$res      = $customer->delete( true );
-							$customer = null;
-						}
-					}
-				} catch ( \Exception $e ) {
-					if ( ! class_exists( 'Checkview_Admin_Logs' ) ) {
-						require_once CHECKVIEW_ADMIN_DIR . '/class-checkview-admin-logs.php';
-					}
-
-					if ( $order_object ) {
-						Checkview_Admin_Logs::add( 'cron-logs', 'Failed to delete CheckView order [' . $order_object->get_id() . '] from the database.' );
-					} else {
-						Checkview_Admin_Logs::add( 'cron-logs', 'Failed to delete CheckView order from the database.' );
-					}
-				}
+			// `delete()` reports success even when a plugin vetoed it
+			// (`woocommerce_pre_delete_order`, `pre_delete_post`).
+			if ( wc_get_order( $order_id ) ) {
+				Checkview_Admin_Logs::add( 'cron-logs', 'Failed to delete CheckView order [' . $order_id . ']: it still exists.' );
+				return 0;
 			}
 
-			return true;
+			checkview_delete_transient_everywhere( 'checkview_store_orders_transient' );
+			Checkview_Admin_Logs::add( 'cron-logs', 'Deleted CheckView order [' . $order_id . '].' );
+		} catch ( \Exception $e ) {
+			Checkview_Admin_Logs::add( 'cron-logs', 'Failed to delete CheckView order [' . $order_id . '] from the database.' );
+			return 0;
 		}
+
+		if ( $delete_customer && $customer_id > 0 ) {
+			checkview_delete_test_customer( $customer_id );
+		}
+
+		return 1;
 	}
 
 	/**
@@ -1876,6 +2139,36 @@ class Checkview_Woo_Automated_Testing {
 			return;
 		}
 		$this->checkview_stamp_order_meta( $order->get_id() );
+	}
+
+	/**
+	 * Stamps the current test id onto a customer created during a CheckView
+	 * test checkout (stores that require an account to check out).
+	 *
+	 * Same trust boundary as `checkview_stamp_order_meta`: only runs when the
+	 * per-request `CHECKVIEW_TEST_ID` constant is defined. First wins.
+	 *
+	 * @since 2.6.2
+	 *
+	 * @param int $customer_id New customer's user id.
+	 * @return void
+	 */
+	public function checkview_stamp_test_customer( $customer_id ) {
+		if ( ! defined( 'CHECKVIEW_TEST_ID' ) || ! CHECKVIEW_TEST_ID ) {
+			return;
+		}
+		if ( doing_action( 'checkview_delete_orders_action' ) ) {
+			return;
+		}
+
+		$customer_id = (int) $customer_id;
+		if ( $customer_id <= 0 ) {
+			return;
+		}
+
+		if ( add_user_meta( $customer_id, CheckView::META_TEST_USER, CHECKVIEW_TEST_ID, true ) ) {
+			Checkview_Admin_Logs::add( 'ip-logs', 'Stamped CheckView test id on customer [' . $customer_id . '] for test [' . CHECKVIEW_TEST_ID . '].' );
+		}
 	}
 
 	/**

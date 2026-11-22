@@ -206,6 +206,13 @@ Support and test configuration are handled through the CheckView platform. Pleas
 == Changelog ==
 
 = 2.6.2 =
+* WooCommerce: The product list sent to CheckView now says whether each product and variation is in stock, so out-of-stock products can be flagged before a test uses them. A stock change now refreshes the list right away.
+* Logs: When a test finds no entry, the log no longer says the submission "likely succeeded". A loaded page does not mean the form submitted.
+* WPForms: Test notification emails no longer reach CC recipients, or a Send To address listed after an invalid one. Only the CheckView test inbox gets them, unless delivery to form recipients is turned on. A notification with more than one Send To address now sends one test email instead of one per address.
+* All forms: CC and BCC recipients are now removed from every test email, including ones already addressed to the CheckView test inbox, unless delivery to form recipients is turned on.
+* WooCommerce: Test order clean-up now deletes a customer only if a CheckView test created it, and never one with admin rights or with orders left. On multisite, a test customer is removed from the network, not just from the site.
+* WooCommerce: A daily clean-up removes CheckView test customers left behind, for example when a store requires an account and the test checkout failed after the account was made. It also removes users created by form tests on registration forms.
+* WooCommerce: The delete test orders endpoint now needs an order id and only deletes CheckView test orders.
 * WPForms: Forms added with the WPForms Divi module or Elementor widget now stay on the page for the whole CheckView test. They disappeared after the first page load of a test, for example when the page address redirected.
 
 = 2.6.1 =

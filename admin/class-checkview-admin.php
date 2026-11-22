@@ -9,7 +9,6 @@
  */
 
 use AIOWPS\Firewall\Allow_List;
-use WP_Defender\Component\IP\Global_IP;
 /**
  * Handles various admin area features.
  *
@@ -99,6 +98,16 @@ class Checkview_Admin {
 			array( 'Checkview_Admin_Logs', 'purge_expired_logs' )
 		);
 
+		add_action(
+			'wp',
+			array( $this, 'checkview_schedule_test_users_cleanup' )
+		);
+
+		add_action(
+			'checkview_test_users_cleanup_cron',
+			'checkview_sweep_test_users'
+		);
+
 		add_filter(
 			'all_plugins',
 			array( $this, 'checkview_hide_me' )
@@ -173,6 +182,19 @@ class Checkview_Admin {
 	public function checkview_schedule_logs_cleanup() {
 		if ( ! wp_next_scheduled( 'checkview_logs_cleanup_cron' ) ) {
 			wp_schedule_event( time(), 'daily', 'checkview_logs_cleanup_cron' );
+		}
+	}
+
+	/**
+	 * Schedules the daily sweep of leftover CheckView test users.
+	 *
+	 * @since 2.6.2
+	 *
+	 * @return void
+	 */
+	public function checkview_schedule_test_users_cleanup() {
+		if ( ! wp_next_scheduled( 'checkview_test_users_cleanup_cron' ) ) {
+			wp_schedule_event( time(), 'daily', 'checkview_test_users_cleanup_cron' );
 		}
 	}
 	/**
@@ -474,17 +496,6 @@ class Checkview_Admin {
 			}
 		}
 
-		if ( is_plugin_active( 'defender-security/wp-defender.php' ) ) {
-			$data                         = array();
-			$data['allow_list']           = (array) $visitor_ip;
-			$data['block_list']           = array();
-			$data['last_update_time']     = '';
-			$data['last_update_time_utc'] = '';
-
-			$global_ip_component = wd_di()->get( Global_IP::class );
-			$result              = $global_ip_component->set_global_ip_list( $data );
-		}
-
 		if ( is_plugin_active( 'enhanced-cloudflare-turnstile/enhanced-cloudflare-turnstile.php' ) ) {
 			$ect_ip_address       = ecft_get_option( 'ecft_ip_address' );
 			$ect_ip_address_array = explode( "\n", $ect_ip_address );
@@ -672,7 +683,7 @@ class Checkview_Admin {
 		}
 
 		delete_transient( 'checkview_forms_test_transient' );
-		delete_transient( 'checkview_store_orders_transient' );
+		checkview_delete_transient_everywhere( 'checkview_store_orders_transient' );
 
 		// Form-plugin-agnostic wp_mail backstop. Loaded before any form helper so
 		// the wp_mail filter is registered regardless of which form plugin is

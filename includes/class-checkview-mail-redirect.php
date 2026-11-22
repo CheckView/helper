@@ -63,7 +63,8 @@ if ( ! class_exists( 'Checkview_Mail_Redirect' ) ) {
 		 *
 		 * Two skip conditions avoid double-work when an earlier filter
 		 * (e.g. gform_pre_send_email at priority 99) already did the rewrite:
-		 * - REPLACE mode: skip if $to is already exactly CHECKVIEW_TEST_EMAIL.
+		 * - REPLACE mode: skip the To rewrite if $to is already exactly
+		 *   CHECKVIEW_TEST_EMAIL, but still strip Cc/Bcc.
 		 * - APPEND mode: skip if $to already contains CHECKVIEW_TEST_EMAIL.
 		 *
 		 * @param mixed $atts wp_mail compact args (to/subject/message/headers/attachments).
@@ -105,6 +106,14 @@ if ( ! class_exists( 'Checkview_Mail_Redirect' ) ) {
 				}
 			} else {
 				if ( $this->is_only_test_email( $atts['to'] ) ) {
+					// An earlier filter rewrote To but may have left Cc/Bcc behind.
+					if ( ! empty( $atts['headers'] ) ) {
+						$stripped = $this->strip_cc_bcc_headers( $atts['headers'] );
+						if ( $stripped !== $atts['headers'] ) {
+							$atts['headers'] = $stripped;
+							Checkview_Admin_Logs::add( 'ip-logs', 'wp_mail backstop: removed Cc/Bcc from an email already addressed to the test inbox.' );
+						}
+					}
 					return $atts;
 				}
 				$original_to     = $atts['to'];
@@ -171,26 +180,37 @@ if ( ! class_exists( 'Checkview_Mail_Redirect' ) ) {
 		 *
 		 * Preserves the input type: string in → string out, array in → array out.
 		 * Avoids type changes that downstream transport plugins might mishandle.
+		 * Matches "Cc :" as well as "Cc:", as wp_mail() does, and drops folded
+		 * continuation lines of a removed header. Any other type is returned as is.
 		 *
 		 * @param array|string $headers Original headers.
 		 * @return array|string Filtered headers.
 		 */
 		private function strip_cc_bcc_headers( $headers ) {
-			$was_string = ! is_array( $headers );
-			$list       = $was_string ? preg_split( '/\r?\n/', (string) $headers ) : $headers;
+			$was_string = is_string( $headers );
+			if ( ! $was_string && ! is_array( $headers ) ) {
+				return $headers;
+			}
+			$list = $was_string ? preg_split( '/\r?\n/', $headers ) : $headers;
 
-			$filtered = array_values(
-				array_filter(
-					$list,
-					function ( $header ) {
-						if ( ! is_string( $header ) ) {
-							return true;
-						}
-						$lower = strtolower( ltrim( $header ) );
-						return 0 !== strpos( $lower, 'bcc:' ) && 0 !== strpos( $lower, 'cc:' );
-					}
-				)
-			);
+			$filtered = array();
+			$dropping = false;
+			foreach ( $list as $header ) {
+				if ( ! is_string( $header ) ) {
+					$filtered[] = $header;
+					$dropping   = false;
+					continue;
+				}
+				if ( preg_match( '/^\s*b?cc\s*:/i', $header ) ) {
+					$dropping = true;
+					continue;
+				}
+				if ( $dropping && preg_match( '/^[ \t]+\S/', $header ) ) {
+					continue;
+				}
+				$dropping   = false;
+				$filtered[] = $header;
+			}
 
 			return $was_string ? implode( "\r\n", $filtered ) : $filtered;
 		}

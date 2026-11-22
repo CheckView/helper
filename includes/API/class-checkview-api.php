@@ -200,7 +200,7 @@ class CheckView_Api {
 			'checkview/v1',
 			'/store/deleteorders',
 			array(
-				'methods'             => array( 'DELETE', 'PUT', 'GET', 'POST' ),
+				'methods'             => array( 'DELETE', 'POST' ),
 				'callback'            => array( $this, 'checkview_delete_orders' ),
 				'permission_callback' => array( $this, 'checkview_get_items_permissions_check' ),
 				'args'                => array(
@@ -692,6 +692,17 @@ class CheckView_Api {
 				esc_html__( 'Invalid request.', 'checkview' ),
 			);
 		}
+		// The test product is created on demand, as a draft, the first time
+		// CheckView asks for the store's products (a Woo flow being set up).
+		$test_product_id = 0;
+		if ( class_exists( 'Checkview_Woo_Automated_Testing' ) ) {
+			$test_product_created = false;
+			$test_product         = Checkview_Woo_Automated_Testing::checkview_ensure_test_product( $test_product_created );
+			$test_product_id      = $test_product ? (int) $test_product->get_id() : 0;
+			if ( $test_product_created ) {
+				$products = false;
+			}
+		}
 		if ( '' !== $products && null !== $products && false !== $products ) {
 			return new WP_REST_Response(
 				array(
@@ -735,7 +746,8 @@ class CheckView_Api {
 		if ( ! empty( $loop->posts ) ) {
 			foreach ( $loop->posts as $post ) {
 				// Initialize an array to store variations.
-				$variations = array();
+				$variations             = array();
+				$any_variation_in_stock = false;
 
 				// Get product object.
 				$product = wc_get_product( $post );
@@ -746,19 +758,31 @@ class CheckView_Api {
 
 					foreach ( $product_variations as $variation ) {
 						// Collect variation data.
-						$variations[] = array(
+						$entry = array(
 							'id'         => $variation['variation_id'],
 							'attributes' => $variation['attributes'],
 						);
+						// A filter on woocommerce_available_variation can drop the key; absent means unknown.
+						if ( isset( $variation['is_in_stock'] ) ) {
+							$entry['in_stock']      = (bool) $variation['is_in_stock'];
+							$any_variation_in_stock = $any_variation_in_stock || $entry['in_stock'];
+						}
+						$variations[] = $entry;
 					}
 				}
 				$products[] = array(
 					'id'         => $post->ID,
 					'name'       => $post->post_title,
 					'slug'       => $post->post_name,
-					'url'        => get_permalink( $post->ID ),
+					// The test product may be a draft between runs; report its normal URL.
+					'url'        => ( $test_product_id && (int) $post->ID === $test_product_id )
+						? Checkview_Woo_Automated_Testing::checkview_test_product_permalink( $post->ID )
+						: get_permalink( $post->ID ),
 					'thumb_url'  => get_the_post_thumbnail_url( $post->ID ),
 					'variations' => $variations,
+					// Backorders count as in stock: they can still be bought. A variation is
+					// checked on its own stock at add to cart, so one in stock is enough.
+					'in_stock'   => $product ? ( $product->is_in_stock() || $any_variation_in_stock ) : true,
 				);
 			}
 		}
@@ -907,7 +931,10 @@ class CheckView_Api {
 		}
 	}
 	/**
-	 * Deletes CheckView orders.
+	 * Deletes one CheckView test order and its test customer.
+	 *
+	 * Refuses an order without the CheckView marker; see
+	 * `Checkview_Woo_Automated_Testing::checkview_delete_orders()`.
 	 *
 	 * @param WP_REST_Request $request Request object.
 	 * @return WP_REST_Response|WP_Error
@@ -930,45 +957,18 @@ class CheckView_Api {
 				esc_html__( 'Invalid request.', 'checkview' ),
 			);
 		}
-		global $wpdb;
-		$order_id = $request->get_param( 'order_id' );
-		$order_id = isset( $order_id ) ? intval( $order_id ) : null;
-		if ( null === $order_id || empty( $order_id ) ) {
-			$results = Checkview_Woo_Automated_Testing::delete_orders_from_backend();
-		} else {
-			try {
-				$order_object = new WC_Order( $order_id );
-				$customer_id  = $order_object->get_customer_id();
-
-				// Delete order.
-				if ( $order_object ) {
-					$order_object->delete( true );
-					delete_transient( 'checkview_store_orders_transient' );
-				}
-
-				$order_object = null;
-				$current_user = get_user_by( 'id', $customer_id );
-				// Delete customer if available.
-				if ( $customer_id && isset( $current_user->roles ) && ! in_array( 'administrator', $current_user->roles, true ) ) {
-					$customer = new WC_Customer( $customer_id );
-
-					if ( ! function_exists( 'wp_delete_user' ) ) {
-						require_once ABSPATH . 'wp-admin/includes/user.php';
-					}
-
-					$res      = $customer->delete( true );
-					$customer = null;
-				}
-				$results = true;
-			} catch ( \Exception $e ) {
-				if ( ! class_exists( 'Checkview_Admin_Logs' ) ) {
-					require_once CHECKVIEW_ADMIN_DIR . '/class-checkview-admin-logs.php';
-				}
-				Checkview_Admin_Logs::add( 'api-logs', 'API failed to delete customer.' );
-
-				$results = false;
-			}
+		$order_id = (int) $request->get_param( 'order_id' );
+		if ( $order_id <= 0 ) {
+			Checkview_Admin_Logs::add( 'api-logs', 'Delete orders called without an order id.' );
+			return new WP_Error(
+				400,
+				esc_html__( 'An order id is required.', 'checkview' ),
+				array( 'status' => 400 )
+			);
 		}
+
+		$results = Checkview_Woo_Automated_Testing::checkview_delete_orders( $order_id ) > 0;
+
 		if ( $results ) {
 			return new WP_REST_Response(
 				array(
@@ -977,10 +977,11 @@ class CheckView_Api {
 				)
 			);
 		} else {
-			Checkview_Admin_Logs::add( 'api-logs', 'Empty records.' );
+			Checkview_Admin_Logs::add( 'api-logs', 'Order ' . $order_id . ' was not deleted.' );
 			return new WP_Error(
 				400,
 				esc_html__( 'An error occurred while processing your request.', 'checkview' ),
+				array( 'status' => 400 )
 			);
 		}
 	}
@@ -1180,8 +1181,8 @@ class CheckView_Api {
 				esc_html__( 'Invalid request.', 'checkview' ),
 			);
 		}
-		$product                              = Checkview_Woo_Automated_Testing::checkview_get_test_product();
-		$product_details['checkview_product'] = $product ? get_permalink( $product->get_id() ) : false;
+		$product                              = Checkview_Woo_Automated_Testing::checkview_ensure_test_product();
+		$product_details['checkview_product'] = $product ? Checkview_Woo_Automated_Testing::checkview_test_product_permalink( $product->get_id() ) : false;
 		if ( ! empty( $product_details ) && false !== $product_details['checkview_product'] ) {
 			return new WP_REST_Response(
 				array(
@@ -2358,19 +2359,17 @@ class CheckView_Api {
 			$result        = $wpdb->get_row( $query ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- Prepared above. Expect object.
 
 			if ( is_null( $result ) ) {
-				// Check if a session still exists for this test ID.
-				// If the clone handler ran successfully, it calls
-				// checkview_complete_test() which deletes the session.
-				// A lingering session means the form likely submitted but
-				// the clone handler never executed (e.g., another plugin
-				// threw an exception that killed the hook chain).
+				// The session is created by the first test request that reaches
+				// WordPress outside admin-ajax (normally the page load) and
+				// deleted by checkview_complete_test(). A lingering session does
+				// not show that the form submitted.
 				$session_table = $wpdb->prefix . 'cv_session';
 				$session       = $wpdb->get_row(
 					$wpdb->prepare( 'SELECT * FROM %i WHERE test_id = %s LIMIT 1', $session_table, $uid )
 				);
 
 				if ( ! is_null( $session ) ) {
-					$detail = 'Form submission likely succeeded but entry was not captured — the clone handler may not have executed (possible hook failure in form plugin). Session still exists for test ID [' . $uid . '].';
+					$detail = 'No entry captured yet for test ID [' . $uid . ']. The test page loaded, but the form has not submitted, or its submission was rejected or not saved (the save step of the form plugin, or the CheckView hook on it, did not run).';
 					Checkview_Admin_Logs::add( 'api-logs', $detail );
 
 					return new WP_Error(
@@ -2837,10 +2836,14 @@ class CheckView_Api {
 				array( 'status' => 400 )
 			);
 		}
-		$product    = Checkview_Woo_Automated_Testing::checkview_get_test_product();
-		$product_id = ! empty( $product->get_id() ) ? $product->get_id() : false;
-		$status     = checkview_update_woocommerce_product_status( $product_id, $checkview_status );
-		if ( 0 !== $status && ! is_wp_error( $product_id ) ) {
+		// Created on demand if missing: the product is no longer made on every Woo site.
+		$product    = Checkview_Woo_Automated_Testing::checkview_ensure_test_product();
+		$product_id = $product ? $product->get_id() : false;
+		$status     = $product_id ? checkview_update_woocommerce_product_status( $product_id, $checkview_status ) : 0;
+		if ( 0 !== $status && ! is_wp_error( $status ) ) {
+			if ( 'publish' === $checkview_status ) {
+				Checkview_Woo_Automated_Testing::checkview_mark_test_product_published();
+			}
 			return new WP_REST_Response(
 				array(
 					'_checkview_status' => 'updated',
