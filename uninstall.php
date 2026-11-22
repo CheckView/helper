@@ -24,6 +24,7 @@ $checkview_delete_all = ! empty( $checkview_options['checkview_delete_data'] ) ?
 if ( $checkview_delete_all ) {
 	delete_option( 'checkview_advance_options' );
 	delete_option( 'checkview_log_options' );
+	delete_option( 'checkview_saas_ip_address_last_good' );
 	delete_option( 'checkview_logs_dir_key' ); // Written by 2.4.1 pre-release builds only.
 	delete_option( 'checkview_logs_folder_version' );
 	delete_option( 'checkview_test_product_published_at' );

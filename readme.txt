@@ -206,6 +206,7 @@ Support and test configuration are handled through the CheckView platform. Pleas
 == Changelog ==
 
 = 2.6.2 =
+* Speed: Visitors' page loads no longer wait on CheckView's whitelist download. When the 12-hour copy runs out, the last good list is used while a background task fetches a new one. A failed download is retried after 5 minutes instead of on every request (up to 4 times per request before), and gives up after 5 seconds instead of 500.
 * WooCommerce: The product list sent to CheckView now says whether each product and variation is in stock, so out-of-stock products can be flagged before a test uses them. A stock change now refreshes the list right away.
 * Logs: When a test finds no entry, the log no longer says the submission "likely succeeded". A loaded page does not mean the form submitted.
 * WPForms: Test notification emails no longer reach CC recipients, or a Send To address listed after an invalid one. Only the CheckView test inbox gets them, unless delivery to form recipients is turned on. A notification with more than one Send To address now sends one test email instead of one per address.
