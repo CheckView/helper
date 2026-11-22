@@ -141,6 +141,14 @@ class Checkview_Woo_Automated_Testing {
 				10,
 				2
 			);
+			// The list is built in a CheckView REST request, which reads
+			// WooCommerce's own cache of a product's variations from the store
+			// WooCommerce does not clear on an object-cache site.
+			$this->loader->add_action(
+				'woocommerce_delete_product_transients',
+				$this,
+				'checkview_clear_woo_children_cache'
+			);
 			// The list also carries stock status.
 			$this->loader->add_action(
 				'woocommerce_product_set_stock_status',
@@ -448,7 +456,8 @@ class Checkview_Woo_Automated_Testing {
 	}
 
 	/**
-	 * Clears the cached product list when a stock status is written as post meta.
+	 * Clears the cached product list when a stock status or product image is
+	 * written as post meta.
 	 *
 	 * @since 2.6.2
 	 *
@@ -460,6 +469,33 @@ class Checkview_Woo_Automated_Testing {
 	public function checkview_clear_products_cache_on_stock_meta( $meta_id, $object_id, $meta_key ) { // phpcs:ignore Generic.CodeAnalysis.UnusedFunctionParameter.FoundBeforeLastUsed -- Hook signature.
 		if ( '_stock_status' === $meta_key ) {
 			$this->checkview_clear_products_cache();
+			return;
+		}
+		// The list carries each product's image, which can be set without a save.
+		if ( '_thumbnail_id' === $meta_key && 'product' === get_post_type( $object_id ) ) {
+			$this->checkview_clear_products_cache();
+		}
+	}
+
+	/**
+	 * Clears WooCommerce's cached list of a product's variations from both
+	 * transient stores, when WooCommerce clears it from one.
+	 *
+	 * WooCommerce keeps `wc_product_children_<id>` for 30 days and clears it
+	 * with `delete_transient()`. CheckView's REST requests read the copy that
+	 * call does not reach on an object-cache site (see
+	 * `checkview_delete_transient_everywhere()`), so the product list kept
+	 * missing a new variation.
+	 *
+	 * @since 2.6.2
+	 *
+	 * @param int $post_id Product ID; 0 when WooCommerce clears store-wide caches only.
+	 * @return void
+	 */
+	public function checkview_clear_woo_children_cache( $post_id ) {
+		$post_id = (int) $post_id;
+		if ( $post_id > 0 ) {
+			checkview_delete_transient_everywhere( 'wc_product_children_' . $post_id );
 		}
 	}
 
@@ -1997,7 +2033,7 @@ class Checkview_Woo_Automated_Testing {
 
 						$order_object->delete( true );
 
-						delete_transient( 'checkview_store_orders_transient' );
+						checkview_delete_transient_everywhere( 'checkview_store_orders_transient' );
 
 						$order_object = null;
 						$current_user = get_user_by( 'id', $customer_id );

@@ -1485,8 +1485,11 @@ if ( ! function_exists( 'checkview_delete_transient_everywhere' ) ) {
 		// a long import, or a switch to another site of a network, has to clear
 		// it again.
 		if ( wp_using_ext_object_cache() ) {
-			delete_option( '_transient_' . $transient );
-			delete_option( '_transient_timeout_' . $transient );
+			// As core's delete_transient() does without an object cache: the
+			// expiry row only when there was a value row.
+			if ( delete_option( '_transient_' . $transient ) ) {
+				delete_option( '_transient_timeout_' . $transient );
+			}
 		} else {
 			wp_cache_delete( $transient, 'transient' );
 		}
