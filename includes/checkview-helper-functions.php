@@ -238,6 +238,9 @@ if ( ! function_exists( 'checkview_disable_addons_feed' ) ) {
 			'Translations\Translations',
 			'DefaultContent\DefaultContent',
 			'PopupMaker\PopupMaker',
+			// These two render the form on Divi and Elementor pages; they send nothing out.
+			'Divi\Divi',
+			'Elementor\Elementor',
 		);
 		return $core_class_names;
 	}

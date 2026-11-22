@@ -213,6 +213,7 @@ Support and test configuration are handled through the CheckView platform. Pleas
 * WooCommerce: Test order clean-up now deletes a customer only if a CheckView test created it, and never one with admin rights or with orders left. On multisite, a test customer is removed from the network, not just from the site.
 * WooCommerce: A daily clean-up removes CheckView test customers left behind, for example when a store requires an account and the test checkout failed after the account was made. It also removes users created by form tests on registration forms.
 * WooCommerce: The delete test orders endpoint now needs an order id and only deletes CheckView test orders.
+* WPForms: Forms added with the WPForms Divi module or Elementor widget now stay on the page for the whole CheckView test. They disappeared after the first page load of a test, for example when the page address redirected.
 
 = 2.6.1 =
 * Formidable: Stop listing forms with no published status. Formidable shows no submit button on them, so a test could never submit.
