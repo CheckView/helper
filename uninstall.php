@@ -31,6 +31,11 @@ if ( $checkview_delete_all ) {
 	delete_option( 'checkview_test_product_creating' );
 	delete_site_option( 'checkview_admin_menu_title' );
 
+	wp_clear_scheduled_hook( 'checkview_test_users_cleanup_cron' );
+	foreach ( array( '_checkview_test_user', 'checkview_test_user_skipped', 'checkview_test_user_attempts' ) as $checkview_user_meta_key ) {
+		delete_metadata( 'user', 0, $checkview_user_meta_key, '', true );
+	}
+
 	$checkview_tables = array( 'cv_entry', 'cv_entry_meta', 'cv_session', 'cv_used_nonces' );
 	foreach ( $checkview_tables as $checkview_table ) {
 		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.SchemaChange -- Plugin-owned table.

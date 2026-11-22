@@ -200,7 +200,7 @@ class CheckView_Api {
 			'checkview/v1',
 			'/store/deleteorders',
 			array(
-				'methods'             => array( 'DELETE', 'PUT', 'GET', 'POST' ),
+				'methods'             => array( 'DELETE', 'POST' ),
 				'callback'            => array( $this, 'checkview_delete_orders' ),
 				'permission_callback' => array( $this, 'checkview_get_items_permissions_check' ),
 				'args'                => array(
@@ -931,7 +931,10 @@ class CheckView_Api {
 		}
 	}
 	/**
-	 * Deletes CheckView orders.
+	 * Deletes one CheckView test order and its test customer.
+	 *
+	 * Refuses an order without the CheckView marker; see
+	 * `Checkview_Woo_Automated_Testing::checkview_delete_orders()`.
 	 *
 	 * @param WP_REST_Request $request Request object.
 	 * @return WP_REST_Response|WP_Error
@@ -954,45 +957,18 @@ class CheckView_Api {
 				esc_html__( 'Invalid request.', 'checkview' ),
 			);
 		}
-		global $wpdb;
-		$order_id = $request->get_param( 'order_id' );
-		$order_id = isset( $order_id ) ? intval( $order_id ) : null;
-		if ( null === $order_id || empty( $order_id ) ) {
-			$results = Checkview_Woo_Automated_Testing::delete_orders_from_backend();
-		} else {
-			try {
-				$order_object = new WC_Order( $order_id );
-				$customer_id  = $order_object->get_customer_id();
-
-				// Delete order.
-				if ( $order_object ) {
-					$order_object->delete( true );
-					delete_transient( 'checkview_store_orders_transient' );
-				}
-
-				$order_object = null;
-				$current_user = get_user_by( 'id', $customer_id );
-				// Delete customer if available.
-				if ( $customer_id && isset( $current_user->roles ) && ! in_array( 'administrator', $current_user->roles, true ) ) {
-					$customer = new WC_Customer( $customer_id );
-
-					if ( ! function_exists( 'wp_delete_user' ) ) {
-						require_once ABSPATH . 'wp-admin/includes/user.php';
-					}
-
-					$res      = $customer->delete( true );
-					$customer = null;
-				}
-				$results = true;
-			} catch ( \Exception $e ) {
-				if ( ! class_exists( 'Checkview_Admin_Logs' ) ) {
-					require_once CHECKVIEW_ADMIN_DIR . '/class-checkview-admin-logs.php';
-				}
-				Checkview_Admin_Logs::add( 'api-logs', 'API failed to delete customer.' );
-
-				$results = false;
-			}
+		$order_id = (int) $request->get_param( 'order_id' );
+		if ( $order_id <= 0 ) {
+			Checkview_Admin_Logs::add( 'api-logs', 'Delete orders called without an order id.' );
+			return new WP_Error(
+				400,
+				esc_html__( 'An order id is required.', 'checkview' ),
+				array( 'status' => 400 )
+			);
 		}
+
+		$results = Checkview_Woo_Automated_Testing::checkview_delete_orders( $order_id ) > 0;
+
 		if ( $results ) {
 			return new WP_REST_Response(
 				array(
@@ -1001,10 +977,11 @@ class CheckView_Api {
 				)
 			);
 		} else {
-			Checkview_Admin_Logs::add( 'api-logs', 'Empty records.' );
+			Checkview_Admin_Logs::add( 'api-logs', 'Order ' . $order_id . ' was not deleted.' );
 			return new WP_Error(
 				400,
 				esc_html__( 'An error occurred while processing your request.', 'checkview' ),
+				array( 'status' => 400 )
 			);
 		}
 	}

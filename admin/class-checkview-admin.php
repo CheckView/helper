@@ -98,6 +98,16 @@ class Checkview_Admin {
 			array( 'Checkview_Admin_Logs', 'purge_expired_logs' )
 		);
 
+		add_action(
+			'wp',
+			array( $this, 'checkview_schedule_test_users_cleanup' )
+		);
+
+		add_action(
+			'checkview_test_users_cleanup_cron',
+			'checkview_sweep_test_users'
+		);
+
 		add_filter(
 			'all_plugins',
 			array( $this, 'checkview_hide_me' )
@@ -172,6 +182,19 @@ class Checkview_Admin {
 	public function checkview_schedule_logs_cleanup() {
 		if ( ! wp_next_scheduled( 'checkview_logs_cleanup_cron' ) ) {
 			wp_schedule_event( time(), 'daily', 'checkview_logs_cleanup_cron' );
+		}
+	}
+
+	/**
+	 * Schedules the daily sweep of leftover CheckView test users.
+	 *
+	 * @since 2.6.2
+	 *
+	 * @return void
+	 */
+	public function checkview_schedule_test_users_cleanup() {
+		if ( ! wp_next_scheduled( 'checkview_test_users_cleanup_cron' ) ) {
+			wp_schedule_event( time(), 'daily', 'checkview_test_users_cleanup_cron' );
 		}
 	}
 	/**

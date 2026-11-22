@@ -2389,3 +2389,388 @@ if ( ! function_exists( 'checkview_inject_reply_to_header' ) ) {
 		return $is_array ? $list : implode( "\r\n", $list );
 	}
 }
+
+if ( ! function_exists( 'checkview_is_test_user_email' ) ) {
+	/**
+	 * Determines if an email address is a CheckView test inbox address.
+	 *
+	 * Exactly `<uuid>@test-mail.checkview.io`, where the uuid is a v4 test id.
+	 * Plus-addressing, subdomains and look-alike domains do not match.
+	 *
+	 * @since 2.6.2
+	 *
+	 * @param string $email Email address.
+	 * @return bool
+	 */
+	function checkview_is_test_user_email( $email ) {
+		if ( ! is_string( $email ) || '' === $email ) {
+			return false;
+		}
+
+		$email = strtolower( trim( $email ) );
+		$at    = strrpos( $email, '@' );
+
+		if ( false === $at || 'test-mail.checkview.io' !== substr( $email, $at + 1 ) ) {
+			return false;
+		}
+
+		// Same pattern as `checkview_is_valid_uuid()`, without its log line:
+		// the daily sweep checks every address on the test domain.
+		return 1 === preg_match( '/^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/', substr( $email, 0, $at ) );
+	}
+}
+
+if ( ! function_exists( 'checkview_is_test_user' ) ) {
+	/**
+	 * Determines if a user was created by a CheckView test.
+	 *
+	 * True when the user carries the test id stamped at creation, or has a
+	 * CheckView test inbox address. The address also covers users created by
+	 * form tests (registration forms), which are never stamped.
+	 *
+	 * @since 2.6.2
+	 *
+	 * @param WP_User $user User.
+	 * @return bool
+	 */
+	function checkview_is_test_user( $user ) {
+		if ( ! $user instanceof WP_User || ! $user->exists() ) {
+			return false;
+		}
+
+		if ( '' !== (string) get_user_meta( $user->ID, CheckView::META_TEST_USER, true ) ) {
+			return true;
+		}
+
+		return checkview_is_test_user_email( $user->user_email );
+	}
+}
+
+if ( ! function_exists( 'checkview_get_user_order_ids' ) ) {
+	/**
+	 * Returns the ids of every order a user placed, in any status, trash included.
+	 *
+	 * Empty when WooCommerce is not loaded.
+	 *
+	 * @since 2.6.2
+	 *
+	 * @param int $user_id User id.
+	 * @return int[]
+	 */
+	function checkview_get_user_order_ids( $user_id ) {
+		if ( ! function_exists( 'wc_get_orders' ) || ! function_exists( 'wc_get_order_statuses' ) ) {
+			return array();
+		}
+
+		$statuses = array_unique(
+			array_merge( array_keys( wc_get_order_statuses() ), array( 'wc-checkout-draft', 'trash' ) )
+		);
+
+		$order_ids = wc_get_orders(
+			array(
+				'customer_id' => (int) $user_id,
+				'type'        => 'shop_order',
+				'status'      => $statuses,
+				'limit'       => -1,
+				'return'      => 'ids',
+			)
+		);
+
+		return is_array( $order_ids ) ? array_map( 'intval', $order_ids ) : array();
+	}
+}
+
+if ( ! function_exists( 'checkview_skip_test_user' ) ) {
+	/**
+	 * Records that a test user must not be deleted, so the sweep stops retrying.
+	 *
+	 * @since 2.6.2
+	 *
+	 * @param int    $user_id User id.
+	 * @param string $reason  Short reason code.
+	 * @return void
+	 */
+	function checkview_skip_test_user( $user_id, $reason ) {
+		update_user_meta( $user_id, 'checkview_test_user_skipped', $reason );
+		Checkview_Admin_Logs::add( 'cron-logs', 'Kept CheckView test user [' . $user_id . '] (' . $reason . '); it will not be retried.' );
+	}
+}
+
+if ( ! function_exists( 'checkview_record_test_user_failure' ) ) {
+	/**
+	 * Counts a failed clean-up attempt for a test user; gives up after three.
+	 *
+	 * @since 2.6.2
+	 *
+	 * @param int    $user_id User id.
+	 * @param string $reason  Short reason code.
+	 * @return void
+	 */
+	function checkview_record_test_user_failure( $user_id, $reason ) {
+		$attempts = (int) get_user_meta( $user_id, 'checkview_test_user_attempts', true ) + 1;
+		update_user_meta( $user_id, 'checkview_test_user_attempts', $attempts );
+		Checkview_Admin_Logs::add( 'cron-logs', 'Could not clean up CheckView test user [' . $user_id . '] (' . $reason . ', attempt ' . $attempts . ').' );
+
+		if ( $attempts >= 3 ) {
+			checkview_skip_test_user( $user_id, $reason );
+		}
+	}
+}
+
+if ( ! function_exists( 'checkview_delete_test_customer' ) ) {
+	/**
+	 * Deletes a user created by a CheckView test.
+	 *
+	 * Refuses unless the user is a CheckView test user (see
+	 * `checkview_is_test_user()`), holds only the roles a test creates, has no
+	 * admin capabilities and has no orders left. On multisite the user is
+	 * deleted from the network only when they belong to no other site.
+	 *
+	 * @since 2.6.2
+	 *
+	 * @param int $user_id User id.
+	 * @return bool True when the user was deleted.
+	 */
+	function checkview_delete_test_customer( $user_id ) {
+		$user_id = (int) $user_id;
+		$user    = $user_id > 0 ? get_user_by( 'id', $user_id ) : false;
+
+		if ( ! $user ) {
+			return false;
+		}
+
+		// Not ours: a real account that a test happened to use. Leave it
+		// untouched, including its meta.
+		if ( ! checkview_is_test_user( $user ) ) {
+			Checkview_Admin_Logs::add( 'cron-logs', 'Did not delete user [' . $user_id . ']: not a CheckView test user.' );
+			return false;
+		}
+
+		if ( is_super_admin( $user_id ) || user_can( $user, 'manage_options' ) || user_can( $user, 'edit_users' ) ) {
+			checkview_skip_test_user( $user_id, 'privileged' );
+			return false;
+		}
+
+		/**
+		 * Filters the roles a CheckView test user may hold and still be deleted.
+		 *
+		 * @since 2.6.2
+		 *
+		 * @param string[] $roles Role slugs.
+		 */
+		$allowed_roles = (array) apply_filters( 'checkview_test_user_roles', array( 'customer', 'subscriber' ) );
+		$roles         = (array) $user->roles;
+
+		if ( empty( $roles ) || array_diff( $roles, $allowed_roles ) ) {
+			checkview_skip_test_user( $user_id, 'role:' . implode( ',', $roles ) );
+			return false;
+		}
+
+		// Remaining orders are either another test's (the sweep deletes them
+		// first) or real ones; either way the user stays for now.
+		if ( checkview_get_user_order_ids( $user_id ) ) {
+			Checkview_Admin_Logs::add( 'cron-logs', 'Did not delete CheckView test user [' . $user_id . '] yet: they still have orders.' );
+			return false;
+		}
+
+		$test_id = (string) get_user_meta( $user_id, CheckView::META_TEST_USER, true );
+
+		try {
+			if ( is_multisite() ) {
+				// Archived, spam and deleted sites included: the network delete
+				// below removes the user's content on every site they belong to.
+				$blogs = get_blogs_of_user( $user_id, true );
+
+				if ( count( $blogs ) !== 1 || ! isset( $blogs[ get_current_blog_id() ] ) ) {
+					remove_user_from_blog( $user_id, get_current_blog_id() );
+					checkview_skip_test_user( $user_id, 'other_sites' );
+					return false;
+				}
+
+				if ( ! function_exists( 'wpmu_delete_user' ) ) {
+					require_once ABSPATH . 'wp-admin/includes/ms.php';
+				}
+
+				// WooCommerce cleans sessions, API keys and payment tokens on
+				// `delete_user`, which `wpmu_delete_user()` does not fire.
+				if ( function_exists( 'wc_delete_user_data' ) ) {
+					wc_delete_user_data( $user_id );
+				}
+
+				$deleted = wpmu_delete_user( $user_id );
+			} else {
+				if ( ! function_exists( 'wp_delete_user' ) ) {
+					require_once ABSPATH . 'wp-admin/includes/user.php';
+				}
+
+				$deleted = wp_delete_user( $user_id );
+			}
+		} catch ( \Throwable $e ) {
+			Checkview_Admin_Logs::add( 'cron-logs', 'Deleting CheckView test user [' . $user_id . '] threw ' . get_class( $e ) . '.' );
+			$deleted = false;
+		}
+
+		if ( $deleted ) {
+			Checkview_Admin_Logs::add( 'cron-logs', 'Deleted CheckView test user [' . $user_id . '] for test [' . $test_id . '].' );
+			return true;
+		}
+
+		checkview_record_test_user_failure( $user_id, 'delete_failed' );
+
+		return false;
+	}
+}
+
+if ( ! function_exists( 'checkview_sweep_test_users' ) ) {
+	/**
+	 * Daily clean-up of CheckView test users that no order clean-up removed.
+	 *
+	 * Catches users whose test order was never created (checkout failed after
+	 * the account was made), users whose order clean-up never ran, and users
+	 * created by form tests. Each candidate's CheckView test orders are
+	 * deleted first; a candidate with any other order is kept for good.
+	 *
+	 * @since 2.6.2
+	 *
+	 * @return void
+	 */
+	function checkview_sweep_test_users() {
+		$started = time();
+
+		/**
+		 * Filters how old a CheckView test user must be before the sweep deletes it.
+		 *
+		 * @since 2.6.2
+		 *
+		 * @param int $min_age Seconds since the user registered.
+		 */
+		$min_age = (int) apply_filters( 'checkview_test_user_min_age', DAY_IN_SECONDS );
+
+		/**
+		 * Filters how many test users one sweep run looks at.
+		 *
+		 * @since 2.6.2
+		 *
+		 * @param int $max_users Users per run.
+		 */
+		$max_users = (int) apply_filters( 'checkview_test_user_sweep_limit', 200 );
+		$cutoff    = gmdate( 'Y-m-d H:i:s', time() - $min_age );
+
+		$not_skipped = array(
+			'key'     => 'checkview_test_user_skipped',
+			'compare' => 'NOT EXISTS',
+		);
+
+		$queries = array(
+			'stamped'    => array(
+				'meta_query' => array( // phpcs:ignore WordPress.DB.SlowDBQuery.slow_db_query_meta_query -- Daily cron, capped.
+					'relation' => 'AND',
+					array(
+						'key'     => CheckView::META_TEST_USER,
+						'compare' => 'EXISTS',
+					),
+					$not_skipped,
+				),
+			),
+			'email_only' => array(
+				'search'         => '*@test-mail.checkview.io',
+				'search_columns' => array( 'user_email' ),
+				'meta_query'     => array( $not_skipped ), // phpcs:ignore WordPress.DB.SlowDBQuery.slow_db_query_meta_query -- Daily cron, capped.
+			),
+		);
+
+		$seen    = array();
+		$checked = 0;
+		$counts  = array(
+			'stamped'    => 0,
+			'email_only' => 0,
+			'deleted'    => 0,
+			'kept'       => 0,
+		);
+
+		foreach ( $queries as $label => $query ) {
+			while ( $checked < $max_users && ( time() - $started ) < 20 ) {
+				$user_ids = get_users(
+					array_merge(
+						$query,
+						array(
+							'fields'     => 'ID',
+							'number'     => 100,
+							'orderby'    => 'ID',
+							'order'      => 'ASC',
+							'exclude'    => $seen,
+							'date_query' => array(
+								array(
+									'before' => $cutoff,
+								),
+							),
+						)
+					)
+				);
+
+				if ( empty( $user_ids ) ) {
+					break;
+				}
+
+				foreach ( $user_ids as $user_id ) {
+					$user_id = (int) $user_id;
+					$seen[]  = $user_id;
+					++$checked;
+					$user = get_user_by( 'id', $user_id );
+
+					// The email query is a suffix match; the exact check runs here.
+					if ( ! checkview_is_test_user( $user ) ) {
+						continue;
+					}
+
+					++$counts[ $label ];
+
+					$has_real_orders = false;
+					$order_failed    = false;
+
+					foreach ( checkview_get_user_order_ids( $user_id ) as $order_id ) {
+						$order = wc_get_order( $order_id );
+
+						if ( ! $order ) {
+							// Listed but will not load: unknown, so retry later.
+							$order_failed = true;
+						} elseif ( 'checkview' !== $order->get_meta( 'payment_made_by' ) && 'checkview' !== $order->get_payment_method() ) {
+							$has_real_orders = true;
+						} elseif ( ! class_exists( 'Checkview_Woo_Automated_Testing' ) || 0 === Checkview_Woo_Automated_Testing::checkview_delete_orders( $order_id, false ) ) {
+							$order_failed = true;
+						}
+					}
+
+					if ( $has_real_orders ) {
+						checkview_skip_test_user( $user_id, 'has_real_orders' );
+						++$counts['kept'];
+					} elseif ( $order_failed ) {
+						checkview_record_test_user_failure( $user_id, 'order_delete_failed' );
+						++$counts['kept'];
+					} elseif ( checkview_delete_test_customer( $user_id ) ) {
+						++$counts['deleted'];
+					} else {
+						++$counts['kept'];
+					}
+
+					if ( $checked >= $max_users || ( time() - $started ) >= 20 ) {
+						break;
+					}
+				}
+			}
+		}
+
+		if ( $checked ) {
+			Checkview_Admin_Logs::add(
+				'cron-logs',
+				sprintf(
+					'Test user sweep: %d stamped, %d matched by email only, %d deleted, %d kept.',
+					$counts['stamped'],
+					$counts['email_only'],
+					$counts['deleted'],
+					$counts['kept']
+				)
+			);
+		}
+	}
+}

@@ -70,6 +70,13 @@ class CheckView {
 	const PARAM_TEST_TYPE = 'checkview_test_type';
 
 	/**
+	 * User meta key stamped on a customer created by a CheckView test; holds
+	 * the test id. Deliberately not the query parameter name, so nothing that
+	 * copies request parameters into user meta can produce it.
+	 */
+	const META_TEST_USER = '_checkview_test_user';
+
+	/**
 	 * Determine if the `CHECKVIEW_DEV` constant is truthy.
 	 *
 	 * @return bool

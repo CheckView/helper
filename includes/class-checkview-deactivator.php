@@ -28,13 +28,10 @@ class Checkview_Deactivator {
 	public static function deactivate() {
 		// Clear the cron job.
 		wp_clear_scheduled_hook( 'checkview_delete_orders_action' );
-		$timestamp = wp_next_scheduled( 'checkview_nonce_cleanup_cron' );
-		wp_unschedule_event( $timestamp, 'checkview_nonce_cleanup_cron' );
-		$timestamp = wp_next_scheduled( 'checkview_delete_table_cron_hook' );
-		wp_unschedule_event( $timestamp, 'checkview_delete_table_cron_hook' );
-		$timestamp = wp_next_scheduled( 'checkview_options_cleanup_cron' );
-		wp_unschedule_event( $timestamp, 'checkview_options_cleanup_cron' );
-		$timestamp = wp_next_scheduled( 'checkview_logs_cleanup_cron' );
-		wp_unschedule_event( $timestamp, 'checkview_logs_cleanup_cron' );
+		wp_clear_scheduled_hook( 'checkview_nonce_cleanup_cron' );
+		wp_clear_scheduled_hook( 'checkview_delete_table_cron_hook' );
+		wp_clear_scheduled_hook( 'checkview_options_cleanup_cron' );
+		wp_clear_scheduled_hook( 'checkview_logs_cleanup_cron' );
+		wp_clear_scheduled_hook( 'checkview_test_users_cleanup_cron' );
 	}
 }
