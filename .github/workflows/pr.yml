@@ -3,12 +3,15 @@ name: PR checks
 on:
   pull_request:
 
+permissions:
+  contents: read
+
 jobs:
   phpcs:
     uses: ./.github/workflows/phpcs.yml
 
-  allowlist-gate-test:
-    name: Allowlist gate test
+  helper-tests:
+    name: Helper tests
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -17,3 +20,5 @@ jobs:
           php-version: '8.0'
           coverage: none
       - run: php tests/allowlist-gate-test.php
+      - run: php tests/order-stamp-ownership-test.php
+        if: ${{ !cancelled() }}
