@@ -20,6 +20,7 @@ define( 'WPINC', 'wp-includes' );
 define( 'MINUTE_IN_SECONDS', 60 );
 define( 'HOUR_IN_SECONDS', 3600 );
 define( 'DAY_IN_SECONDS', 86400 );
+define( 'KB_IN_BYTES', 1024 );
 define( 'CHECKVIEW_INC_DIR', dirname( __DIR__ ) . '/includes/' );
 define( 'CHECKVIEW_ADMIN_DIR', dirname( __DIR__ ) . '/admin/' );
 define( 'CHECKVIEW_EMAIL', 'verify@test-mail.checkview.io' );
@@ -42,7 +43,7 @@ function cv_t_reset() {
 		'filters'      => array(),
 		'whitelist'    => array( 'ipAddresses' => array( BOT_IP ) ),
 	);
-	unset( $GLOBALS['checkview_api_ip_memo'] );
+	unset( $GLOBALS['checkview_api_ip_fetch_memo'] );
 	$_SERVER  = array( 'REQUEST_URI' => '/', 'REMOTE_ADDR' => OTHER_IP );
 	$_GET     = array();
 	$_POST    = array();
@@ -149,6 +150,41 @@ function wp_remote_retrieve_body( $r ) {
 function is_wp_error( $thing ) {
 	return $thing instanceof WP_Error;
 }
+function get_current_blog_id() {
+	return 1;
+}
+function wp_using_ext_object_cache() {
+	return false;
+}
+function wp_cache_delete( $key, $group = '' ) {
+	return true;
+}
+/** Enough of $wpdb for the allowlist fetch lock (checkview_acquire_fetch_lock()). */
+class CV_T_WPDB {
+	public $options = 'wp_options';
+	public function prepare( $sql, ...$args ) {
+		return array( $sql, $args );
+	}
+	public function get_var( $q ) {
+		return $GLOBALS['cv_t']['store'][ $q[1][0] ] ?? null;
+	}
+	public function query( $q ) {
+		list( $sql, $args ) = $q;
+		if ( 0 === strpos( $sql, 'INSERT IGNORE' ) ) {
+			if ( isset( $GLOBALS['cv_t']['store'][ $args[0] ] ) ) {
+				return 0;
+			}
+			$GLOBALS['cv_t']['store'][ $args[0] ] = $args[1];
+			return 1;
+		}
+		return 0;
+	}
+	public function delete( $table, $where ) {
+		unset( $GLOBALS['cv_t']['store'][ $where['option_name'] ] );
+		return 1;
+	}
+}
+$GLOBALS['wpdb'] = new CV_T_WPDB();
 function wp_next_scheduled( $hook ) {
 	return in_array( $hook, $GLOBALS['cv_t']['scheduled'], true );
 }
@@ -227,12 +263,16 @@ function cv_t_signature( $private_key = null ) {
 function cv_t_site_with_cache( $cache = 'fresh' ) {
 	cv_t_reset();
 	$GLOBALS['cv_t']['store']['_transient_checkview_saas_pk'] = $GLOBALS['cv_t_public'];
-	$GLOBALS['cv_t']['store']['checkview_saas_ip_address_last_good'] = array( BOT_IP );
+	$GLOBALS['cv_t']['store']['checkview_saas_ip_address_last_good'] = array(
+		'value'      => array( BOT_IP ),
+		'fetched_at' => time() - HOUR_IN_SECONDS,
+	);
+	$GLOBALS['cv_t']['store']['checkview_saas_ip_address_seeded'] = 1;
 	if ( 'fresh' === $cache ) {
 		$GLOBALS['cv_t']['store']['_transient_checkview_saas_ip_address'] = array( BOT_IP );
 	}
 	if ( 'empty' === $cache ) {
-		unset( $GLOBALS['cv_t']['store']['checkview_saas_ip_address_last_good'] );
+		unset( $GLOBALS['cv_t']['store']['checkview_saas_ip_address_last_good'], $GLOBALS['cv_t']['store']['checkview_saas_ip_address_seeded'] );
 	}
 }
 
@@ -291,7 +331,7 @@ foreach ( array( 'fresh', 'expired', 'empty' ) as $cache ) {
 	check( "visitor ($cache cache): order email goes to the shop", 'shop@example.test' === $email );
 	check( "visitor ($cache cache): no allowlist reads", 0 === cv_t_allowlist_reads() );
 	check( "visitor ($cache cache): no HTTP calls", array() === $GLOBALS['cv_t']['http'] );
-	check( "visitor ($cache cache): no refresh scheduled", array() === $GLOBALS['cv_t']['scheduled'] );
+	check( "visitor ($cache cache): nothing scheduled", array() === $GLOBALS['cv_t']['scheduled'] );
 }
 
 // 2. Real signed test request is recognized.
@@ -306,6 +346,18 @@ check( 'signed test: is a bot', true === CheckView::is_bot() );
 check( 'signed test: Solid Security allowlists the bot IP', in_array( BOT_IP, cv_t_firewall( 'itsec_white_ips' ), true ) );
 check( 'signed test: Defender allowlists the bot IP', in_array( BOT_IP, cv_t_firewall( 'ip_lockout_default_whitelist_ip' ), true ) );
 check( 'signed test: order email goes to CheckView', CHECKVIEW_EMAIL === cv_t_order_email() );
+
+// 2a. A signed test on a site whose stored list ran out still fetches a fresh one.
+foreach ( array( 'expired', 'empty' ) as $cache ) {
+	cv_t_site_with_cache( $cache );
+	$_REQUEST[ CheckView::PARAM_TEST_TYPE ] = 'form';
+	$_REQUEST[ CheckView::PARAM_TEST_ID ]   = TEST_UUID;
+	$_SERVER['HTTP_X_CHECKVIEW_SIGNATURE']  = cv_t_signature();
+	$_SERVER['REMOTE_ADDR']                 = BOT_IP;
+	check( "signed test ($cache cache): Defender allowlists the bot IP", in_array( BOT_IP, cv_t_firewall( 'ip_lockout_default_whitelist_ip' ), true ) );
+	check( "signed test ($cache cache): fetched the list once", 1 === count( $GLOBALS['cv_t']['http'] ) );
+	check( "signed test ($cache cache): stored the fresh list", array( BOT_IP ) === ( $GLOBALS['cv_t']['store']['_transient_checkview_saas_ip_address'] ?? null ) );
+}
 
 // 2b. Signed test whose test type comes from the referrer (AJAX submit).
 cv_t_site_with_cache();

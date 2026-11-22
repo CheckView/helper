@@ -206,7 +206,7 @@ Support and test configuration are handled through the CheckView platform. Pleas
 == Changelog ==
 
 = 2.6.2 =
-* Speed: Visitors' page loads no longer wait on CheckView's whitelist download. When the 12-hour copy runs out, the last good list is used while a background task fetches a new one. A failed download is retried after 5 minutes instead of on every request (up to 4 times per request before), and gives up after 5 seconds instead of 500.
+* Speed: CheckView's whitelist download gives up after 5 seconds instead of 500. A failed download is retried after 5 minutes instead of on every request (up to 4 times per request before), and the last list fetched successfully is used meanwhile.
 * Speed: Ordinary visitors' requests no longer read CheckView's whitelist at all. The test type and the request signature are checked first, and the whitelist is read only for a request that could be a CheckView test. This also covers the Solid Security and Defender allowlists and WooCommerce order emails.
 * Security: A visitor who sets X-Forwarded-For to a CheckView address, without CheckView test parameters, is no longer added to Solid Security's or Defender's allowlist, and their WooCommerce order email is no longer sent to CheckView.
 * WooCommerce: The product list sent to CheckView now says whether each product and variation is in stock, so out-of-stock products can be flagged before a test uses them. A stock change now refreshes the list right away.
