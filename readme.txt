@@ -207,6 +207,7 @@ Support and test configuration are handled through the CheckView platform. Pleas
 
 = 2.6.2 =
 * WooCommerce: The product list sent to CheckView now says whether each product and variation is in stock, so out-of-stock products can be flagged before a test uses them. A stock change now refreshes the list right away.
+* Fix: When a test finds no entry, the log no longer says the submission "likely succeeded". The page loading only shows the test started; the form may never have submitted.
 
 = 2.6.1 =
 * Formidable: Stop listing forms with no published status. Formidable shows no submit button on them, so a test could never submit.
