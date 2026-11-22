@@ -119,8 +119,15 @@ class Checkview_Woo_Automated_Testing {
 			);
 			// The product list is cached for 12 hours. Refresh it when a product
 			// or variation is saved (created, renamed, published, trashed,
-			// restored) or permanently deleted.
-			foreach ( array( 'save_post_product', 'save_post_product_variation' ) as $save_hook ) {
+			// restored) or permanently deleted. WooCommerce skips save_post when
+			// a save changes only product data, so its own hooks are needed too.
+			$save_hooks = array(
+				'save_post_product',
+				'save_post_product_variation',
+				'woocommerce_update_product',
+				'woocommerce_update_product_variation',
+			);
+			foreach ( $save_hooks as $save_hook ) {
 				$this->loader->add_action(
 					$save_hook,
 					$this,
