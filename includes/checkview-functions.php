@@ -582,7 +582,12 @@ if ( ! function_exists( 'checkview_seed_last_good_copy' ) ) {
 	 */
 	function checkview_seed_last_good_copy( $name, $value ) {
 		if ( get_option( 'checkview_saas_' . $name . '_seeded' ) ) {
-			return;
+			$copy = get_option( 'checkview_saas_' . $name . '_last_good', null );
+			// Missing (withdrawn on purpose) or in the current format: done.
+			if ( null === $copy || ( is_array( $copy ) && isset( $copy['value'], $copy['fetched_at'] ) ) ) {
+				return;
+			}
+			// A copy from an earlier development build: replace it below.
 		}
 		checkview_last_good_copy( $name, $value, time() - 12 * HOUR_IN_SECONDS );
 	}
