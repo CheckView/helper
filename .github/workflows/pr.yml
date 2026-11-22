@@ -6,3 +6,14 @@ on:
 jobs:
   phpcs:
     uses: ./.github/workflows/phpcs.yml
+
+  allowlist-gate-test:
+    name: Allowlist gate test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.0'
+          coverage: none
+      - run: php tests/allowlist-gate-test.php

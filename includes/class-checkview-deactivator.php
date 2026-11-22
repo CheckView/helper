@@ -33,5 +33,6 @@ class Checkview_Deactivator {
 		wp_clear_scheduled_hook( 'checkview_options_cleanup_cron' );
 		wp_clear_scheduled_hook( 'checkview_logs_cleanup_cron' );
 		wp_clear_scheduled_hook( 'checkview_test_users_cleanup_cron' );
+		wp_clear_scheduled_hook( 'checkview_saas_ip_refresh_cron' );
 	}
 }

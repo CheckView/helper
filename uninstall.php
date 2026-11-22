@@ -38,6 +38,7 @@ if ( $checkview_delete_all ) {
 	delete_site_option( 'checkview_admin_menu_title' );
 
 	wp_clear_scheduled_hook( 'checkview_test_users_cleanup_cron' );
+	wp_clear_scheduled_hook( 'checkview_saas_ip_refresh_cron' );
 	foreach ( array( '_checkview_test_user', 'checkview_test_user_skipped', 'checkview_test_user_attempts' ) as $checkview_user_meta_key ) {
 		delete_metadata( 'user', 0, $checkview_user_meta_key, '', true );
 	}

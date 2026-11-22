@@ -8,6 +8,7 @@
 /scripts
 /tools
 /docs
+/tests
 # Stray local WordPress core checkout (gitignored; never part of the plugin)
 /wordpress
 
