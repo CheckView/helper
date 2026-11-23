@@ -4,31 +4,33 @@ on:
   push:
     branches:
       - development
+  # Re-run a deploy without a new push (Actions tab > Run workflow). Only
+  # deploys from `development`.
+  workflow_dispatch:
+
+permissions:
+  contents: read
 
 jobs:
   run-script:
+    if: github.ref == 'refs/heads/development'
     runs-on: ubuntu-latest
+    timeout-minutes: 15
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-
-      - name: Install pnpm
-        uses: pnpm/action-setup@v4
+        with:
+          persist-credentials: false
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '24'
-          cache: 'pnpm'
 
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
-
-      - name: Compile scripts
-        run: pnpm exec tsc -p scripts/tsconfig.json
-
+      # Node 24 runs the TypeScript directly (type stripping), so nothing is
+      # installed into the job that holds the deploy secrets.
       - name: Run script
-        run: node scripts/dist/instawp.js
+        run: node scripts/instawp.ts
         env:
           INSTAWP_API_KEY: ${{secrets.INSTAWP_API_KEY}}
