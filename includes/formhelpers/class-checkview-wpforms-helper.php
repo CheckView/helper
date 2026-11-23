@@ -343,11 +343,15 @@ if ( ! class_exists( 'Checkview_Wpforms_Helper' ) ) {
 			// Existing replace-mode behavior (preserved unchanged).
 			$cv_test_id = checkview_get_test_id();
 			if ( ! $cv_test_id || 'true' !== get_option( 'disable_email_receipt_' . $cv_test_id, false ) ) {
-				$count = count( $email['address'] );
-				for ( $i = 0; $i < $count; $i++ ) {
-					$email['address'][ $i ]    = CHECKVIEW_TEST_EMAIL;
-					$email['carboncopy'][ $i ] = '';
+				// Replace the lists outright: WPForms drops invalid entries without
+				// reindexing, so per-index rewrites can leave a real address behind.
+				// An empty To stays empty so WPForms still skips the notification.
+				// On WPForms Pro the send can run later from Action Scheduler, where
+				// the wp_mail backstop is not loaded, so this must be complete.
+				if ( ! empty( $email['address'] ) ) {
+					$email['address'] = array( CHECKVIEW_TEST_EMAIL );
 				}
+				$email['carboncopy'] = array();
 			} elseif ( is_array( $email['address'] ) ) {
 				$email['address'][] = CHECKVIEW_TEST_EMAIL;
 			} else {

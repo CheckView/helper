@@ -449,118 +449,407 @@ if ( ! function_exists( 'checkview_is_suppressible_test_order' ) ) {
 	}
 }
 
+if ( ! function_exists( 'checkview_acquire_fetch_lock' ) ) {
+	/**
+	 * Takes a short lock so only one request at a time fetches from the SaaS.
+	 *
+	 * A single-row insert that only one request can win. `add_option()` is not
+	 * a lock: it reports success to a second request whenever the stored
+	 * value differs. A lock older than `$ttl` seconds is taken over, so a
+	 * request killed mid-fetch cannot hold it.
+	 *
+	 * @since 2.6.2
+	 *
+	 * @param string $name Lock name.
+	 * @param int    $ttl  Seconds after which the lock is considered abandoned.
+	 * @return string|false A token to release the lock with, `''` when the
+	 *                      database failed (fetch anyway, without a lock), or
+	 *                      false when another request holds it.
+	 */
+	function checkview_acquire_fetch_lock( $name, $ttl ) {
+		global $wpdb;
+
+		$option = 'checkview_fetch_lock_' . $name;
+		// Whole seconds first, so CAST(... AS UNSIGNED) reads the age the same
+		// way on MySQL and MariaDB; the microseconds keep tokens unique.
+		$now   = microtime( true );
+		$token = sprintf( '%d-%06d', (int) $now, (int) ( ( $now - (int) $now ) * 1000000 ) );
+
+		// A live lock is the common case while a fetch runs; spot it with a read
+		// so the requests that lose do not write.
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- Lock row; never read through the options API.
+		$held = $wpdb->get_var( $wpdb->prepare( "SELECT option_value FROM {$wpdb->options} WHERE option_name = %s", $option ) );
+		if ( null !== $held && (int) $held >= time() - $ttl ) {
+			return false;
+		}
+
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- Atomic lock; never read through the options API.
+		$inserted = $wpdb->query( $wpdb->prepare( "INSERT IGNORE INTO {$wpdb->options} (option_name, option_value, autoload) VALUES (%s, %s, 'no')", $option, $token ) );
+		if ( false === $inserted ) {
+			Checkview_Admin_Logs::add( 'ip-logs', 'Could not take the fetch lock [' . $name . ']: database error. Fetching without it.' );
+			return '';
+		}
+		if ( 1 === (int) $inserted ) {
+			return $token;
+		}
+
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- Atomic takeover of an abandoned lock.
+		$taken = $wpdb->query( $wpdb->prepare( "UPDATE {$wpdb->options} SET option_value = %s WHERE option_name = %s AND CAST(option_value AS UNSIGNED) < %d", $token, $option, time() - $ttl ) );
+		if ( false === $taken ) {
+			Checkview_Admin_Logs::add( 'ip-logs', 'Could not take the fetch lock [' . $name . ']: database error. Fetching without it.' );
+			return '';
+		}
+		return 1 === (int) $taken ? $token : false;
+	}
+}
+if ( ! function_exists( 'checkview_release_fetch_lock' ) ) {
+	/**
+	 * Releases a lock taken with `checkview_acquire_fetch_lock()`, only if this
+	 * request still holds it (another may have taken it over).
+	 *
+	 * @since 2.6.2
+	 *
+	 * @param string $name  Lock name.
+	 * @param string $token Token returned by `checkview_acquire_fetch_lock()`.
+	 * @return void
+	 */
+	function checkview_release_fetch_lock( $name, $token ) {
+		global $wpdb;
+		if ( '' === $token ) {
+			return;
+		}
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- Releases this request's lock row.
+		$wpdb->delete(
+			$wpdb->options,
+			array(
+				'option_name'  => 'checkview_fetch_lock_' . $name,
+				'option_value' => $token,
+			)
+		);
+	}
+}
+if ( ! function_exists( 'checkview_last_good_copy' ) ) {
+	/**
+	 * Reads or writes the last value fetched successfully from the SaaS.
+	 *
+	 * Kept in an autoloaded option, so reading it costs no query. A copy older
+	 * than seven days is no longer returned: a site that cannot reach the SaaS
+	 * for that long stops trusting what it last saw.
+	 *
+	 * @since 2.6.2
+	 *
+	 * @param string   $name       Copy name (`ip_address` or `pk`).
+	 * @param mixed    $value      Value to store, or null to read.
+	 * @param int|null $fetched_at When the value was fetched (default now).
+	 * @return mixed The stored value, or null if there is none or it is too old.
+	 */
+	function checkview_last_good_copy( $name, $value = null, $fetched_at = null ) {
+		$option = 'checkview_saas_' . $name . '_last_good';
+		if ( null !== $value ) {
+			update_option(
+				$option,
+				array(
+					'value'      => $value,
+					'fetched_at' => null === $fetched_at ? time() : (int) $fetched_at,
+				),
+				true
+			);
+			// Once a copy has been written, a warm cache never seeds it again.
+			update_option( 'checkview_saas_' . $name . '_seeded', 1, true );
+			return $value;
+		}
+
+		$copy = get_option( $option, null );
+		if ( null === $copy ) {
+			return null;
+		}
+		if ( ! is_array( $copy ) || ! isset( $copy['value'], $copy['fetched_at'] ) ) {
+			// Not in this format (an earlier development build): drop it so a
+			// warm cache seeds a proper copy.
+			delete_option( $option );
+			delete_option( 'checkview_saas_' . $name . '_seeded' );
+			return null;
+		}
+		if ( (int) $copy['fetched_at'] < time() - 7 * DAY_IN_SECONDS ) {
+			return null;
+		}
+		return $copy['value'];
+	}
+}
+if ( ! function_exists( 'checkview_seed_last_good_copy' ) ) {
+	/**
+	 * Seeds the last good copy from a still-warm cache, once per site, so
+	 * sites updated from an older helper have a fallback before their first
+	 * fetch. Its age is taken as 12 hours, the longest the cache can be.
+	 *
+	 * @since 2.6.2
+	 *
+	 * @param string $name  Copy name (`ip_address` or `pk`).
+	 * @param mixed  $value Cached value.
+	 * @return void
+	 */
+	function checkview_seed_last_good_copy( $name, $value ) {
+		if ( get_option( 'checkview_saas_' . $name . '_seeded' ) ) {
+			$copy = get_option( 'checkview_saas_' . $name . '_last_good', null );
+			// Missing (withdrawn on purpose), or current and not expired: done.
+			if ( null === $copy || ( is_array( $copy ) && isset( $copy['value'], $copy['fetched_at'] ) && (int) $copy['fetched_at'] >= time() - 7 * DAY_IN_SECONDS ) ) {
+				return;
+			}
+			// Expired (e.g. after a downgrade and re-upgrade) or from an
+			// earlier development build: replace it below.
+		}
+		checkview_last_good_copy( $name, $value, time() - 12 * HOUR_IN_SECONDS );
+	}
+}
 if ( ! function_exists( 'checkview_get_publickey' ) ) {
 	/**
 	 * Gets the SaaS' public key.
 	 *
-	 * Firstly, retrieve the public key from cache. If no cached key is found,
-	 * request the public key from the SaaS.
+	 * Cached for 12 hours. When the cache is empty, one request at a time asks
+	 * the SaaS, with a short timeout. A failed request is not retried for a
+	 * minute, and meanwhile the last key fetched successfully (up to seven days
+	 * old) is used, so a slow or unreachable SaaS cannot stall the requests
+	 * that verify a signature.
 	 *
 	 * @since 1.0.0
 	 *
-	 * @return string The public key, or an empty string if it could not be fetched.
+	 * @return string The public key, or an empty string if none is known.
 	 */
 	function checkview_get_publickey() {
 		$public_key = get_transient( 'checkview_saas_pk' );
-		if ( null === $public_key || '' === $public_key || empty( $public_key ) ) {
-			$response = wp_safe_remote_get(
-				'https://app.checkview.io/api/helper/public_key',
-				array(
-					'method'  => 'GET',
-					'timeout' => 10,
-				)
-			);
-			if ( is_wp_error( $response ) || 200 !== wp_remote_retrieve_response_code( $response ) ) {
-				return '';
-			}
-
-			$public_key = wp_remote_retrieve_body( $response );
-			if ( false === strpos( $public_key, 'BEGIN PUBLIC KEY' ) ) {
-				return '';
-			}
-
-			set_transient( 'checkview_saas_pk', $public_key, 12 * HOUR_IN_SECONDS );
+		if ( is_string( $public_key ) && '' !== $public_key ) {
+			checkview_seed_last_good_copy( 'pk', $public_key );
+			return $public_key;
 		}
+
+		$last_good = (string) checkview_last_good_copy( 'pk' );
+		if ( get_transient( 'checkview_saas_pk_fetch_failed' ) ) {
+			return $last_good;
+		}
+		$lock = checkview_acquire_fetch_lock( 'pk', 45 );
+		if ( false === $lock ) {
+			return $last_good;
+		}
+		// Another request may have finished meanwhile. Where transients are
+		// options, forget this request's remembered misses so the re-read
+		// reaches the database.
+		if ( ! wp_using_ext_object_cache() ) {
+			wp_cache_delete( 'notoptions', 'options' );
+		}
+		$public_key = get_transient( 'checkview_saas_pk' );
+		if ( get_transient( 'checkview_saas_pk_fetch_failed' ) || ( is_string( $public_key ) && '' !== $public_key ) ) {
+			checkview_release_fetch_lock( 'pk', $lock );
+			return is_string( $public_key ) && '' !== $public_key ? $public_key : $last_good;
+		}
+
+		$response   = wp_safe_remote_get(
+			'https://app.checkview.io/api/helper/public_key',
+			array(
+				'method'              => 'GET',
+				'timeout'             => 5,
+				'redirection'         => 1,
+				'limit_response_size' => 256 * KB_IN_BYTES,
+			)
+		);
+		$public_key = is_wp_error( $response ) || 200 !== wp_remote_retrieve_response_code( $response )
+			? ''
+			: (string) wp_remote_retrieve_body( $response );
+
+		if ( false === strpos( $public_key, 'BEGIN PUBLIC KEY' ) ) {
+			set_transient( 'checkview_saas_pk_fetch_failed', 1, MINUTE_IN_SECONDS );
+			checkview_release_fetch_lock( 'pk', $lock );
+			Checkview_Admin_Logs::add( 'api-logs', 'Could not fetch the CheckView public key; ' . ( '' !== $last_good ? 'using the last one fetched.' : 'none known.' ) );
+			return $last_good;
+		}
+
+		set_transient( 'checkview_saas_pk', $public_key, 12 * HOUR_IN_SECONDS );
+		checkview_last_good_copy( 'pk', $public_key );
+		checkview_release_fetch_lock( 'pk', $lock );
 		return $public_key;
 	}
 }
 if ( ! function_exists( 'checkview_get_api_ip' ) ) {
 	/**
-	 * Gets the SaaS' IP addressees.
+	 * Gets the SaaS' IP addresses.
 	 *
-	 * Firstly, checks to see if the IP addresses are cached. If none are found
-	 * in the cache, requests the IPs from the SaaS' API and caches the results.
-	 * If there is an issue retrieving the IPs from the SaaS, returns `null`. If
-	 * there is an issue validating the IPs, returns `false`.
+	 * Cached for 12 hours. When the cache is empty, one request at a time asks
+	 * the SaaS, with a short timeout. A failed or invalid response is not
+	 * retried for five minutes, and meanwhile the last list fetched
+	 * successfully (up to seven days old) is used. It runs in test requests and
+	 * in an hourly WP-Cron event (ordinary visitors' requests skip it), so a
+	 * slow or unreachable SaaS must never make a request wait long on it.
 	 *
 	 * @since 1.0.0
 	 *
-	 * @return string[]|null|false
+	 * @return string[]|null The IPs plus the IPv6 loopback, or `null` if no
+	 *                       list is known (or the SaaS lists none).
 	 */
 	function checkview_get_api_ip() {
-		$ip_address = get_transient( 'checkview_saas_ip_address' ) ? get_transient( 'checkview_saas_ip_address' ) : array();
+		$ip_address = get_transient( 'checkview_saas_ip_address' );
+
+		if ( false === $ip_address ) {
+			$ip_address = checkview_fetch_api_ip();
+		} elseif ( ! empty( $ip_address ) ) {
+			checkview_seed_last_good_copy( 'ip_address', array_values( (array) $ip_address ) );
+		}
 
 		if ( empty( $ip_address ) ) {
-			Checkview_Admin_Logs::add( 'ip-logs', 'Bot IP address list transient empty, requesting new IP addresses.' );
-
-			$request = wp_remote_get(
-				'https://verify.checkview.io/whitelist.json',
-				array(
-					'method'  => 'GET',
-					'timeout' => 500,
-				)
-			);
-
-			if ( is_wp_error( $request ) ) {
-				$code    = $request->get_error_code();
-				$message = $request->get_error_message();
-
-				Checkview_Admin_Logs::add( 'ip-logs', 'Request for new IP addresses failed with code [' . $code . ']. Message: ' . $message );
-
-				return null;
-			}
-
-			$body = wp_remote_retrieve_body( $request );
-			$data = json_decode( $body, true );
-
-			if ( ! empty( $data ) && ! empty( $data['ipAddresses'] ) ) {
-				$ip_address = $data['ipAddresses'];
-
-				if ( ! empty( $ip_address ) && is_array( $ip_address ) ) {
-					foreach ( $ip_address as $ip ) {
-						// If validation fails, handle the error appropriately.
-						if ( ! checkview_validate_ip( $ip ) ) {
-							return false;
-						}
-					}
-				} elseif ( ! checkview_validate_ip( $ip_address ) ) {
-					return false;
-				}
-
-				set_transient( 'checkview_saas_ip_address', $ip_address, 12 * HOUR_IN_SECONDS );
-
-				Checkview_Admin_Logs::add( 'ip-logs', 'Set bot IP address list transient to response data [' . wp_json_encode( $ip_address ) . ']' );
-			} else {
-				Checkview_Admin_Logs::add( 'ip-logs', 'IP addresses not found in request for new IP addresses.' );
-			}
+			return null;
 		}
 
-		if ( ! is_array( $ip_address ) ) {
-			$ip_address = (array) $ip_address;
-		}
+		$ip_address = (array) $ip_address;
 
-		if ( is_array( $ip_address ) ) {
-			// Loopback only. Do NOT hardcode public IPs here. This allowlist is
-			// matched against client-supplied forwarding headers (X-Forwarded-For,
-			// etc.) in checkview_get_visitor_ip(), so any hardcoded public IP
-			// becomes a permanent, unauthenticated bypass of CheckView::is_bot()
-			// — and therefore of WooCommerce "test mode" and its $0 checkout
-			// gateway. Trusted bot IPs must come only from the authenticated SaaS
-			// whitelist (verify.checkview.io).
-			$ip_address[] = '::1';
-		}
+		// Loopback only. Do NOT hardcode public IPs here. This allowlist is
+		// matched against client-supplied forwarding headers (X-Forwarded-For,
+		// etc.) in checkview_get_visitor_ip(), so any hardcoded public IP
+		// becomes a permanent, unauthenticated bypass of CheckView::is_bot()
+		// — and therefore of WooCommerce "test mode" and its $0 checkout
+		// gateway. Trusted bot IPs must come only from the authenticated SaaS
+		// whitelist (verify.checkview.io).
+		$ip_address[] = '::1';
 
 		return $ip_address;
+	}
+}
+if ( ! function_exists( 'checkview_refresh_saas_ip_list' ) ) {
+	/**
+	 * Hourly WP-Cron refresh of the SaaS IP allowlist.
+	 *
+	 * Ordinary visitors' requests no longer read the allowlist, so without this
+	 * only test requests would refresh it. Reading it here downloads a new list
+	 * when the 12-hour copy has run out and keeps the last good copy recent, so
+	 * a test still has a list if the download fails at that moment. Runs as a
+	 * normal request, so the copy lands in the same store (options table or
+	 * persistent object cache) that test requests read.
+	 *
+	 * @since 2.6.2
+	 *
+	 * @return void
+	 */
+	function checkview_refresh_saas_ip_list() {
+		checkview_get_api_ip();
+	}
+}
+if ( ! function_exists( 'checkview_fetch_api_ip' ) ) {
+	/**
+	 * Requests the SaaS' IP addresses, unless a request failed in the last
+	 * five minutes or another request is already fetching them. Called only
+	 * on a cache miss; the outcome is reused for the rest of the request.
+	 *
+	 * On success the list is cached for 12 hours and kept as the last good
+	 * list. A well-formed empty list (`"ipAddresses": []`) withdraws every IP:
+	 * it is cached for five minutes, so an accidental empty answer heals
+	 * quickly, and the last good list is dropped. Anything else that is not a
+	 * list of valid IPs is a failure: the last good list is returned instead
+	 * (empty if there is none).
+	 *
+	 * @since 2.6.2
+	 *
+	 * @return string[]
+	 */
+	function checkview_fetch_api_ip() {
+		// The outcome is reused for a minute (most callers run in one request),
+		// then fetched again, so a long-running process (WP-CLI, Action
+		// Scheduler) is not stuck with it. checkview_reset_cache() clears it.
+		// Kept per blog, since a multisite loop may switch_to_blog().
+		$blog = get_current_blog_id();
+		$memo = isset( $GLOBALS['checkview_api_ip_fetch_memo'][ $blog ] ) ? $GLOBALS['checkview_api_ip_fetch_memo'][ $blog ] : null;
+		if ( is_array( $memo ) && isset( $memo['at'], $memo['ips'] ) && $memo['at'] > time() - MINUTE_IN_SECONDS ) {
+			return $memo['ips'];
+		}
+		$remember = function ( $ips ) use ( $blog ) {
+			$GLOBALS['checkview_api_ip_fetch_memo'][ $blog ] = array(
+				'at'  => time(),
+				'ips' => $ips,
+			);
+			return $ips;
+		};
+
+		$last_good = checkview_last_good_copy( 'ip_address' );
+		$last_good = is_array( $last_good ) ? $last_good : array();
+
+		if ( get_transient( 'checkview_saas_ip_fetch_failed' ) ) {
+			return $remember( $last_good );
+		}
+		$lock = checkview_acquire_fetch_lock( 'ip_address', 45 );
+		if ( false === $lock ) {
+			return $remember( $last_good );
+		}
+		// Another request may have finished meanwhile. Where transients are
+		// options, forget this request's remembered misses so the re-read
+		// reaches the database.
+		if ( ! wp_using_ext_object_cache() ) {
+			wp_cache_delete( 'notoptions', 'options' );
+		}
+		$cached = get_transient( 'checkview_saas_ip_address' );
+		if ( get_transient( 'checkview_saas_ip_fetch_failed' ) || false !== $cached ) {
+			checkview_release_fetch_lock( 'ip_address', $lock );
+			return $remember( false !== $cached ? array_values( (array) $cached ) : $last_good );
+		}
+
+		Checkview_Admin_Logs::add( 'ip-logs', 'Bot IP address list transient empty, requesting new IP addresses.' );
+
+		$request = wp_safe_remote_get(
+			'https://verify.checkview.io/whitelist.json',
+			array(
+				'method'              => 'GET',
+				'timeout'             => 5,
+				'redirection'         => 1,
+				'limit_response_size' => 256 * KB_IN_BYTES,
+			)
+		);
+
+		$ip_address = null;
+		if ( is_wp_error( $request ) ) {
+			Checkview_Admin_Logs::add( 'ip-logs', 'Request for new IP addresses failed with code [' . $request->get_error_code() . ']. Message: ' . $request->get_error_message() );
+		} elseif ( 200 !== wp_remote_retrieve_response_code( $request ) ) {
+			Checkview_Admin_Logs::add( 'ip-logs', 'Request for new IP addresses answered HTTP ' . wp_remote_retrieve_response_code( $request ) . '.' );
+		} else {
+			// Decoded without `assoc`, a JSON object stays an object, so `{}` is
+			// never mistaken for an empty list.
+			$data   = json_decode( wp_remote_retrieve_body( $request ) );
+			$fields = is_object( $data ) ? get_object_vars( $data ) : array();
+			$list   = array_key_exists( 'ipAddresses', $fields ) ? $fields['ipAddresses'] : null;
+			// A single IP may come as a string; anything else must be a list.
+			if ( is_string( $list ) ) {
+				$list = array( $list );
+			}
+			if ( ! is_array( $list ) ) {
+				Checkview_Admin_Logs::add( 'ip-logs', 'IP addresses not found in request for new IP addresses.' );
+			} else {
+				$ip_address = $list;
+				foreach ( $ip_address as $ip ) {
+					if ( ! is_string( $ip ) || ! checkview_validate_ip( $ip ) ) {
+						Checkview_Admin_Logs::add( 'ip-logs', 'Rejected the IP address list: it contains an invalid entry.' );
+						$ip_address = null;
+						break;
+					}
+				}
+			}
+		}
+
+		if ( null === $ip_address ) {
+			set_transient( 'checkview_saas_ip_fetch_failed', 1, 5 * MINUTE_IN_SECONDS );
+			checkview_release_fetch_lock( 'ip_address', $lock );
+			if ( array() !== $last_good ) {
+				Checkview_Admin_Logs::add( 'ip-logs', 'Using the last IP address list fetched successfully until the next attempt.' );
+			}
+			return $remember( $last_good );
+		}
+
+		if ( array() === $ip_address ) {
+			set_transient( 'checkview_saas_ip_address', array(), 5 * MINUTE_IN_SECONDS );
+			delete_option( 'checkview_saas_ip_address_last_good' );
+			update_option( 'checkview_saas_ip_address_seeded', 1, true );
+			Checkview_Admin_Logs::add( 'ip-logs', 'WARNING: the SaaS lists no IP addresses; none are trusted. Asking again in five minutes.' );
+		} else {
+			set_transient( 'checkview_saas_ip_address', $ip_address, 12 * HOUR_IN_SECONDS );
+			checkview_last_good_copy( 'ip_address', $ip_address );
+			Checkview_Admin_Logs::add( 'ip-logs', 'Set bot IP address list transient to response data [' . wp_json_encode( $ip_address ) . ']' );
+		}
+		checkview_release_fetch_lock( 'ip_address', $lock );
+
+		return $remember( $ip_address );
 	}
 }
 if ( ! function_exists( 'checkview_get_custom_header_keys_for_ip' ) ) {
@@ -1462,6 +1751,40 @@ if ( ! function_exists( 'checkview_get_elementor_template_shortcode_ids' ) ) {
 	}
 }
 
+if ( ! function_exists( 'checkview_delete_transient_everywhere' ) ) {
+	/**
+	 * Deletes a CheckView transient from both places it can be stored.
+	 *
+	 * CheckView's REST requests turn off the persistent object cache (see
+	 * `CheckView_Admin::bypass_rest_authentication()`), so on a site with Redis
+	 * or Memcached they keep transients in the options table while the rest of
+	 * the site keeps them in the object cache. `delete_transient()` only clears
+	 * the store the current request uses, which left CheckView reading a stale
+	 * product list for up to 12 hours after a stock change on such sites.
+	 *
+	 * @since 2.6.2
+	 *
+	 * @param string $transient Transient name.
+	 * @return void
+	 */
+	function checkview_delete_transient_everywhere( $transient ) {
+		delete_transient( $transient );
+
+		// Then the store this request does not use. Not remembered per request:
+		// a long import, or a switch to another site of a network, has to clear
+		// it again.
+		if ( wp_using_ext_object_cache() ) {
+			// As core's delete_transient() does without an object cache: the
+			// expiry row only when there was a value row.
+			if ( delete_option( '_transient_' . $transient ) ) {
+				delete_option( '_transient_timeout_' . $transient );
+			}
+		} else {
+			wp_cache_delete( $transient, 'transient' );
+		}
+	}
+}
+
 if ( ! function_exists( 'checkview_reset_cache' ) ) {
 	/**
 	 * Deletes CheckView transients.
@@ -1470,15 +1793,18 @@ if ( ! function_exists( 'checkview_reset_cache' ) ) {
 	 * @return bool
 	 */
 	function checkview_reset_cache( $sync ) {
-		delete_transient( 'checkview_saas_pk' );
-		delete_transient( 'checkview_saas_ip_address' );
-		delete_transient( 'checkview_forms_list_transient' );
-		delete_transient( 'checkview_forms_test_transient' );
-		delete_transient( 'checkview_store_orders_transient' );
-		delete_transient( 'checkview_store_products_transient' );
-		delete_transient( 'checkview_store_shipping_transient' );
-		delete_transient( 'checkview_whitelisted_ips_spamfirewall' );
-		delete_transient( 'checkview_whitelisted_ips_antispam' );
+		checkview_delete_transient_everywhere( 'checkview_saas_pk' );
+		checkview_delete_transient_everywhere( 'checkview_saas_ip_address' );
+		checkview_delete_transient_everywhere( 'checkview_saas_pk_fetch_failed' );
+		checkview_delete_transient_everywhere( 'checkview_saas_ip_fetch_failed' );
+		unset( $GLOBALS['checkview_api_ip_fetch_memo'] );
+		checkview_delete_transient_everywhere( 'checkview_forms_list_transient' );
+		checkview_delete_transient_everywhere( 'checkview_forms_test_transient' );
+		checkview_delete_transient_everywhere( 'checkview_store_orders_transient' );
+		checkview_delete_transient_everywhere( 'checkview_store_products_transient' );
+		checkview_delete_transient_everywhere( 'checkview_store_shipping_transient' );
+		checkview_delete_transient_everywhere( 'checkview_whitelisted_ips_spamfirewall' );
+		checkview_delete_transient_everywhere( 'checkview_whitelisted_ips_antispam' );
 		$sync = true;
 		return $sync;
 	}
@@ -1906,7 +2232,7 @@ if ( ! function_exists( 'checkview_update_woocommerce_product_status' ) ) {
 					'post_status' => $status,
 				)
 			);
-			delete_transient( 'checkview_store_products_transient' );
+			checkview_delete_transient_everywhere( 'checkview_store_products_transient' );
 			Checkview_Admin_Logs::add( 'api-logs', 'Updated status of test product and cleared product caches.' );
 		} else {
 			Checkview_Admin_Logs::add( 'api-logs', 'Called [checkview_update_woocommerce_product_status] on invalid post type or with invalid status (accepts ' . implode( ', ', $allowed_status ) . ', got ' . $status . ').' );
@@ -2353,5 +2679,390 @@ if ( ! function_exists( 'checkview_inject_reply_to_header' ) ) {
 		}
 
 		return $is_array ? $list : implode( "\r\n", $list );
+	}
+}
+
+if ( ! function_exists( 'checkview_is_test_user_email' ) ) {
+	/**
+	 * Determines if an email address is a CheckView test inbox address.
+	 *
+	 * Exactly `<uuid>@test-mail.checkview.io`, where the uuid is a v4 test id.
+	 * Plus-addressing, subdomains and look-alike domains do not match.
+	 *
+	 * @since 2.6.2
+	 *
+	 * @param string $email Email address.
+	 * @return bool
+	 */
+	function checkview_is_test_user_email( $email ) {
+		if ( ! is_string( $email ) || '' === $email ) {
+			return false;
+		}
+
+		$email = strtolower( trim( $email ) );
+		$at    = strrpos( $email, '@' );
+
+		if ( false === $at || 'test-mail.checkview.io' !== substr( $email, $at + 1 ) ) {
+			return false;
+		}
+
+		// Same pattern as `checkview_is_valid_uuid()`, without its log line:
+		// the daily sweep checks every address on the test domain.
+		return 1 === preg_match( '/^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/', substr( $email, 0, $at ) );
+	}
+}
+
+if ( ! function_exists( 'checkview_is_test_user' ) ) {
+	/**
+	 * Determines if a user was created by a CheckView test.
+	 *
+	 * True when the user carries the test id stamped at creation, or has a
+	 * CheckView test inbox address. The address also covers users created by
+	 * form tests (registration forms), which are never stamped.
+	 *
+	 * @since 2.6.2
+	 *
+	 * @param WP_User $user User.
+	 * @return bool
+	 */
+	function checkview_is_test_user( $user ) {
+		if ( ! $user instanceof WP_User || ! $user->exists() ) {
+			return false;
+		}
+
+		if ( '' !== (string) get_user_meta( $user->ID, CheckView::META_TEST_USER, true ) ) {
+			return true;
+		}
+
+		return checkview_is_test_user_email( $user->user_email );
+	}
+}
+
+if ( ! function_exists( 'checkview_get_user_order_ids' ) ) {
+	/**
+	 * Returns the ids of every order a user placed, in any status, trash included.
+	 *
+	 * Empty when WooCommerce is not loaded.
+	 *
+	 * @since 2.6.2
+	 *
+	 * @param int $user_id User id.
+	 * @return int[]
+	 */
+	function checkview_get_user_order_ids( $user_id ) {
+		if ( ! function_exists( 'wc_get_orders' ) || ! function_exists( 'wc_get_order_statuses' ) ) {
+			return array();
+		}
+
+		$statuses = array_unique(
+			array_merge( array_keys( wc_get_order_statuses() ), array( 'wc-checkout-draft', 'trash' ) )
+		);
+
+		$order_ids = wc_get_orders(
+			array(
+				'customer_id' => (int) $user_id,
+				'type'        => 'shop_order',
+				'status'      => $statuses,
+				'limit'       => -1,
+				'return'      => 'ids',
+			)
+		);
+
+		return is_array( $order_ids ) ? array_map( 'intval', $order_ids ) : array();
+	}
+}
+
+if ( ! function_exists( 'checkview_skip_test_user' ) ) {
+	/**
+	 * Records that a test user must not be deleted, so the sweep stops retrying.
+	 *
+	 * @since 2.6.2
+	 *
+	 * @param int    $user_id User id.
+	 * @param string $reason  Short reason code.
+	 * @return void
+	 */
+	function checkview_skip_test_user( $user_id, $reason ) {
+		update_user_meta( $user_id, 'checkview_test_user_skipped', $reason );
+		Checkview_Admin_Logs::add( 'cron-logs', 'Kept CheckView test user [' . $user_id . '] (' . $reason . '); it will not be retried.' );
+	}
+}
+
+if ( ! function_exists( 'checkview_record_test_user_failure' ) ) {
+	/**
+	 * Counts a failed clean-up attempt for a test user; gives up after three.
+	 *
+	 * @since 2.6.2
+	 *
+	 * @param int    $user_id User id.
+	 * @param string $reason  Short reason code.
+	 * @return void
+	 */
+	function checkview_record_test_user_failure( $user_id, $reason ) {
+		$attempts = (int) get_user_meta( $user_id, 'checkview_test_user_attempts', true ) + 1;
+		update_user_meta( $user_id, 'checkview_test_user_attempts', $attempts );
+		Checkview_Admin_Logs::add( 'cron-logs', 'Could not clean up CheckView test user [' . $user_id . '] (' . $reason . ', attempt ' . $attempts . ').' );
+
+		if ( $attempts >= 3 ) {
+			checkview_skip_test_user( $user_id, $reason );
+		}
+	}
+}
+
+if ( ! function_exists( 'checkview_delete_test_customer' ) ) {
+	/**
+	 * Deletes a user created by a CheckView test.
+	 *
+	 * Refuses unless the user is a CheckView test user (see
+	 * `checkview_is_test_user()`), holds only the roles a test creates, has no
+	 * admin capabilities and has no orders left. On multisite the user is
+	 * deleted from the network only when they belong to no other site.
+	 *
+	 * @since 2.6.2
+	 *
+	 * @param int $user_id User id.
+	 * @return bool True when the user was deleted.
+	 */
+	function checkview_delete_test_customer( $user_id ) {
+		$user_id = (int) $user_id;
+		$user    = $user_id > 0 ? get_user_by( 'id', $user_id ) : false;
+
+		if ( ! $user ) {
+			return false;
+		}
+
+		// Not ours: a real account that a test happened to use. Leave it
+		// untouched, including its meta.
+		if ( ! checkview_is_test_user( $user ) ) {
+			Checkview_Admin_Logs::add( 'cron-logs', 'Did not delete user [' . $user_id . ']: not a CheckView test user.' );
+			return false;
+		}
+
+		if ( is_super_admin( $user_id ) || user_can( $user, 'manage_options' ) || user_can( $user, 'edit_users' ) ) {
+			checkview_skip_test_user( $user_id, 'privileged' );
+			return false;
+		}
+
+		/**
+		 * Filters the roles a CheckView test user may hold and still be deleted.
+		 *
+		 * @since 2.6.2
+		 *
+		 * @param string[] $roles Role slugs.
+		 */
+		$allowed_roles = (array) apply_filters( 'checkview_test_user_roles', array( 'customer', 'subscriber' ) );
+		$roles         = (array) $user->roles;
+
+		if ( empty( $roles ) || array_diff( $roles, $allowed_roles ) ) {
+			checkview_skip_test_user( $user_id, 'role:' . implode( ',', $roles ) );
+			return false;
+		}
+
+		// Remaining orders are either another test's (the sweep deletes them
+		// first) or real ones; either way the user stays for now.
+		if ( checkview_get_user_order_ids( $user_id ) ) {
+			Checkview_Admin_Logs::add( 'cron-logs', 'Did not delete CheckView test user [' . $user_id . '] yet: they still have orders.' );
+			return false;
+		}
+
+		$test_id = (string) get_user_meta( $user_id, CheckView::META_TEST_USER, true );
+
+		try {
+			if ( is_multisite() ) {
+				// Archived, spam and deleted sites included: the network delete
+				// below removes the user's content on every site they belong to.
+				$blogs = get_blogs_of_user( $user_id, true );
+
+				if ( count( $blogs ) !== 1 || ! isset( $blogs[ get_current_blog_id() ] ) ) {
+					remove_user_from_blog( $user_id, get_current_blog_id() );
+					checkview_skip_test_user( $user_id, 'other_sites' );
+					return false;
+				}
+
+				if ( ! function_exists( 'wpmu_delete_user' ) ) {
+					require_once ABSPATH . 'wp-admin/includes/ms.php';
+				}
+
+				// WooCommerce cleans sessions, API keys and payment tokens on
+				// `delete_user`, which `wpmu_delete_user()` does not fire.
+				if ( function_exists( 'wc_delete_user_data' ) ) {
+					wc_delete_user_data( $user_id );
+				}
+
+				$deleted = wpmu_delete_user( $user_id );
+			} else {
+				if ( ! function_exists( 'wp_delete_user' ) ) {
+					require_once ABSPATH . 'wp-admin/includes/user.php';
+				}
+
+				$deleted = wp_delete_user( $user_id );
+			}
+		} catch ( \Throwable $e ) {
+			Checkview_Admin_Logs::add( 'cron-logs', 'Deleting CheckView test user [' . $user_id . '] threw ' . get_class( $e ) . '.' );
+			$deleted = false;
+		}
+
+		if ( $deleted ) {
+			Checkview_Admin_Logs::add( 'cron-logs', 'Deleted CheckView test user [' . $user_id . '] for test [' . $test_id . '].' );
+			return true;
+		}
+
+		checkview_record_test_user_failure( $user_id, 'delete_failed' );
+
+		return false;
+	}
+}
+
+if ( ! function_exists( 'checkview_sweep_test_users' ) ) {
+	/**
+	 * Daily clean-up of CheckView test users that no order clean-up removed.
+	 *
+	 * Catches users whose test order was never created (checkout failed after
+	 * the account was made), users whose order clean-up never ran, and users
+	 * created by form tests. Each candidate's CheckView test orders are
+	 * deleted first; a candidate with any other order is kept for good.
+	 *
+	 * @since 2.6.2
+	 *
+	 * @return void
+	 */
+	function checkview_sweep_test_users() {
+		$started = time();
+
+		/**
+		 * Filters how old a CheckView test user must be before the sweep deletes it.
+		 *
+		 * @since 2.6.2
+		 *
+		 * @param int $min_age Seconds since the user registered.
+		 */
+		$min_age = (int) apply_filters( 'checkview_test_user_min_age', DAY_IN_SECONDS );
+
+		/**
+		 * Filters how many test users one sweep run looks at.
+		 *
+		 * @since 2.6.2
+		 *
+		 * @param int $max_users Users per run.
+		 */
+		$max_users = (int) apply_filters( 'checkview_test_user_sweep_limit', 200 );
+		$cutoff    = gmdate( 'Y-m-d H:i:s', time() - $min_age );
+
+		$not_skipped = array(
+			'key'     => 'checkview_test_user_skipped',
+			'compare' => 'NOT EXISTS',
+		);
+
+		$queries = array(
+			'stamped'    => array(
+				'meta_query' => array( // phpcs:ignore WordPress.DB.SlowDBQuery.slow_db_query_meta_query -- Daily cron, capped.
+					'relation' => 'AND',
+					array(
+						'key'     => CheckView::META_TEST_USER,
+						'compare' => 'EXISTS',
+					),
+					$not_skipped,
+				),
+			),
+			'email_only' => array(
+				'search'         => '*@test-mail.checkview.io',
+				'search_columns' => array( 'user_email' ),
+				'meta_query'     => array( $not_skipped ), // phpcs:ignore WordPress.DB.SlowDBQuery.slow_db_query_meta_query -- Daily cron, capped.
+			),
+		);
+
+		$seen    = array();
+		$checked = 0;
+		$counts  = array(
+			'stamped'    => 0,
+			'email_only' => 0,
+			'deleted'    => 0,
+			'kept'       => 0,
+		);
+
+		foreach ( $queries as $label => $query ) {
+			while ( $checked < $max_users && ( time() - $started ) < 20 ) {
+				$user_ids = get_users(
+					array_merge(
+						$query,
+						array(
+							'fields'     => 'ID',
+							'number'     => 100,
+							'orderby'    => 'ID',
+							'order'      => 'ASC',
+							'exclude'    => $seen,
+							'date_query' => array(
+								array(
+									'before' => $cutoff,
+								),
+							),
+						)
+					)
+				);
+
+				if ( empty( $user_ids ) ) {
+					break;
+				}
+
+				foreach ( $user_ids as $user_id ) {
+					$user_id = (int) $user_id;
+					$seen[]  = $user_id;
+					++$checked;
+					$user = get_user_by( 'id', $user_id );
+
+					// The email query is a suffix match; the exact check runs here.
+					if ( ! checkview_is_test_user( $user ) ) {
+						continue;
+					}
+
+					++$counts[ $label ];
+
+					$has_real_orders = false;
+					$order_failed    = false;
+
+					foreach ( checkview_get_user_order_ids( $user_id ) as $order_id ) {
+						$order = wc_get_order( $order_id );
+
+						if ( ! $order ) {
+							// Listed but will not load: unknown, so retry later.
+							$order_failed = true;
+						} elseif ( 'checkview' !== $order->get_meta( 'payment_made_by' ) && 'checkview' !== $order->get_payment_method() ) {
+							$has_real_orders = true;
+						} elseif ( ! class_exists( 'Checkview_Woo_Automated_Testing' ) || 0 === Checkview_Woo_Automated_Testing::checkview_delete_orders( $order_id, false ) ) {
+							$order_failed = true;
+						}
+					}
+
+					if ( $has_real_orders ) {
+						checkview_skip_test_user( $user_id, 'has_real_orders' );
+						++$counts['kept'];
+					} elseif ( $order_failed ) {
+						checkview_record_test_user_failure( $user_id, 'order_delete_failed' );
+						++$counts['kept'];
+					} elseif ( checkview_delete_test_customer( $user_id ) ) {
+						++$counts['deleted'];
+					} else {
+						++$counts['kept'];
+					}
+
+					if ( $checked >= $max_users || ( time() - $started ) >= 20 ) {
+						break;
+					}
+				}
+			}
+		}
+
+		if ( $checked ) {
+			Checkview_Admin_Logs::add(
+				'cron-logs',
+				sprintf(
+					'Test user sweep: %d stamped, %d matched by email only, %d deleted, %d kept.',
+					$counts['stamped'],
+					$counts['email_only'],
+					$counts['deleted'],
+					$counts['kept']
+				)
+			);
+		}
 	}
 }

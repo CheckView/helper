@@ -81,6 +81,10 @@ type PressableSite = {
 
     console.log(`Found ${sites.data.length} sites tagged with "${qualityTag}". Updating...`)
 
+    if (!sites.data.length) {
+      throw new Error('No sites found to update.')
+    }
+
     const failedSites: {
       site: PressableSite
       message: string
@@ -97,6 +101,11 @@ type PressableSite = {
           body: JSON.stringify({
             plugins: [
               {
+                // Keep the old `inspry/checkview` path (GitHub redirects it to
+                // CheckView/helper). The installer names the plugin folder
+                // after the repo in this URL: `CheckView/helper` installs to
+                // `helper/` next to the existing `checkview/`, activates both,
+                // and the site fatals.
                 path: 'https://github.com/inspry/checkview/archive/refs/heads/quality.zip'
               },
             ]
@@ -125,6 +134,7 @@ type PressableSite = {
 
     if (failedSites.length) {
       console.log('Failed executions:', failedSites)
+      process.exitCode = 1
     } else {
       console.log('All sites have been told to update their plugins. Note that it may take some time for the plugin update to complete. Get to testin!')
     }
@@ -134,5 +144,6 @@ type PressableSite = {
     } else {
       console.error(error)
     }
+    process.exitCode = 1
   }
 })()

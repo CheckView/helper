@@ -3,6 +3,52 @@ name: PR checks
 on:
   pull_request:
 
+permissions:
+  contents: read
+
 jobs:
   phpcs:
     uses: ./.github/workflows/phpcs.yml
+
+  helper-tests:
+    name: Helper tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.0'
+          coverage: none
+      - run: php tests/allowlist-gate-test.php
+      - run: php tests/order-stamp-ownership-test.php
+        if: ${{ !cancelled() }}
+
+  deploy-scripts:
+    name: Deploy scripts
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: 'pnpm'
+      - run: pnpm install --frozen-lockfile
+      # The deploy workflows run these files with `node file.ts`, which only
+      # strips types, so type-check them here.
+      - run: pnpm exec tsc -p scripts/tsconfig.json --noEmit
+      # The Pressable installer names the plugin folder after the repo in this
+      # URL, so it must stay `inspry/checkview` (see scripts/pressable.ts).
+      - run: grep -q "github.com/inspry/checkview/archive/refs/heads/quality.zip" scripts/pressable.ts
+      # Compile (never run) each script the way `node file.ts` loads it.
+      - run: |
+          node --no-warnings -e '
+            const { stripTypeScriptTypes } = require("node:module");
+            const vm = require("node:vm");
+            const fs = require("node:fs");
+            for (const f of ["scripts/instawp.ts", "scripts/pressable.ts"]) {
+              new vm.Script(stripTypeScriptTypes(fs.readFileSync(f, "utf8")), { filename: f });
+              console.log("ok", f);
+            }'

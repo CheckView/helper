@@ -9,14 +9,14 @@
   "keywords": [],
   "packageManager": "pnpm@10.28.0",
   "engines": {
-    "node": ">=18",
+    "node": "^24.15.0",
     "pnpm": ">=10"
   },
   "devDependencies": {
-    "@types/node": "^22.13.5",
-    "@woocommerce/dependency-extraction-webpack-plugin": "2.2.0",
-    "@wordpress/env": "^11.3.0",
-    "@wordpress/scripts": "^28.6.0",
+    "@types/node": "^22.20.5",
+    "@woocommerce/dependency-extraction-webpack-plugin": "5.1.0",
+    "@wordpress/env": "^12.2.0",
+    "@wordpress/scripts": "^37.2.0",
     "cross-env": "7.0.3",
     "typescript": "^5.9.3"
   },
@@ -28,5 +28,13 @@
     "dev:start": "wp-env start --xdebug",
     "dev:stop": "wp-env stop",
     "dev:destroy": "wp-env destroy"
+  },
+  "pnpm": {
+    "overrides": {
+      "isomorphic-git@>=1.0.0 <1.38.6": "^1.38.6",
+      "qs@>=6.0.0 <6.16.1": "^6.16.1",
+      "js-yaml@>=5.0.0 <5.4.1": "^5.4.1",
+      "smol-toml@>=1.0.0 <1.9.0": "^1.9.0"
+    }
   }
 }
