@@ -18,6 +18,7 @@ phpmd.xml
 
 # Packaging / VCS metadata
 .distignore
+.gitattributes
 .gitignore
 .removeable-files
 

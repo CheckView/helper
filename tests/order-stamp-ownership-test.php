@@ -15,6 +15,13 @@
 
 // phpcs:disable -- Test script with WordPress stubs; not shipped (see .distignore).
 
+// Command line only: if a copy of this file reaches a site (deploys installed
+// branch zips that carried it), a web request must not run it.
+if ( 'cli' !== PHP_SAPI ) {
+	http_response_code( 404 );
+	exit( 1 ); // Non-zero so a shell run under phpdbg or php-cgi fails instead of passing.
+}
+
 define( 'ABSPATH', __DIR__ . '/' );
 define( 'WPINC', 'wp-includes' );
 define( 'CHECKVIEW_INC_DIR', dirname( __DIR__ ) . '/includes/' );
