@@ -12,7 +12,7 @@ CheckView creates a hidden WooCommerce product so automated checkout tests have 
 | Catalog visibility | Hidden |
 | Weight | 1 oz |
 | Dimensions | 1x1x1 |
-| Status | Draft until CheckView publishes it for a run |
+| Status | Created as a draft; CheckView publishes it before its first Woo setup or run, and it stays published after that |
 | Slug | `checkview-testing-product` (set explicitly so the URL works while it is a draft) |
 
 The product ID is stored in `wp_options` as `checkview_woo_product_id`.

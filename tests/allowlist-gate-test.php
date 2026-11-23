@@ -19,7 +19,7 @@
 // branch zips that carried it), a web request must not run it.
 if ( 'cli' !== PHP_SAPI ) {
 	http_response_code( 404 );
-	exit;
+	exit( 1 ); // Non-zero so a shell run under phpdbg or php-cgi fails instead of passing.
 }
 
 define( 'ABSPATH', __DIR__ . '/' );
