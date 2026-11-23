@@ -39,6 +39,9 @@ jobs:
       # The deploy workflows run these files with `node file.ts`, which only
       # strips types, so type-check them here.
       - run: pnpm exec tsc -p scripts/tsconfig.json --noEmit
+      # The Pressable installer names the plugin folder after the repo in this
+      # URL, so it must stay `inspry/checkview` (see scripts/pressable.ts).
+      - run: grep -q "github.com/inspry/checkview/archive/refs/heads/quality.zip" scripts/pressable.ts
       # Compile (never run) each script the way `node file.ts` loads it.
       - run: |
           node --no-warnings -e '

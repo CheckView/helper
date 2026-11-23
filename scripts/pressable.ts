@@ -101,7 +101,12 @@ type PressableSite = {
           body: JSON.stringify({
             plugins: [
               {
-                path: 'https://github.com/CheckView/helper/archive/refs/heads/quality.zip'
+                // Keep the old `inspry/checkview` path (GitHub redirects it to
+                // CheckView/helper). The installer names the plugin folder
+                // after the repo in this URL: `CheckView/helper` installs to
+                // `helper/` next to the existing `checkview/`, activates both,
+                // and the site fatals.
+                path: 'https://github.com/inspry/checkview/archive/refs/heads/quality.zip'
               },
             ]
           }),
