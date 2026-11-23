@@ -98,8 +98,10 @@ class Checkview_Admin {
 			array( 'Checkview_Admin_Logs', 'purge_expired_logs' )
 		);
 
+		// On `init`, not `wp`: `wp` fires only for front-end page loads, which a
+		// headless or fully page-cached site may never run through.
 		add_action(
-			'wp',
+			'init',
 			array( $this, 'checkview_schedule_test_users_cleanup' )
 		);
 
@@ -108,8 +110,6 @@ class Checkview_Admin {
 			'checkview_sweep_test_users'
 		);
 
-		// On `init`, not `wp`: `wp` fires only for front-end page loads, which a
-		// headless or fully page-cached site may never run through.
 		add_action(
 			'init',
 			array( $this, 'checkview_schedule_saas_ip_refresh' )

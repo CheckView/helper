@@ -1,0 +1,3 @@
+# Left out of GitHub branch and tag zips, which the InstaWP (development) and
+# Pressable (quality) deploys install. The wp.org build uses .distignore.
+/tests export-ignore
