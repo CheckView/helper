@@ -206,23 +206,19 @@ Support and test configuration are handled through the CheckView platform. Pleas
 == Changelog ==
 
 = 2.6.2 =
-* Speed: CheckView's whitelist download gives up after 5 seconds instead of 500. A failed download is retried after 5 minutes instead of on every request (up to 4 times per request before), and the last list fetched successfully is used meanwhile.
-* Speed: Ordinary visitors' requests no longer read CheckView's whitelist at all. The test type and the request signature are checked first, and the whitelist is read only for a request that could be a CheckView test. This also covers the Solid Security and Defender allowlists and WooCommerce order emails. An hourly background task (WP-Cron) refreshes the whitelist when its 12-hour copy has run out, so a test rarely waits on a download and still finds a recent copy if one fails.
-* Solid Security and Defender: a request is checked against CheckView's whitelist only when it carries CheckView test parameters or calls CheckView's API, instead of on every request.
-* Defender: A CheckView test no longer replaces Defender's Global IP allow and block lists with the test runner's IP. Sites using Defender's Global IP feature lost their blocked IPs on every test, until Defender's next sync. CheckView's own allowlists for Defender and Solid Security now also apply to Defender Pro and Solid Security Pro.
-* WooCommerce: an order email sent from a request on the server itself (for example WP-Cron over IPv6) no longer goes to CheckView instead of the shop.
-* WooCommerce: The product list sent to CheckView now says whether each product and variation is in stock, so out-of-stock products can be flagged before a test uses them. A stock change now refreshes the list right away.
-* WooCommerce: The product list sent to CheckView also refreshes when a product or variation is saved, trashed, restored or deleted, or its image changes. On sites with a persistent object cache (Redis or Memcached), these refreshes did not reach the copy CheckView reads, so the list could be up to 12 hours old and miss a new variation.
-* WooCommerce: The CheckView test product is no longer created on every store. It is created as a draft the first time CheckView needs it, and published when a WooCommerce test is set up or runs. On update, a published test product left by an earlier version is switched to draft once, at least 30 minutes after it was last used; stores that run WooCommerce tests get it published again on their next run.
-* WooCommerce: Fixed an error when CheckView set the test product's status on a store that had no test product, and an error in the Jetpack sharing check for the test product.
-* Logs: When a test finds no entry, the log no longer says the submission "likely succeeded". A loaded page does not mean the form submitted.
-* WPForms: Test notification emails no longer reach CC recipients, or a Send To address listed after an invalid one. Only the CheckView test inbox gets them, unless delivery to form recipients is turned on. A notification with more than one Send To address now sends one test email instead of one per address.
-* All forms: CC and BCC recipients are now removed from every test email, including ones already addressed to the CheckView test inbox, unless delivery to form recipients is turned on.
-* WooCommerce: Test order clean-up now deletes a customer only if a CheckView test created it, and never one with admin rights or with orders left. On multisite, a test customer who belongs to no other site is removed from the network; one who also belongs to other sites is only removed from this site.
-* Test users: A daily clean-up, on every site, removes CheckView test customers left behind, for example when a store requires an account and the test checkout failed after the account was made. It also removes users created by form tests on registration forms.
+* Speed: Ordinary visitors' requests no longer read CheckView's whitelist. It is read only for a request that could be a CheckView test, and refreshed hourly in the background. This also covers the Solid Security and Defender allowlists.
+* Speed: CheckView's whitelist download gives up after 5 seconds instead of 500, and a failed download is retried after 5 minutes instead of on every request.
+* Defender: A CheckView test no longer replaces Defender's Global IP allow and block lists. CheckView's allowlists now also apply to Defender Pro and Solid Security Pro.
+* WooCommerce: The CheckView test product is no longer created on every store. It is created as a draft when CheckView first needs it and published when a WooCommerce test runs. On update, an existing published test product is switched to draft once.
+* WooCommerce: The product list sent to CheckView now includes stock status and refreshes as soon as a product changes, including on sites using Redis or Memcached.
+* WooCommerce: Only the test's own order is marked as a CheckView test order. Before, another order saved in the same request (for example a subscription renewal) could be marked and then deleted by the clean-up.
+* WooCommerce: Test order clean-up now deletes a customer only if a CheckView test created it, and never one with admin rights or with orders left.
 * WooCommerce: The delete test orders endpoint now needs an order id and only deletes CheckView test orders.
-* WooCommerce: During a test checkout, only the test's own order (and any sub-orders a marketplace plugin creates for it) is marked as a CheckView test order. Before, an order another plugin saved or created in the same request (for example a subscription renewal or a status sync) was marked too, and the test order clean-up could delete it.
-* WPForms: Forms added with the WPForms Divi module or Elementor widget now stay on the page for the whole CheckView test. They disappeared after the first page load of a test, for example when the page address redirected.
+* WooCommerce: An order email sent from a request on the server itself (for example WP-Cron) no longer goes to CheckView instead of the shop.
+* Test users: A daily clean-up removes CheckView test users left behind by failed test checkouts and by tests on registration forms.
+* Forms: CC and BCC recipients are now removed from every test email unless delivery to form recipients is turned on. WPForms test notifications no longer reach CC recipients or extra Send To addresses.
+* WPForms: Forms added with the WPForms Divi module or Elementor widget now stay on the page for the whole CheckView test.
+* Logs: When a test finds no entry, the log no longer says the submission "likely succeeded".
 
 = 2.6.1 =
 * Formidable: Stop listing forms with no published status. Formidable shows no submit button on them, so a test could never submit.
