@@ -26,7 +26,22 @@ if ( $checkview_delete_all ) {
 	delete_option( 'checkview_log_options' );
 	delete_option( 'checkview_logs_dir_key' ); // Written by 2.4.1 pre-release builds only.
 	delete_option( 'checkview_logs_folder_version' );
+	delete_option( 'checkview_test_product_published_at' );
+	delete_option( 'checkview_test_product_draft_done' );
+	delete_option( 'checkview_test_product_creating' );
+	delete_option( 'checkview_saas_pk_last_good' );
+	delete_option( 'checkview_saas_ip_address_last_good' );
+	delete_option( 'checkview_fetch_lock_pk' );
+	delete_option( 'checkview_fetch_lock_ip_address' );
+	delete_option( 'checkview_saas_ip_address_seeded' );
+	delete_option( 'checkview_saas_pk_seeded' );
 	delete_site_option( 'checkview_admin_menu_title' );
+
+	wp_clear_scheduled_hook( 'checkview_test_users_cleanup_cron' );
+	wp_clear_scheduled_hook( 'checkview_saas_ip_refresh_cron' );
+	foreach ( array( '_checkview_test_user', 'checkview_test_user_skipped', 'checkview_test_user_attempts' ) as $checkview_user_meta_key ) {
+		delete_metadata( 'user', 0, $checkview_user_meta_key, '', true );
+	}
 
 	$checkview_tables = array( 'cv_entry', 'cv_entry_meta', 'cv_session', 'cv_used_nonces' );
 	foreach ( $checkview_tables as $checkview_table ) {

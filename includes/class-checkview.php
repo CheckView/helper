@@ -70,6 +70,13 @@ class CheckView {
 	const PARAM_TEST_TYPE = 'checkview_test_type';
 
 	/**
+	 * User meta key stamped on a customer created by a CheckView test; holds
+	 * the test id. Deliberately not the query parameter name, so nothing that
+	 * copies request parameters into user meta can produce it.
+	 */
+	const META_TEST_USER = '_checkview_test_user';
+
+	/**
 	 * Determine if the `CHECKVIEW_DEV` constant is truthy.
 	 *
 	 * @return bool
@@ -212,19 +219,24 @@ class CheckView {
 	/**
 	 * Determine if the current request is a CheckView bot.
 	 *
+	 * A request needs a test type and a verified origin. The test type and the
+	 * signature come from the request itself, so they are checked first; the
+	 * SaaS IP allowlist is read only when it can change the answer (signature
+	 * not required, test type present, no valid signature) or for the log line.
+	 * An ordinary visitor therefore never reads or downloads the allowlist.
+	 *
+	 * @since 2.6.2 Checks the test type and signature before the IP allowlist.
+	 *
 	 * @return bool
 	 */
 	public static function is_bot(): bool {
-		$visitor_ip  = checkview_get_visitor_ip();
-		$cv_bot_ip   = checkview_get_api_ip();
-		$is_local    = checkview_is_local_environment();
-		$ip_verified = $is_local || ( is_array( $cv_bot_ip ) && in_array( $visitor_ip, $cv_bot_ip, true ) );
+		$test_type = self::test_type();
 
 		// Unforgeable per-request signal: the CheckView test runner attaches a
 		// short-lived signed token (X-CheckView-Signature) that this verifies
 		// cryptographically. Unlike the IP allowlist, it cannot be spoofed via
 		// forwarding headers and survives proxies/CDNs intact.
-		$sig_verified = self::is_request_signed();
+		$sig_verified = $test_type ? self::is_request_signed() : false;
 
 		/**
 		 * Filter: when true (default), a valid CheckView request signature is
@@ -239,14 +251,30 @@ class CheckView {
 		 * @param bool $require_signed Whether a valid signature is mandatory.
 		 */
 		$require_signed = (bool) apply_filters( 'checkview_require_signed_request', true );
-		$verified       = $require_signed ? $sig_verified : ( $sig_verified || $ip_verified );
 
-		$test_type = self::test_type();
-		$result    = $test_type && $verified;
+		// The allowlist only matters when the signature is optional, there is a
+		// test type, and the signature did not already verify the request.
+		$needs_ip_check = $test_type && ! $require_signed && ! $sig_verified;
+		$ip_verified    = $needs_ip_check && self::is_ip_allowlisted();
+
+		$verified = $require_signed ? $sig_verified : ( $sig_verified || $ip_verified );
+		$result   = $test_type && $verified;
 
 		// Only log during actual tests.
 		// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Read-only CheckView test param from SaaS request; no nonce possible.
 		if ( isset( $_REQUEST[ self::PARAM_TEST_ID ] ) && self::should_log_bot_check( $result ) ) {
+			$visitor_ip = checkview_get_visitor_ip();
+			$cv_bot_ip  = checkview_get_api_ip();
+			$is_local   = checkview_is_local_environment();
+
+			if ( ! $needs_ip_check ) {
+				$ip_verified = $is_local || ( is_array( $cv_bot_ip ) && in_array( $visitor_ip, $cv_bot_ip, true ) );
+			}
+
+			if ( ! $test_type ) {
+				$sig_verified = self::is_request_signed();
+			}
+
 			// Sanitize for logging: remove control chars, limit length.
 			$sanitize = function ( $val, $max_len = 200 ) {
 				$str = preg_replace( '/[\x00-\x1F\x7F]/', '', strval( $val ) );
@@ -386,6 +414,43 @@ class CheckView {
 	 */
 	public static function has_signature_header(): bool {
 		return ! empty( $_SERVER['HTTP_X_CHECKVIEW_SIGNATURE'] );
+	}
+
+	/**
+	 * Whether the visitor's IP is on the SaaS allowlist, or the site is local.
+	 *
+	 * Reads the allowlist, which may download it, so callers check the
+	 * request's own signals first.
+	 *
+	 * @since 2.6.2
+	 *
+	 * @return bool
+	 */
+	private static function is_ip_allowlisted(): bool {
+		if ( checkview_is_local_environment() ) {
+			return true;
+		}
+
+		$cv_bot_ip  = checkview_get_api_ip();
+		$visitor_ip = checkview_get_visitor_ip();
+
+		return is_array( $cv_bot_ip ) && in_array( $visitor_ip, $cv_bot_ip, true );
+	}
+
+	/**
+	 * Whether the request carries any sign of a CheckView test.
+	 *
+	 * True when the request has a test type (query, referrer or test cookie)
+	 * or the signature header. Reads only the request, never the allowlist,
+	 * so callers use it to skip the allowlist for ordinary visitors. False
+	 * means is_bot() is false; true proves nothing, as is_bot() decides that.
+	 *
+	 * @since 2.6.2
+	 *
+	 * @return bool
+	 */
+	public static function may_be_test(): bool {
+		return self::has_signature_header() || false !== self::test_type();
 	}
 
 	/**
