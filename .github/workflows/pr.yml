@@ -22,3 +22,30 @@ jobs:
       - run: php tests/allowlist-gate-test.php
       - run: php tests/order-stamp-ownership-test.php
         if: ${{ !cancelled() }}
+
+  deploy-scripts:
+    name: Deploy scripts
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: 'pnpm'
+      - run: pnpm install --frozen-lockfile
+      # The deploy workflows run these files with `node file.ts`, which only
+      # strips types, so type-check them here.
+      - run: pnpm exec tsc -p scripts/tsconfig.json --noEmit
+      # Compile (never run) each script the way `node file.ts` loads it.
+      - run: |
+          node --no-warnings -e '
+            const { stripTypeScriptTypes } = require("node:module");
+            const vm = require("node:vm");
+            const fs = require("node:fs");
+            for (const f of ["scripts/instawp.ts", "scripts/pressable.ts"]) {
+              new vm.Script(stripTypeScriptTypes(fs.readFileSync(f, "utf8")), { filename: f });
+              console.log("ok", f);
+            }'

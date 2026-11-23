@@ -52,6 +52,10 @@ type InstaWpSite = {
 
     console.log(`Found ${sites.length} sites. Updating...`)
 
+    if (!sites.length) {
+      throw new Error('No sites found to update.')
+    }
+
     const failedSites: {
       site: InstaWpSite
       message: string
@@ -90,6 +94,7 @@ type InstaWpSite = {
 
     if (failedSites.length) {
       console.log('Failed executions:', failedSites)
+      process.exitCode = 1
     } else {
       console.log('All sites updated successfully. Get to testin!')
     }
@@ -99,5 +104,6 @@ type InstaWpSite = {
     } else {
       console.error(error)
     }
+    process.exitCode = 1
   }
 })()
