@@ -419,6 +419,14 @@ cv_t_request();
 $cv_t_result = $cv_t_api->checkview_get_items_permissions_check( $cv_t_gated );
 check( 'api: the same query token is refused the second time', is_wp_error( $cv_t_result ) && in_array( 'This nonce has already been used.', Checkview_Admin_Logs::$lines, true ) );
 
+// A server that drops the Authorization header before PHP: the fallback has
+// to run before the permission check's empty-header refusal.
+cv_t_request();
+$cv_t_used_before = count( $GLOBALS['wpdb']->used );
+$cv_t_result      = $cv_t_api->checkview_get_items_permissions_check( new WP_REST_Request( array(), array( '_checkview_token' => cv_t_token() ) ) );
+check( 'api: no Authorization header with a fresh query token is let in', is_array( $cv_t_result ) && 'jwt_auth_valid_token' === $cv_t_result['code'] );
+check( 'api: with no Authorization header the nonce is still recorded', $cv_t_used_before + 1 === count( $GLOBALS['wpdb']->used ) );
+
 cv_t_request();
 $cv_t_result = $cv_t_api->checkview_get_items_permissions_check( new WP_REST_Request( array( 'authorization' => 'Basic Z2F0ZTpzZWNyZXQ=' ), array() ) );
 check( 'api: a Basic header with no query token is refused', is_wp_error( $cv_t_result ) );
