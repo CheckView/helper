@@ -8,9 +8,10 @@
  *
  * On CheckView's own routes the 401 from a failed application password login
  * is discarded by Checkview_Admin::bypass_rest_authentication(), which is what
- * lets CheckView's server calls through; the last block pins that. The filter
- * is for the test browser's requests to other REST routes (for example a form
- * that submits over the REST API), which that bypass does not cover.
+ * lets CheckView's helper calls through; the last block pins that. The filter
+ * is for CheckView requests to other REST routes, which that bypass does not
+ * cover: the site-info call to the REST index, and the test browser's
+ * requests (for example a form that submits over the REST API).
  *
  * Self-contained: WordPress is stubbed below, so this runs with plain PHP
  * (8.0+) from the plugin root:
