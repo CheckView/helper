@@ -11,6 +11,9 @@
  *
  *     php tests/basic-auth-test.php
  *
+ * The API permission check runs against a small in-memory stand-in for the
+ * nonce table, to show a token sent in the URL is still single use.
+ *
  * Exits non-zero when any assertion fails. WordPress's own order of events
  * (the current user asked for during a REST request, before core's check) is
  * not reproducible with stubs; it is checked on a real site.
@@ -85,18 +88,29 @@ function doing_filter( $hook = null ) {
  * Public key reads stand in for "the validator ran": checkview_validate_jwt_token()
  * reads the key first. A callback set here runs during that read, to act like
  * code that asks for the current user again while a token is being validated.
+ * With `cv_t_key_available` false the key is not cached and its download has
+ * just failed, so checkview_get_publickey() has no key to give.
  */
-$GLOBALS['cv_t_key_reads']    = 0;
-$GLOBALS['cv_t_during_check'] = null;
+$GLOBALS['cv_t_key_reads']     = 0;
+$GLOBALS['cv_t_during_check']  = null;
+$GLOBALS['cv_t_key_available'] = true;
+$GLOBALS['cv_t_transients']    = array();
 function get_transient( $name ) {
 	if ( 'checkview_saas_pk' === $name ) {
 		++$GLOBALS['cv_t_key_reads'];
 		if ( is_callable( $GLOBALS['cv_t_during_check'] ) ) {
 			call_user_func( $GLOBALS['cv_t_during_check'] );
 		}
-		return $GLOBALS['cv_t_public'];
+		return $GLOBALS['cv_t_key_available'] ? $GLOBALS['cv_t_public'] : false;
 	}
-	return false;
+	if ( 'checkview_saas_pk_fetch_failed' === $name ) {
+		return ! $GLOBALS['cv_t_key_available'];
+	}
+	return $GLOBALS['cv_t_transients'][ $name ] ?? false;
+}
+function set_transient( $name, $value, $expiration = 0 ) {
+	$GLOBALS['cv_t_transients'][ $name ] = $value;
+	return true;
 }
 function get_option( $name, $default = false ) {
 	return $default;
@@ -119,11 +133,64 @@ function esc_html( $v ) {
 function get_bloginfo( $what ) {
 	return SITE_URL;
 }
+function esc_html__( $text, $domain = 'default' ) {
+	return $text;
+}
+function nocache_headers() {
+}
+function is_ssl() {
+	return true;
+}
+class CheckView {
+	const PARAM_TEST_ID = 'checkview_test_id';
+	public static function is_checkview_dev(): bool {
+		return false;
+	}
+}
+class WP_REST_Request {
+	private $headers;
+	private $params;
+	public function __construct( $headers = array(), $params = array() ) {
+		$this->headers = $headers;
+		$this->params  = $params;
+	}
+	public function get_header( $name ) {
+		return $this->headers[ strtolower( $name ) ] ?? null;
+	}
+	public function get_param( $name ) {
+		return $this->params[ $name ] ?? null;
+	}
+}
+/** Enough of $wpdb for the nonce table in the API permission check. */
+class CV_T_WPDB {
+	public $prefix     = 'wp_';
+	public $last_error = '';
+	public $used       = array();
+	public function prepare( $sql, ...$args ) {
+		return array( $sql, $args );
+	}
+	public function get_var( $q ) {
+		list( $sql, $args ) = $q;
+		if ( 0 === strpos( $sql, 'SHOW TABLES' ) ) {
+			return $args[0];
+		}
+		return in_array( $args[1], $this->used, true ) ? '1' : '0';
+	}
+	public function insert( $table, $data ) {
+		$this->used[] = $data['nonce'];
+		return 1;
+	}
+	public function get_charset_collate() {
+		return '';
+	}
+}
+$GLOBALS['wpdb'] = new CV_T_WPDB();
 
 /* ---- Code under test ---------------------------------------------------- */
 
 require CHECKVIEW_INC_DIR . 'vendor/autoload.php';
 require CHECKVIEW_INC_DIR . 'checkview-functions.php';
+require CHECKVIEW_INC_DIR . 'API/class-checkview-api.php';
 
 use Firebase\JWT\JWT;
 
@@ -134,6 +201,14 @@ openssl_pkey_export( $cv_t_key, $cv_t_private );
 $cv_t_other_key = openssl_pkey_new( array( 'private_key_bits' => 2048, 'private_key_type' => OPENSSL_KEYTYPE_RSA ) );
 openssl_pkey_export( $cv_t_other_key, $cv_t_other_private );
 
+/** A random version 4 UUID, the shape CheckView's nonces have. */
+function cv_t_uuid() {
+	$b    = random_bytes( 16 );
+	$b[6] = chr( ord( $b[6] ) & 0x0f | 0x40 );
+	$b[8] = chr( ord( $b[8] ) & 0x3f | 0x80 );
+	return vsprintf( '%s%s-%s-%s-%s-%s%s%s', str_split( bin2hex( $b ), 4 ) );
+}
+
 /** A token CheckView would send, signed with the key the site trusts unless told otherwise. */
 function cv_t_token( $overrides = array(), $private_key = null ) {
 	return JWT::encode(
@@ -141,7 +216,7 @@ function cv_t_token( $overrides = array(), $private_key = null ) {
 			array(
 				'websiteUrl'       => SITE_URL,
 				'exp'              => time() + 60,
-				'_checkview_nonce' => 'nonce-' . mt_rand(),
+				'_checkview_nonce' => cv_t_uuid(),
 			),
 			$overrides
 		),
@@ -155,9 +230,11 @@ function cv_t_request( $server = array(), $get = array(), $doing = 'determine_cu
 	$_SERVER                      = $server;
 	$_GET                         = $get;
 	$GLOBALS['cv_t_doing']        = $doing;
-	$GLOBALS['cv_t_key_reads']    = 0;
-	$GLOBALS['cv_t_during_check'] = null;
-	Checkview_Admin_Logs::$lines  = array();
+	$GLOBALS['cv_t_key_reads']     = 0;
+	$GLOBALS['cv_t_during_check']  = null;
+	$GLOBALS['cv_t_key_available'] = true;
+	$GLOBALS['cv_t_transients']    = array();
+	Checkview_Admin_Logs::$lines   = array();
 }
 
 /** Runs the filter the way WordPress applies it inside the login attempt. */
@@ -231,14 +308,39 @@ check( 'opt-out: a token for another site keeps application passwords on', true 
 cv_t_request( array( 'HTTP_X_CHECKVIEW_SIGNATURE' => 'not-a-jwt' ) );
 check( 'opt-out: garbage in the signature header keeps application passwords on', true === cv_t_filter() );
 
-$cv_t_reused = cv_t_token();
-cv_t_request( array( 'HTTP_X_CHECKVIEW_SIGNATURE' => $cv_t_reused ) );
+cv_t_request( array( 'HTTP_X_CHECKVIEW_SIGNATURE' => 'not-a-jwt' ), array( '_checkview_token' => cv_t_token() ) );
+check( 'opt-out: a bad signature header is not rescued by a good query token', true === cv_t_filter() );
+
+cv_t_request( array(), array( '_checkview_token' => array( cv_t_token() ) ) );
+check( 'opt-out: an array query token is ignored', true === cv_t_filter() );
+check( 'opt-out: an array query token never runs the validator', 0 === $GLOBALS['cv_t_key_reads'] );
+
+// WordPress can look up the current user more than once in a request.
+cv_t_request( array( 'HTTP_X_CHECKVIEW_SIGNATURE' => cv_t_token() ) );
 $cv_t_first = cv_t_filter();
-cv_t_request( array( 'HTTP_X_CHECKVIEW_SIGNATURE' => $cv_t_reused ) );
-check( 'opt-out: the nonce is not consumed, so the same token still validates', false === $cv_t_first && false === cv_t_filter() );
+check( 'opt-out: a second lookup in the same request gives the same answer', false === $cv_t_first && false === cv_t_filter() );
+check( 'opt-out: a second lookup in the same request does not validate again', 1 === $GLOBALS['cv_t_key_reads'] );
+
+// Anyone can send a Basic header with a made-up token: the validator's own
+// lines are kept out, and the opt-out writes one line per 10 minutes.
+cv_t_request( array( 'HTTP_X_CHECKVIEW_SIGNATURE' => cv_t_token( array(), $cv_t_other_private ) ) );
+cv_t_filter();
+check( 'opt-out: a refused token writes one log line', 1 === count( Checkview_Admin_Logs::$lines ) );
+$_SERVER['HTTP_X_CHECKVIEW_SIGNATURE'] = cv_t_token( array( 'exp' => time() - 600 ) );
+cv_t_filter();
+$_SERVER['HTTP_X_CHECKVIEW_SIGNATURE'] = 'still-not-a-jwt';
+cv_t_filter();
+check( 'opt-out: further refused tokens within 10 minutes write nothing', 1 === count( Checkview_Admin_Logs::$lines ) );
+
+// The public key is not cached and cannot be downloaded right now.
+cv_t_request( array( 'HTTP_X_CHECKVIEW_SIGNATURE' => cv_t_token() ) );
+$GLOBALS['cv_t_key_available'] = false;
+check( 'opt-out: with no public key, application passwords stay on', true === cv_t_filter() );
+check( 'opt-out: with no public key, one log line is written', 1 === count( Checkview_Admin_Logs::$lines ) );
 
 // Something asks for the current user again while the token is being
-// validated: the nested call must return its input without validating again.
+// validated: the nested call must not let the login attempt run, and must not
+// validate again.
 cv_t_request( array( 'HTTP_X_CHECKVIEW_SIGNATURE' => cv_t_token() ) );
 $cv_t_nested = 'not run';
 $GLOBALS['cv_t_during_check'] = function () use ( &$cv_t_nested ) {
@@ -246,7 +348,7 @@ $GLOBALS['cv_t_during_check'] = function () use ( &$cv_t_nested ) {
 	$cv_t_nested                  = cv_t_filter();
 };
 $cv_t_outer = cv_t_filter();
-check( 'opt-out: a nested call during validation returns its input', true === $cv_t_nested );
+check( 'opt-out: a nested call during validation turns application passwords off', false === $cv_t_nested );
 check( 'opt-out: a nested call during validation does not validate again', 1 === $GLOBALS['cv_t_key_reads'] );
 check( 'opt-out: the outer call still turns application passwords off', false === $cv_t_outer );
 
@@ -255,6 +357,45 @@ cv_t_request( array( 'HTTP_X_CHECKVIEW_SIGNATURE' => 'not-a-jwt' ) );
 cv_t_filter();
 cv_t_request( array( 'HTTP_X_CHECKVIEW_SIGNATURE' => cv_t_token() ) );
 check( 'opt-out: the guard is released after a failed validation', false === cv_t_filter() );
+
+// A nested call during a validation that then fails: the outer call still
+// leaves application passwords on.
+cv_t_request( array( 'HTTP_X_CHECKVIEW_SIGNATURE' => cv_t_token( array(), $cv_t_other_private ) ) );
+$GLOBALS['cv_t_during_check'] = function () {
+	$GLOBALS['cv_t_during_check'] = null;
+	cv_t_filter();
+};
+check( 'opt-out: a failed validation with a nested call keeps application passwords on', true === cv_t_filter() );
+
+/* ---- Cases: the API permission check, end to end ----------------------- */
+
+$cv_t_api = new CheckView_Api();
+
+// A gated site: the Authorization header holds the gate's credentials and the
+// token arrives in the query. The opt-out runs first (as it would during
+// WordPress's current-user lookup) and must leave the nonce unused.
+$cv_t_query_jwt = cv_t_token();
+$cv_t_gated     = new WP_REST_Request( array( 'authorization' => 'Basic Z2F0ZTpzZWNyZXQ=' ), array( '_checkview_token' => $cv_t_query_jwt ) );
+cv_t_request( array(), array( '_checkview_token' => $cv_t_query_jwt ) );
+check( 'api: the opt-out accepts the query token first', false === cv_t_filter() );
+$cv_t_result = $cv_t_api->checkview_get_items_permissions_check( $cv_t_gated );
+check( 'api: a Basic header with a fresh query token is let in', is_array( $cv_t_result ) && 'jwt_auth_valid_token' === $cv_t_result['code'] );
+check( 'api: the query token\'s nonce is recorded as used', 1 === count( $GLOBALS['wpdb']->used ) );
+cv_t_request();
+$cv_t_result = $cv_t_api->checkview_get_items_permissions_check( $cv_t_gated );
+check( 'api: the same query token is refused the second time', is_wp_error( $cv_t_result ) && in_array( 'This nonce has already been used.', Checkview_Admin_Logs::$lines, true ) );
+
+cv_t_request();
+$cv_t_result = $cv_t_api->checkview_get_items_permissions_check( new WP_REST_Request( array( 'authorization' => 'Basic Z2F0ZTpzZWNyZXQ=' ), array() ) );
+check( 'api: a Basic header with no query token is refused', is_wp_error( $cv_t_result ) );
+
+cv_t_request();
+$cv_t_result = $cv_t_api->checkview_get_items_permissions_check( new WP_REST_Request( array( 'authorization' => 'Basic Z2F0ZTpzZWNyZXQ=' ), array( '_checkview_token' => cv_t_token( array(), $cv_t_other_private ) ) ) );
+check( 'api: a query token signed with another key is refused', is_wp_error( $cv_t_result ) );
+
+cv_t_request();
+$cv_t_result = $cv_t_api->checkview_get_items_permissions_check( new WP_REST_Request( array( 'authorization' => 'Bearer ' . cv_t_token() ), array( '_checkview_token' => 'not-a-jwt' ) ) );
+check( 'api: a Bearer header still wins over the query token', is_array( $cv_t_result ) );
 
 $GLOBALS['cv_t_done'] = true;
 echo "\n$cv_t_count checks, $cv_t_failures failed\n";

@@ -115,14 +115,18 @@ if ( ! function_exists( 'checkview_validate_jwt_token' ) ) {
 	 * @since 1.0.0
 	 *
 	 * @param string $token JWT to valiate.
+	 * @param bool   $log   Whether to write a log line when the token is refused.
+	 *                      Since 2.6.3.
 	 * @return string|bool|WP_Error
 	 */
-	function checkview_validate_jwt_token( $token ) {
+	function checkview_validate_jwt_token( $token, $log = true ) {
 
 		$key = checkview_get_publickey();
 		// Ensure the header is present.
 		if ( ! $token ) {
-			Checkview_Admin_Logs::add( 'api-logs', 'Authorization header not found.' );
+			if ( $log ) {
+				Checkview_Admin_Logs::add( 'api-logs', 'Authorization header not found.' );
+			}
 			return new WP_Error(
 				'no_auth_header',
 				'There was a technical error while processing your request.',
@@ -132,7 +136,9 @@ if ( ! function_exists( 'checkview_validate_jwt_token' ) ) {
 
 		// Check if it contains a Bearer token.
 		if ( strpos( $token, 'Bearer ' ) !== 0 ) {
-			Checkview_Admin_Logs::add( 'api-logs', 'Authorization header must start with "Bearer "' );
+			if ( $log ) {
+				Checkview_Admin_Logs::add( 'api-logs', 'Authorization header must start with "Bearer "' );
+			}
 			return new WP_Error(
 				'invalid_auth_header',
 				'There was a technical error while processing your request.',
@@ -155,7 +161,9 @@ if ( ! function_exists( 'checkview_validate_jwt_token' ) ) {
 			JWT::$leeway = $leeway;
 			$decoded     = JWT::decode( $token, new Key( $key, 'RS256' ) );
 		} catch ( \Throwable $e ) {
-			Checkview_Admin_Logs::add( 'api-logs', esc_html( $e->getMessage() ) );
+			if ( $log ) {
+				Checkview_Admin_Logs::add( 'api-logs', esc_html( $e->getMessage() ) );
+			}
 			return new WP_Error(
 				'invalid_auth_header',
 				'There was a technical error while processing your request.',
@@ -176,19 +184,25 @@ if ( ! function_exists( 'checkview_validate_jwt_token' ) ) {
 
 		// If a URL mismatch, return false.
 		if ( false === strpos( $site_url, checkview_ensure_trailing_slash( $jwt['websiteUrl'] ) ) ) {
-			Checkview_Admin_Logs::add( 'api-logs', 'Invalid site url.' );
+			if ( $log ) {
+				Checkview_Admin_Logs::add( 'api-logs', 'Invalid site url.' );
+			}
 			return false;
 		}
 
 		// If token expired, return false.
 		if ( $jwt['exp'] < time() ) {
-			Checkview_Admin_Logs::add( 'api-logs', 'Token Expired.' );
+			if ( $log ) {
+				Checkview_Admin_Logs::add( 'api-logs', 'Token Expired.' );
+			}
 			return false;
 		}
 
 		// Reject tokens without a nonce.
 		if ( empty( $jwt['_checkview_nonce'] ) ) {
-			Checkview_Admin_Logs::add( 'api-logs', 'Nonce Absent.' );
+			if ( $log ) {
+				Checkview_Admin_Logs::add( 'api-logs', 'Nonce Absent.' );
+			}
 			return false;
 		}
 
@@ -3075,8 +3089,8 @@ if ( ! function_exists( 'checkview_auth_header_for_request' ) ) {
 	 * work today. On a site behind HTTP basic auth that header carries the
 	 * gate's own `Basic` credentials, and some Apache setups drop it before
 	 * PHP, so CheckView also sends the same token as the `_checkview_token`
-	 * query parameter. The token stays single use: the permission check
-	 * consumes its nonce whichever way it arrived.
+	 * parameter, in the query string. The token stays single use: the
+	 * permission check consumes its nonce whichever way it arrived.
 	 *
 	 * @since 2.6.3
 	 *
@@ -3104,7 +3118,9 @@ if ( ! function_exists( 'checkview_request_token_for_app_password_check' ) ) {
 	 *
 	 * The test browser sends the `X-CheckView-Signature` header on every
 	 * same-site request; CheckView's servers send `_checkview_token` in the
-	 * query. Presence only: the caller validates it.
+	 * query string (never in a POST body, so only the query string is read).
+	 * When both are present the header is used, even if it later fails to
+	 * validate. Presence only: the caller validates it.
 	 *
 	 * @since 2.6.3
 	 *
@@ -3140,8 +3156,13 @@ if ( ! function_exists( 'checkview_skip_application_password_for_checkview' ) ) 
 	 *
 	 * This turns that login attempt off only for a request that carries a valid
 	 * CheckView signature or token. Every other request is returned untouched,
-	 * so the site's own application password users are unaffected. The token's
+	 * so the site's own application password users are unaffected. The filter
+	 * never picks a user; at most it leaves this request anonymous. The token's
 	 * nonce is not consumed here: the permission check does that.
+	 *
+	 * Anyone can send a Basic header with a made-up token, so a refused token
+	 * writes at most one log line per 10 minutes, and a token is validated at
+	 * most once per request.
 	 *
 	 * @since 2.6.3
 	 *
@@ -3149,13 +3170,24 @@ if ( ! function_exists( 'checkview_skip_application_password_for_checkview' ) ) 
 	 * @return bool
 	 */
 	function checkview_skip_application_password_for_checkview( $is_api_request ) {
-		static $running = false;
+		static $running    = false;
+		static $last_token = null;
+		static $last_valid = false;
 
-		// Page views, a nested call made while validating, and calls outside
-		// WordPress's own lookup of the current user (for example a route that
-		// calls wp_authenticate() with posted credentials) are left alone.
-		if ( ! $is_api_request || $running || ! doing_filter( 'determine_current_user' ) ) {
+		// Page views, and calls outside WordPress's own lookup of the current
+		// user (for example a route that calls wp_authenticate() with posted
+		// credentials), are left alone.
+		if ( ! $is_api_request || ! doing_filter( 'determine_current_user' ) ) {
 			return $is_api_request;
+		}
+
+		// Something asked for the current user again while this request's
+		// CheckView token was being validated (for example a plugin hooked into
+		// the public key download). Letting that nested login attempt run would
+		// fail on the gate's credentials and bring back the 401, so turn it off
+		// too. This can only leave the request anonymous.
+		if ( $running ) {
+			return false;
 		}
 
 		$token = checkview_request_token_for_app_password_check();
@@ -3163,14 +3195,24 @@ if ( ! function_exists( 'checkview_skip_application_password_for_checkview' ) ) 
 			return $is_api_request;
 		}
 
-		$running = true;
-		try {
-			$nonce = checkview_validate_jwt_token( $token );
-		} finally {
-			$running = false;
+		// WordPress can look up the current user more than once per request.
+		if ( $token !== $last_token ) {
+			$running = true;
+			try {
+				$nonce = checkview_validate_jwt_token( $token, false );
+			} finally {
+				$running = false;
+			}
+			$last_token = $token;
+			$last_valid = is_string( $nonce ) && '' !== $nonce;
+
+			if ( ! $last_valid && ! get_transient( 'checkview_app_password_skip_refused_logged' ) ) {
+				set_transient( 'checkview_app_password_skip_refused_logged', 1, 10 * MINUTE_IN_SECONDS );
+				Checkview_Admin_Logs::add( 'api-logs', 'A request with HTTP basic auth credentials carried a CheckView token that did not validate, so WordPress was left to check the credentials as an application password. Repeats are not logged for 10 minutes.' );
+			}
 		}
 
-		return ( is_string( $nonce ) && '' !== $nonce ) ? false : $is_api_request;
+		return $last_valid ? false : $is_api_request;
 	}
 }
 add_filter( 'application_password_is_api_request', 'checkview_skip_application_password_for_checkview' );
