@@ -22,6 +22,8 @@ jobs:
       - run: php tests/allowlist-gate-test.php
       - run: php tests/order-stamp-ownership-test.php
         if: ${{ !cancelled() }}
+      - run: php tests/basic-auth-test.php
+        if: ${{ !cancelled() }}
 
   deploy-scripts:
     name: Deploy scripts

@@ -2874,6 +2874,7 @@ class CheckView_Api {
 		// Get the Authorization header.
 		$auth_header = $request->get_header( 'Authorization' );
 		$auth_header = isset( $auth_header ) ? sanitize_text_field( $auth_header ) : '';
+		$auth_header = checkview_auth_header_for_request( $auth_header, $request->get_param( '_checkview_token' ) );
 
 		if ( empty( $auth_header ) ) {
 			Checkview_Admin_Logs::add( 'api-logs', 'Empty Auth header.' );
