@@ -28,21 +28,24 @@ jobs:
         with:
           node-version: '24'
 
-      # The download URL in scripts/pressable.ts must keep its old
-      # `inspry/checkview` spelling, because the installer names the plugin
-      # folder after it, so it only works through GitHub's redirect to
-      # CheckView/helper. Stop before any site is touched if that redirect no
-      # longer lands on this repo's quality zip with the plugin inside.
+      # scripts/pressable.ts must install from the old `inspry/checkview` URL,
+      # because the installer names the plugin folder after the repo in the URL
+      # (`checkview/`), so the deploy only works through GitHub's redirect to
+      # CheckView/helper. Stop before any site is touched if the script uses
+      # another URL, or the redirect no longer lands on this repo's quality zip
+      # with the plugin inside.
       - name: Check the download URL
         run: |
           set -euo pipefail
-          pattern="https://github\.com/[^'\"]+/quality\.zip"
-          [ "$(grep -cE "$pattern" scripts/pressable.ts)" = 1 ] || { echo "::error::Expected exactly one quality.zip URL in scripts/pressable.ts"; exit 1; }
-          url=$(grep -oE "$pattern" scripts/pressable.ts)
-          result=$(curl -sSL --max-time 60 -o "$RUNNER_TEMP/quality.zip" -w '%{http_code} %{url_effective}' "$url")
+          url='https://github.com/inspry/checkview/archive/refs/heads/quality.zip'
+          if [ "$(grep -c 'quality\.zip' scripts/pressable.ts)" != 1 ] || ! grep -qF "path: '$url'" scripts/pressable.ts; then
+            echo "::error::scripts/pressable.ts must install from $url and from no other quality.zip URL"
+            exit 1
+          fi
+          result=$(curl -sSL --retry 3 --proto '=https' --proto-redir '=https' --max-time 60 -o "$RUNNER_TEMP/quality.zip" -w '%{http_code} %{url_effective}' "$url") || { echo "::error::Could not download $url"; exit 1; }
           echo "$url -> $result"
           [ "$result" = "200 https://codeload.github.com/CheckView/helper/zip/refs/heads/quality" ] || { echo "::error::$url no longer resolves to the CheckView/helper quality zip"; exit 1; }
-          unzip -l "$RUNNER_TEMP/quality.zip" | awk '{print $4}' | grep -E '^[^/]+/checkview\.php$' >/dev/null || { echo "::error::The quality zip has no checkview.php"; exit 1; }
+          unzip -Z1 "$RUNNER_TEMP/quality.zip" | grep -E '^[^/]+/checkview\.php$' >/dev/null || { echo "::error::The download is not a zip or has no checkview.php"; exit 1; }
 
       # Node 24 runs the TypeScript directly (type stripping), so nothing is
       # installed into the job that holds the deploy secrets.
