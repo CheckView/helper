@@ -3154,7 +3154,16 @@ if ( ! function_exists( 'checkview_skip_application_password_for_checkview' ) ) 
 	 * `Authorization: Basic` header. If the site has ever created an
 	 * application password and something asks for the current user during a
 	 * REST request (WooCommerce does on every one), WordPress tries to log in
-	 * with those credentials and answers 401 before CheckView's own check runs.
+	 * with those credentials, fails, and answers 401.
+	 *
+	 * On CheckView's own routes that error is already discarded for a
+	 * logged-out request (Checkview_Admin::bypass_rest_authentication()), so
+	 * this filter is not what lets CheckView's server calls in. It is for the
+	 * test browser's requests to other plugins' REST routes while it carries
+	 * the gate's credentials, for example a form that submits over the REST API.
+	 * On CheckView's own routes it means a call no longer counts as a failed
+	 * login, and never runs as a user whose application password happens to
+	 * match the gate's credentials.
 	 *
 	 * This turns that login attempt off only for a request that carries a valid
 	 * CheckView signature or token. Every other request is returned untouched,

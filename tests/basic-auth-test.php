@@ -6,6 +6,12 @@
  * keeps WordPress from reading those credentials as an application password
  * login on a verified CheckView request.
  *
+ * On CheckView's own routes the 401 from a failed application password login
+ * is discarded by Checkview_Admin::bypass_rest_authentication(), which is what
+ * lets CheckView's server calls through; the last block pins that. The filter
+ * is for the test browser's requests to other REST routes (for example a form
+ * that submits over the REST API), which that bypass does not cover.
+ *
  * Self-contained: WordPress is stubbed below, so this runs with plain PHP
  * (8.0+) from the plugin root:
  *
@@ -141,6 +147,13 @@ function nocache_headers() {
 function is_ssl() {
 	return true;
 }
+$GLOBALS['cv_t_logged_in'] = false;
+function is_user_logged_in() {
+	return $GLOBALS['cv_t_logged_in'];
+}
+function wp_using_ext_object_cache( $using = null ) {
+	return false;
+}
 class CheckView {
 	const PARAM_TEST_ID = 'checkview_test_id';
 	public static function is_checkview_dev(): bool {
@@ -194,6 +207,7 @@ $GLOBALS['wpdb'] = new CV_T_WPDB();
 require CHECKVIEW_INC_DIR . 'vendor/autoload.php';
 require CHECKVIEW_INC_DIR . 'checkview-functions.php';
 require CHECKVIEW_INC_DIR . 'API/class-checkview-api.php';
+require dirname( __DIR__ ) . '/admin/class-checkview-admin.php';
 
 use Firebase\JWT\JWT;
 
@@ -391,7 +405,8 @@ $cv_t_api = new CheckView_Api();
 
 // A gated site: the Authorization header holds the gate's credentials and the
 // token arrives in the query. The opt-out runs first (as it would during
-// WordPress's current-user lookup) and must leave the nonce unused.
+// WordPress's current-user lookup) to show it leaves the nonce unused, not
+// because this route needs it: see the next block.
 $cv_t_query_jwt = cv_t_token();
 $cv_t_gated     = new WP_REST_Request( array( 'authorization' => 'Basic Z2F0ZTpzZWNyZXQ=' ), array( '_checkview_token' => $cv_t_query_jwt ) );
 cv_t_request( array(), array( '_checkview_token' => $cv_t_query_jwt ) );
@@ -418,6 +433,26 @@ check( 'api: a Bearer header still wins over the query token', is_array( $cv_t_r
 cv_t_request();
 $cv_t_result = $cv_t_api->checkview_get_items_permissions_check( new WP_REST_Request( array( 'authorization' => 'Bearer ' . cv_t_token( array(), $cv_t_other_private ) ), array( '_checkview_token' => cv_t_token() ) ) );
 check( 'api: a bad Bearer header is not rescued by a good query token', is_wp_error( $cv_t_result ) );
+
+/* ---- Cases: the 401 on CheckView's own routes ------------------------- */
+
+// Without the opt-out, a failed application password login leaves WordPress
+// with a 401 on every REST route. On CheckView's routes the helper's own
+// rest_authentication_errors hook discards it for a logged-out request; that
+// is what lets the server calls in. If that hook is narrowed, these fail.
+$GLOBALS['wp']   = new stdClass();
+$cv_t_app_pw_401 = new WP_Error( 'invalid_username', 'Unknown username.', array( 'status' => 401 ) );
+
+$GLOBALS['wp']->query_vars = array( 'rest_route' => '/checkview/v1/forms' );
+check( 'bypass: the 401 is discarded on a CheckView route for a logged-out request', null === Checkview_Admin::bypass_rest_authentication( $cv_t_app_pw_401 ) );
+
+$GLOBALS['cv_t_logged_in'] = true;
+check( 'bypass: the 401 is kept on a CheckView route when a user is logged in', $cv_t_app_pw_401 === Checkview_Admin::bypass_rest_authentication( $cv_t_app_pw_401 ) );
+$GLOBALS['cv_t_logged_in'] = false;
+
+// Other plugins' routes keep the 401, which is why the opt-out exists.
+$GLOBALS['wp']->query_vars = array( 'rest_route' => '/contact-form-7/v1/contact-forms/5/feedback' );
+check( 'bypass: the 401 is kept on another plugin\'s route', $cv_t_app_pw_401 === Checkview_Admin::bypass_rest_authentication( $cv_t_app_pw_401 ) );
 
 $GLOBALS['cv_t_done'] = true;
 echo "\n$cv_t_count checks, $cv_t_failures failed\n";
