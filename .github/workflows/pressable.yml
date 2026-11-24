@@ -28,26 +28,10 @@ jobs:
         with:
           node-version: '24'
 
-      # scripts/pressable.ts must install from the old `inspry/checkview` URL,
-      # because the installer names the plugin folder after the repo in the URL
-      # (`checkview/`), so the deploy only works through GitHub's redirect to
-      # CheckView/helper. Stop before any site is touched if the script uses
-      # another URL, or the redirect no longer lands on this repo's quality zip
-      # with the plugin inside.
+      # Stops the job before any site is touched if the deploy's download URL
+      # is wrong or no longer resolves (details in the script).
       - name: Check the download URL
-        run: |
-          set -euo pipefail
-          url='https://github.com/inspry/checkview/archive/refs/heads/quality.zip'
-          if [ "$(grep -c 'quality\.zip' scripts/pressable.ts)" != 1 ] || ! grep -qF "path: '$url'" scripts/pressable.ts; then
-            echo "::error::scripts/pressable.ts must install from $url, and only one line of it may mention quality.zip"
-            exit 1
-          fi
-          command -v unzip >/dev/null || { echo "::error::unzip is not installed on the runner"; exit 1; }
-          result=$(curl -sSL --retry 3 --proto '=https' --proto-redir '=https' --max-time 60 -o "$RUNNER_TEMP/quality.zip" -w '%{http_code} %{url_effective}' "$url") || { echo "::error::Could not download $url"; exit 1; }
-          echo "$url -> $result"
-          expected='200 https://codeload.github.com/CheckView/helper/zip/refs/heads/quality'
-          [ "$result" = "$expected" ] || { echo "::error::$url returned '$result', expected '$expected'. If that is still the CheckView/helper quality zip at a new URL, update the expected value here; otherwise the redirect is broken."; exit 1; }
-          unzip -Z1 "$RUNNER_TEMP/quality.zip" | grep -E '^[^/]+/checkview\.php$' >/dev/null || { echo "::error::The download is not a zip or has no checkview.php"; exit 1; }
+        run: bash scripts/check-download-url.sh
 
       # Node 24 runs the TypeScript directly (type stripping), so nothing is
       # installed into the job that holds the deploy secrets.
