@@ -174,7 +174,10 @@ class CV_T_WPDB {
 		if ( 0 === strpos( $sql, 'SHOW TABLES' ) ) {
 			return $args[0];
 		}
-		return in_array( $args[1], $this->used, true ) ? '1' : '0';
+		if ( 0 === strpos( $sql, 'SELECT COUNT(*)' ) ) {
+			return in_array( end( $args ), $this->used, true ) ? '1' : '0';
+		}
+		throw new RuntimeException( 'Unexpected query in the test: ' . $sql );
 	}
 	public function insert( $table, $data ) {
 		$this->used[] = $data['nonce'];
@@ -225,9 +228,14 @@ function cv_t_token( $overrides = array(), $private_key = null ) {
 	);
 }
 
-/** A fresh request: no headers, no query, outside any filter. */
+/**
+ * A fresh request: no headers, no query, outside any filter. Each one gets its
+ * own start time, as a real request does, so the opt-out's per-request answer
+ * from an earlier case cannot decide a later one.
+ */
+$GLOBALS['cv_t_request_n'] = 0;
 function cv_t_request( $server = array(), $get = array(), $doing = 'determine_current_user' ) {
-	$_SERVER                      = $server;
+	$_SERVER                      = $server + array( 'REQUEST_TIME_FLOAT' => 1700000000 + ++$GLOBALS['cv_t_request_n'] );
 	$_GET                         = $get;
 	$GLOBALS['cv_t_doing']        = $doing;
 	$GLOBALS['cv_t_key_reads']     = 0;
@@ -308,8 +316,9 @@ check( 'opt-out: a token for another site keeps application passwords on', true 
 cv_t_request( array( 'HTTP_X_CHECKVIEW_SIGNATURE' => 'not-a-jwt' ) );
 check( 'opt-out: garbage in the signature header keeps application passwords on', true === cv_t_filter() );
 
-cv_t_request( array( 'HTTP_X_CHECKVIEW_SIGNATURE' => 'not-a-jwt' ), array( '_checkview_token' => cv_t_token() ) );
+cv_t_request( array( 'HTTP_X_CHECKVIEW_SIGNATURE' => 'not-a-jwt-either' ), array( '_checkview_token' => cv_t_token() ) );
 check( 'opt-out: a bad signature header is not rescued by a good query token', true === cv_t_filter() );
+check( 'opt-out: only the signature header was validated', 1 === $GLOBALS['cv_t_key_reads'] );
 
 cv_t_request( array(), array( '_checkview_token' => array( cv_t_token() ) ) );
 check( 'opt-out: an array query token is ignored', true === cv_t_filter() );
@@ -320,6 +329,15 @@ cv_t_request( array( 'HTTP_X_CHECKVIEW_SIGNATURE' => cv_t_token() ) );
 $cv_t_first = cv_t_filter();
 check( 'opt-out: a second lookup in the same request gives the same answer', false === $cv_t_first && false === cv_t_filter() );
 check( 'opt-out: a second lookup in the same request does not validate again', 1 === $GLOBALS['cv_t_key_reads'] );
+
+// A runtime that keeps PHP running between requests: the same token on the
+// next request is validated again, not answered from the last one.
+$cv_t_same = cv_t_token();
+cv_t_request( array( 'HTTP_X_CHECKVIEW_SIGNATURE' => $cv_t_same ) );
+cv_t_filter();
+cv_t_request( array( 'HTTP_X_CHECKVIEW_SIGNATURE' => $cv_t_same ) );
+cv_t_filter();
+check( 'opt-out: the same token on a later request is validated again', 1 === $GLOBALS['cv_t_key_reads'] );
 
 // Anyone can send a Basic header with a made-up token: the validator's own
 // lines are kept out, and the opt-out writes one line per 10 minutes.
@@ -396,6 +414,10 @@ check( 'api: a query token signed with another key is refused', is_wp_error( $cv
 cv_t_request();
 $cv_t_result = $cv_t_api->checkview_get_items_permissions_check( new WP_REST_Request( array( 'authorization' => 'Bearer ' . cv_t_token() ), array( '_checkview_token' => 'not-a-jwt' ) ) );
 check( 'api: a Bearer header still wins over the query token', is_array( $cv_t_result ) );
+
+cv_t_request();
+$cv_t_result = $cv_t_api->checkview_get_items_permissions_check( new WP_REST_Request( array( 'authorization' => 'Bearer ' . cv_t_token( array(), $cv_t_other_private ) ), array( '_checkview_token' => cv_t_token() ) ) );
+check( 'api: a bad Bearer header is not rescued by a good query token', is_wp_error( $cv_t_result ) );
 
 $GLOBALS['cv_t_done'] = true;
 echo "\n$cv_t_count checks, $cv_t_failures failed\n";

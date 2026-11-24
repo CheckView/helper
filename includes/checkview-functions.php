@@ -116,7 +116,9 @@ if ( ! function_exists( 'checkview_validate_jwt_token' ) ) {
 	 *
 	 * @param string $token JWT to valiate.
 	 * @param bool   $log   Whether to write a log line when the token is refused.
-	 *                      Since 2.6.3.
+	 *                      Since 2.6.3. A replacement of this function must
+	 *                      honour it: the application password opt-out passes
+	 *                      false so made-up tokens cannot flood the log.
 	 * @return string|bool|WP_Error
 	 */
 	function checkview_validate_jwt_token( $token, $log = true ) {
@@ -3171,7 +3173,7 @@ if ( ! function_exists( 'checkview_skip_application_password_for_checkview' ) ) 
 	 */
 	function checkview_skip_application_password_for_checkview( $is_api_request ) {
 		static $running    = false;
-		static $last_token = null;
+		static $last_check = null;
 		static $last_valid = false;
 
 		// Page views, and calls outside WordPress's own lookup of the current
@@ -3196,14 +3198,19 @@ if ( ! function_exists( 'checkview_skip_application_password_for_checkview' ) ) 
 		}
 
 		// WordPress can look up the current user more than once per request.
-		if ( $token !== $last_token ) {
+		// The request's start time is part of the key so the answer never
+		// carries over to a later request in runtimes that keep PHP running
+		// between requests (worker modes).
+		$request_time = isset( $_SERVER['REQUEST_TIME_FLOAT'] ) ? (string) (float) $_SERVER['REQUEST_TIME_FLOAT'] : ''; // phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized -- Cast to float.
+		$this_check   = $request_time . '|' . $token;
+		if ( $this_check !== $last_check ) {
 			$running = true;
 			try {
 				$nonce = checkview_validate_jwt_token( $token, false );
 			} finally {
 				$running = false;
 			}
-			$last_token = $token;
+			$last_check = $this_check;
 			$last_valid = is_string( $nonce ) && '' !== $nonce;
 
 			if ( ! $last_valid && ! get_transient( 'checkview_app_password_skip_refused_logged' ) ) {
