@@ -3066,3 +3066,111 @@ if ( ! function_exists( 'checkview_sweep_test_users' ) ) {
 		}
 	}
 }
+
+if ( ! function_exists( 'checkview_auth_header_for_request' ) ) {
+	/**
+	 * Picks the token a CheckView API request authenticates with.
+	 *
+	 * The `Authorization` header comes first, so nothing changes for sites that
+	 * work today. On a site behind HTTP basic auth that header carries the
+	 * gate's own `Basic` credentials, and some Apache setups drop it before
+	 * PHP, so CheckView also sends the same token as the `_checkview_token`
+	 * query parameter. The token stays single use: the permission check
+	 * consumes its nonce whichever way it arrived.
+	 *
+	 * @since 2.6.3
+	 *
+	 * @param string $auth_header Sanitized `Authorization` header, or ''.
+	 * @param mixed  $query_token The `_checkview_token` request parameter, if any.
+	 * @return string `Bearer <token>`, or the header unchanged.
+	 */
+	function checkview_auth_header_for_request( $auth_header, $query_token ) {
+		if ( 0 === strpos( $auth_header, 'Bearer ' ) || ! is_string( $query_token ) ) {
+			return $auth_header;
+		}
+
+		$query_token = trim( sanitize_text_field( $query_token ) );
+		if ( '' === $query_token ) {
+			return $auth_header;
+		}
+
+		return 0 === strpos( $query_token, 'Bearer ' ) ? $query_token : 'Bearer ' . $query_token;
+	}
+}
+
+if ( ! function_exists( 'checkview_request_token_for_app_password_check' ) ) {
+	/**
+	 * The CheckView token a request carries, if any, as `Bearer <token>`.
+	 *
+	 * The test browser sends the `X-CheckView-Signature` header on every
+	 * same-site request; CheckView's servers send `_checkview_token` in the
+	 * query. Presence only: the caller validates it.
+	 *
+	 * @since 2.6.3
+	 *
+	 * @return string `Bearer <token>`, or '' when the request carries none.
+	 */
+	function checkview_request_token_for_app_password_check() {
+		$token = '';
+		if ( ! empty( $_SERVER['HTTP_X_CHECKVIEW_SIGNATURE'] ) ) {
+			// phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized -- JWT; validated by checkview_validate_jwt_token().
+			$token = trim( wp_unslash( $_SERVER['HTTP_X_CHECKVIEW_SIGNATURE'] ) );
+		} elseif ( isset( $_GET['_checkview_token'] ) && is_string( $_GET['_checkview_token'] ) ) { // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Signed token from CheckView, validated by the caller.
+			$token = trim( sanitize_text_field( wp_unslash( $_GET['_checkview_token'] ) ) ); // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Signed token from CheckView, validated by the caller.
+		}
+
+		if ( '' === $token ) {
+			return '';
+		}
+
+		return 0 === strpos( $token, 'Bearer ' ) ? $token : 'Bearer ' . $token;
+	}
+}
+
+if ( ! function_exists( 'checkview_skip_application_password_for_checkview' ) ) {
+	/**
+	 * Stops WordPress reading a CheckView request's basic-auth credentials as
+	 * an application password login.
+	 *
+	 * On a site behind HTTP basic auth every request carries the gate's
+	 * `Authorization: Basic` header. If the site has ever created an
+	 * application password and something asks for the current user during a
+	 * REST request (WooCommerce does on every one), WordPress tries to log in
+	 * with those credentials and answers 401 before CheckView's own check runs.
+	 *
+	 * This turns that login attempt off only for a request that carries a valid
+	 * CheckView signature or token. Every other request is returned untouched,
+	 * so the site's own application password users are unaffected. The token's
+	 * nonce is not consumed here: the permission check does that.
+	 *
+	 * @since 2.6.3
+	 *
+	 * @param bool $is_api_request Whether WordPress treats this as an API request.
+	 * @return bool
+	 */
+	function checkview_skip_application_password_for_checkview( $is_api_request ) {
+		static $running = false;
+
+		// Page views, a nested call made while validating, and calls outside
+		// WordPress's own lookup of the current user (for example a route that
+		// calls wp_authenticate() with posted credentials) are left alone.
+		if ( ! $is_api_request || $running || ! doing_filter( 'determine_current_user' ) ) {
+			return $is_api_request;
+		}
+
+		$token = checkview_request_token_for_app_password_check();
+		if ( '' === $token ) {
+			return $is_api_request;
+		}
+
+		$running = true;
+		try {
+			$nonce = checkview_validate_jwt_token( $token );
+		} finally {
+			$running = false;
+		}
+
+		return ( is_string( $nonce ) && '' !== $nonce ) ? false : $is_api_request;
+	}
+}
+add_filter( 'application_password_is_api_request', 'checkview_skip_application_password_for_checkview' );

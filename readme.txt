@@ -205,6 +205,10 @@ Support and test configuration are handled through the CheckView platform. Pleas
 
 == Changelog ==
 
+= 2.6.3 =
+* Connection: CheckView now also accepts its signed token from the request URL when the Authorization header is missing or holds other credentials. This lets CheckView reach the plugin on sites behind an HTTP password prompt (basic auth) and on servers that drop the Authorization header.
+* Application passwords: On a site that uses WordPress application passwords, a request signed by CheckView is no longer read as an application password login, so a password prompt in front of the site no longer makes WordPress reject it. Other requests are unaffected.
+
 = 2.6.2 =
 * Speed: Ordinary visitors' requests no longer read CheckView's whitelist. It is read only for a request that could be a CheckView test, and refreshed hourly in the background. This also covers the Solid Security and Defender allowlists.
 * Speed: CheckView's whitelist download gives up after 5 seconds instead of 500, and a failed download is retried after 5 minutes instead of on every request.
