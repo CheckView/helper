@@ -87,8 +87,8 @@ if ( ! class_exists( 'Checkview_Mail_Redirect' ) ) {
 			// pass for an email a real visitor's submission never sends. An
 			// email that still has a valid Cc or Bcc does go out, so it is
 			// redirected.
-			if ( ! checkview_recipients_have_valid_address( $atts['to'] ) && ! checkview_headers_have_copy_recipients( $atts['headers'] ?? '' ) ) {
-				checkview_log_no_recipients( 'wp_mail backstop' );
+			if ( checkview_guard_unaddressed_email() && ! checkview_recipients_have_valid_address( $atts['to'] ) && ! checkview_headers_have_copy_recipients( $atts['headers'] ?? '' ) ) {
+				checkview_log_no_recipients( 'wp_mail backstop', $atts['to'] );
 				return $atts;
 			}
 

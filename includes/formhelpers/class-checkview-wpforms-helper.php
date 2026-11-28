@@ -330,8 +330,8 @@ if ( ! class_exists( 'Checkview_Wpforms_Helper' ) ) {
 			// tell hands it to wp_mail(), where a valid CC is still sent. Leave
 			// the email alone only when nobody would get it, so the test fails
 			// as a real submission would.
-			if ( checkview_recipients_are_empty( $email['address'] ?? '' ) || ! checkview_recipients_have_valid_address( $email['address'] ?? '', $email['carboncopy'] ?? '' ) ) {
-				checkview_log_no_recipients( 'WPForms' );
+			if ( checkview_guard_unaddressed_email() && ( checkview_recipients_are_empty( $email['address'] ?? '' ) || ! checkview_recipients_have_valid_address( $email['address'] ?? '', $email['carboncopy'] ?? '' ) ) ) {
+				checkview_log_no_recipients( 'WPForms', $email['address'] ?? '' );
 				return $email;
 			}
 

@@ -2711,15 +2711,53 @@ if ( ! function_exists( 'checkview_headers_have_copy_recipients' ) ) {
 	}
 }
 
+if ( ! function_exists( 'checkview_guard_unaddressed_email' ) ) {
+	/**
+	 * Whether the recipient filters leave an email that reaches nobody alone.
+	 *
+	 * On by default: such an email is not addressed to the test inbox, so the
+	 * email test fails as a real submission would. Emergency rollback to the
+	 * old redirect: `define( 'CHECKVIEW_GUARD_UNADDRESSED_EMAIL', false );` in
+	 * wp-config.php, or the `checkview_guard_unaddressed_email` filter.
+	 *
+	 * @return bool
+	 */
+	function checkview_guard_unaddressed_email() {
+		$on = ! ( defined( 'CHECKVIEW_GUARD_UNADDRESSED_EMAIL' ) && false === CHECKVIEW_GUARD_UNADDRESSED_EMAIL );
+		return (bool) apply_filters( 'checkview_guard_unaddressed_email', $on );
+	}
+}
+
 if ( ! function_exists( 'checkview_log_no_recipients' ) ) {
 	/**
-	 * Logs that a test email was left unaddressed because it has no recipients.
+	 * Logs why a test email was left unaddressed, without any address.
+	 *
+	 * Says whether the To was blank or filled in with no valid address, and
+	 * names the test. The wp_mail backstop's line is skipped once a form
+	 * helper has logged in the same request, since it is usually the same
+	 * email reaching wp_mail().
 	 *
 	 * @param string $source Plugin or email name for the log line.
+	 * @param mixed  $to     The To list as the plugin had it (not logged).
 	 * @return void
 	 */
-	function checkview_log_no_recipients( $source ) {
-		Checkview_Admin_Logs::add( 'ip-logs', $source . ': this email has no recipients, so it was left unaddressed and is not sent, as for a real visitor.' );
+	function checkview_log_no_recipients( $source, $to = null ) {
+		static $helper_logged = false;
+		$is_backstop          = 'wp_mail backstop' === $source;
+		if ( $is_backstop && $helper_logged ) {
+			return;
+		}
+		if ( ! $is_backstop ) {
+			$helper_logged = true;
+		}
+		if ( checkview_recipients_are_empty( $to ) ) {
+			$what = 'the To field is blank';
+		} else {
+			$count = is_array( $to ) ? count( $to ) : count( explode( ',', (string) ( is_scalar( $to ) ? $to : '' ) ) );
+			$what  = 'the To field holds ' . $count . ' ' . ( 1 === $count ? 'entry' : 'entries' ) . ' but none is a valid email address';
+		}
+		$test_id = function_exists( 'checkview_get_test_id' ) ? checkview_get_test_id() : '';
+		Checkview_Admin_Logs::add( 'ip-logs', 'CheckView test ' . ( $test_id ? $test_id : '(unknown)' ) . ', ' . $source . ': ' . $what . ' and there is no valid Cc or Bcc, so the email was left unaddressed; a real submission would send it to nobody. Check the recipient setting on this form.' );
 	}
 }
 

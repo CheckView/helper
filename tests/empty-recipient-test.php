@@ -100,7 +100,7 @@ function has_action( ...$a ) {
 	return false;
 }
 function apply_filters( $hook, $value, ...$a ) {
-	return $value;
+	return array_key_exists( $hook, $GLOBALS['cv_t_filters'] ?? array() ) ? $GLOBALS['cv_t_filters'][ $hook ] : $value;
 }
 function do_action( ...$a ) {}
 // True only so the WPForms constructor skips including wp-admin/includes/plugin.php;
@@ -256,7 +256,7 @@ function cv_t_modes( callable $fn, $with_receipt = true ) {
 function cv_t_logged_no_recipients() {
 	$hit = false;
 	foreach ( Checkview_Admin_Logs::$lines as $line ) {
-		$hit = $hit || false !== strpos( $line, 'has no recipients' );
+		$hit = $hit || false !== strpos( $line, 'left unaddressed' );
 	}
 	Checkview_Admin_Logs::$lines = array();
 	return $hit;
@@ -386,7 +386,8 @@ cv_t_modes(
 		cv_t_check( "WooCommerce $m: a valid recipient is redirected", cv_t_has_test( $woo->checkview_filter_admin_emails( 'orders@shop.com', $order, $wce ) ) );
 		Checkview_Admin_Logs::$lines = array();
 		$woo->checkview_filter_admin_emails( '', $order, (object) array( 'id' => 'new_order', 'recipient' => 'orders@shop.com' ) );
-		cv_t_check( "WooCommerce $m: log names a filter that blanked the recipient", false !== strpos( implode( ' ', Checkview_Admin_Logs::$lines ), 'another filter changed the recipient' ) );
+		$log = implode( ' ', Checkview_Admin_Logs::$lines );
+		cv_t_check( "WooCommerce $m: log names a filter that blanked the recipient, without the address", false !== strpos( $log, 'another filter changed the stored recipient' ) && false === strpos( $log, 'orders@shop.com' ) );
 	},
 	false
 );
@@ -463,6 +464,25 @@ $GLOBALS['cv_t_mail']         = array();
 $GLOBALS['cv_t_mail_headers'] = array();
 $nf->checkview_inject_email( false, array( 'to' => 'owner@example.com', 'cc' => '', 'bcc' => '', 'email_subject' => 's' ), 'm', array( 'From: a@example.com', 'Cc : boss@example.com', ' Bcc: x@example.com' ), array() );
 cv_t_check( 'Ninja Forms replace: `Cc :` and indented Bcc headers are stripped before sending', 1 === count( $GLOBALS['cv_t_mail_headers'] ) && 1 === count( $GLOBALS['cv_t_mail_headers'][0] ) );
+
+/* ---- Log line and emergency off switch ---------------------------------- */
+
+Checkview_Admin_Logs::$lines = array();
+$cf7->checkview_inject_email( array( 'recipient' => '', 'additional_headers' => '' ) );
+$cf7->checkview_inject_email( array( 'recipient' => 'orders@shop, [your-email]', 'additional_headers' => '' ) );
+$cv_t_log = Checkview_Admin_Logs::$lines;
+cv_t_check( 'log: a blank To says it is blank', false !== strpos( $cv_t_log[0] ?? '', 'the To field is blank' ) );
+cv_t_check( 'log: an invalid To says how many entries, none valid', false !== strpos( $cv_t_log[1] ?? '', 'holds 2 entries but none is a valid email address' ) );
+cv_t_check( 'log: names the test and never the address', false !== strpos( $cv_t_log[1] ?? '', TEST_ID ) && false === strpos( implode( ' ', $cv_t_log ), 'orders@shop' ) );
+cv_t_obj( 'Checkview_Mail_Redirect' )->redirect_recipient( array( 'to' => 'orders@shop', 'headers' => '' ) );
+cv_t_check( 'log: the backstop adds no second line after a form helper logged', 2 === count( Checkview_Admin_Logs::$lines ) );
+$GLOBALS['cv_t_filters']['checkview_guard_unaddressed_email'] = false;
+cv_t_check( 'off switch: CF7 invalid recipient goes to the test inbox again', cv_t_has_test( $cf7->checkview_inject_email( array( 'recipient' => 'orders@shop', 'additional_headers' => '' ) )['recipient'] ) );
+cv_t_check( 'off switch: Forminator empty list goes to the test inbox again', cv_t_has_test( $fmn->checkview_inject_email( array() ) ) );
+cv_t_check( 'off switch: backstop redirects an invalid To again', cv_t_has_test( cv_t_obj( 'Checkview_Mail_Redirect' )->redirect_recipient( array( 'to' => 'orders@shop', 'headers' => '' ) )['to'] ) );
+cv_t_check( 'off switch: WooCommerce blank recipient goes to the test inbox again', cv_t_has_test( $woo->checkview_filter_admin_emails( '', $order, $wce ) ) );
+unset( $GLOBALS['cv_t_filters']['checkview_guard_unaddressed_email'] );
+Checkview_Admin_Logs::$lines = array();
 
 /* ---- wp_mail backstop ---------------------------------------------------- */
 

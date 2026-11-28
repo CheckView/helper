@@ -510,8 +510,8 @@ if ( ! class_exists( 'Checkview_Cf7_Helper' ) ) {
 			// CF7 strips line breaks from the recipient after this filter
 			// (wpcf7_strip_newline), so check it the same way.
 			$recipient = str_replace( array( "\r", "\n" ), '', (string) ( $args['recipient'] ?? '' ) );
-			if ( ! checkview_recipients_have_valid_address( $recipient ) && ! checkview_headers_have_copy_recipients( $args['additional_headers'] ?? '' ) ) {
-				checkview_log_no_recipients( 'Contact Form 7' );
+			if ( checkview_guard_unaddressed_email() && ! checkview_recipients_have_valid_address( $recipient ) && ! checkview_headers_have_copy_recipients( $args['additional_headers'] ?? '' ) ) {
+				checkview_log_no_recipients( 'Contact Form 7', $recipient );
 				return $args;
 			}
 

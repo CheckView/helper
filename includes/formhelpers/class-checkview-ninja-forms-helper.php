@@ -127,8 +127,8 @@ if ( ! class_exists( 'Checkview_Ninja_Forms_Helper' ) ) {
 			// valid To, Cc or Bcc address a real submission sends nothing, so
 			// hand the send back to Ninja Forms (its wp_mail() then has no one
 			// to send to) instead of sending to the test inbox below.
-			if ( ! checkview_recipients_have_valid_address( $action_settings['to'] ?? '', $action_settings['cc'] ?? '', $action_settings['bcc'] ?? '' ) ) {
-				checkview_log_no_recipients( 'Ninja Forms' );
+			if ( checkview_guard_unaddressed_email() && ! checkview_recipients_have_valid_address( $action_settings['to'] ?? '', $action_settings['cc'] ?? '', $action_settings['bcc'] ?? '' ) ) {
+				checkview_log_no_recipients( 'Ninja Forms', $action_settings['to'] ?? '' );
 				return $sent;
 			}
 

@@ -1318,12 +1318,17 @@ class Checkview_Woo_Automated_Testing {
 			// When the store's recipient is blank or invalid, leave it so the
 			// test fails as a real order would, instead of sending to the test inbox.
 			$valid_recipients = array_filter( array_map( 'trim', explode( ',', (string) $recipient ) ), 'is_email' );
-			if ( empty( $valid_recipients ) ) {
+			if ( checkview_guard_unaddressed_email() && empty( $valid_recipients ) ) {
 				// Say when another filter changed the stored recipient, so a
 				// store snippet that blanks it for test orders is easy to spot.
+				// Counts only: the address itself is not logged.
 				$configured = ( is_object( $email ) && isset( $email->recipient ) && is_scalar( $email->recipient ) ) ? (string) $email->recipient : null;
-				$changed    = ( null !== $configured && $configured !== (string) $recipient ) ? ' (another filter changed the recipient from ' . wp_json_encode( $configured ) . ')' : '';
-				checkview_log_no_recipients( 'WooCommerce ' . ( is_object( $email ) && isset( $email->id ) ? $email->id : 'email' ) . $changed );
+				$changed    = '';
+				if ( null !== $configured && $configured !== (string) $recipient ) {
+					$stored  = count( array_filter( array_map( 'trim', explode( ',', $configured ) ), 'is_email' ) );
+					$changed = ' (another filter changed the stored recipient: ' . $stored . ' valid stored, 0 after filters)';
+				}
+				checkview_log_no_recipients( 'WooCommerce ' . ( is_object( $email ) && isset( $email->id ) ? $email->id : 'email' ) . $changed, $recipient );
 				return $recipient;
 			}
 
