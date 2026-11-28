@@ -75,13 +75,15 @@ if ( ! class_exists( 'Checkview_Mail_Redirect' ) ) {
 				return $atts;
 			}
 
-			// A To that holds only separators or blanks (for example two CF7
-			// mail-tags that both rendered empty: ",") reaches nobody, and a
-			// form plugin's own recipient filter has already left it that way
+			// A To with no address wp_mail() would accept (only separators or
+			// blanks, such as two CF7 mail-tags that both rendered empty: ",",
+			// or an invalid address such as "orders@shop") reaches nobody, and
+			// a form plugin's own recipient filter has already left it that way
 			// on purpose. Addressing it to the test inbox here would let a test
 			// pass for an email a real visitor's submission never sends. An
-			// email that still has a Cc or Bcc does go out, so it is redirected.
-			if ( checkview_recipients_are_empty( $atts['to'] ) && ! checkview_headers_have_copy_recipients( $atts['headers'] ?? '' ) ) {
+			// email that still has a valid Cc or Bcc does go out, so it is
+			// redirected.
+			if ( ! checkview_recipients_have_valid_address( $atts['to'] ) && ! checkview_headers_have_copy_recipients( $atts['headers'] ?? '' ) ) {
 				checkview_log_no_recipients( 'wp_mail backstop' );
 				return $atts;
 			}

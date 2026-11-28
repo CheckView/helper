@@ -325,10 +325,10 @@ if ( ! class_exists( 'Checkview_Wpforms_Helper' ) ) {
 		 */
 		public function checkview_inject_email( $email ) {
 			// WPForms skips a notification with no Send To address after this
-			// filter, whatever its CC says. Leave it empty so the test fails as
-			// a real submission would (the replace branch below already did;
-			// append mode used to add the test inbox).
-			if ( checkview_recipients_are_empty( $email['address'] ?? '' ) ) {
+			// filter, whatever its CC says, and wp_mail() sends nothing when no
+			// address is valid. Leave such an email so the test fails as a
+			// real submission would, instead of adding the test inbox.
+			if ( ! checkview_recipients_have_valid_address( $email['address'] ?? '' ) ) {
 				checkview_log_no_recipients( 'WPForms' );
 				return $email;
 			}

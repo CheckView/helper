@@ -589,10 +589,10 @@ if ( ! class_exists( 'Checkview_Elementor_Helper' ) ) {
 			}
 
 			// Elementor sends whatever this filter returns, with no recipient
-			// check. If To, Cc and Bcc are all empty (a shortcode in To that
-			// rendered empty), a real submission sends nothing, so leave it
-			// empty instead of sending it to the test inbox.
-			if ( checkview_recipients_are_empty( $fields['email_to'] ?? '', $fields['email_to_cc'] ?? '', $fields['email_to_bcc'] ?? '' ) ) {
+			// check. If To, Cc and Bcc hold no valid address (blank, or a
+			// shortcode that did not render an address), wp_mail() sends
+			// nothing, so leave it instead of sending it to the test inbox.
+			if ( ! checkview_recipients_have_valid_address( $fields['email_to'] ?? '', $fields['email_to_cc'] ?? '', $fields['email_to_bcc'] ?? '' ) ) {
 				checkview_log_no_recipients( 'Elementor' );
 				return $fields;
 			}

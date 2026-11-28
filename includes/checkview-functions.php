@@ -2598,9 +2598,56 @@ if ( ! function_exists( 'checkview_recipients_are_empty' ) ) {
 	}
 }
 
+if ( ! function_exists( 'checkview_recipients_have_valid_address' ) ) {
+	/**
+	 * Whether any recipient list holds an address wp_mail() would send to.
+	 *
+	 * Mirrors wp_mail(): a string is split on commas, an address is taken
+	 * from `Name <address>` with the same pattern, and each one is checked
+	 * with is_email(), which core (and FluentSMTP) set as PHPMailer's
+	 * validator. wp_mail() skips addresses that fail and sends nothing when
+	 * none is left, so an email like that must not be addressed to the test
+	 * inbox either.
+	 *
+	 * @param mixed ...$lists Recipient lists: arrays of addresses or comma-separated strings.
+	 * @return bool True when at least one address is valid.
+	 */
+	function checkview_recipients_have_valid_address( ...$lists ) {
+		if ( ! function_exists( 'is_email' ) ) {
+			return true;
+		}
+		foreach ( $lists as $list ) {
+			if ( null === $list || false === $list ) {
+				continue;
+			}
+			if ( ! is_array( $list ) && ! is_scalar( $list ) ) {
+				// Unexpected shape: keep the old behaviour.
+				return true;
+			}
+			$entries = is_array( $list ) ? $list : explode( ',', (string) $list );
+			foreach ( $entries as $entry ) {
+				if ( null === $entry || false === $entry ) {
+					continue;
+				}
+				if ( ! is_string( $entry ) ) {
+					return true;
+				}
+				$address = trim( $entry );
+				if ( preg_match( '/(.*)<(.+)>/', $address, $m ) ) {
+					$address = trim( $m[2] );
+				}
+				if ( '' !== $address && is_email( $address ) ) {
+					return true;
+				}
+			}
+		}
+		return false;
+	}
+}
+
 if ( ! function_exists( 'checkview_headers_have_copy_recipients' ) ) {
 	/**
-	 * Whether email headers carry a non-empty Cc or Bcc line.
+	 * Whether email headers carry a Cc or Bcc line with an address wp_mail() would send to.
 	 *
 	 * @param array|string $headers Headers as an array of lines or a newline-separated string.
 	 * @return bool
@@ -2613,7 +2660,7 @@ if ( ! function_exists( 'checkview_headers_have_copy_recipients' ) ) {
 		foreach ( $lines as $line ) {
 			// Same header-name match as the helpers' own Cc/Bcc strip (`^(bcc:|cc:)`),
 			// so a line counted here is also one those strips remove.
-			if ( is_string( $line ) && preg_match( '/^b?cc:\s*(.*)$/i', $line, $m ) && ! checkview_recipients_are_empty( $m[1] ) ) {
+			if ( is_string( $line ) && preg_match( '/^b?cc:\s*(.*)$/i', $line, $m ) && checkview_recipients_have_valid_address( $m[1] ) ) {
 				return true;
 			}
 		}

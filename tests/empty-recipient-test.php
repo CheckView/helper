@@ -16,6 +16,11 @@
  *    still send that): still redirected to the test inbox, as before;
  *  - a normal recipient: redirected (replace) or appended (append), as before.
  *
+ * It also covers invalid but non-blank addresses ("orders@shop", an
+ * unreplaced "[your-email]" tag): wp_mail() sends nothing for those either,
+ * since core and FluentSMTP validate with is_email(). The is_email() stub
+ * below agrees with WordPress for every address these tests use.
+ *
  * It also checks the shared wp_mail backstop, which must not address a To
  * that holds only separators or blanks (two CF7 mail-tags that both rendered
  * empty give ","), since the form filter left it that way on purpose.
@@ -332,6 +337,42 @@ cv_t_modes(
 	false
 );
 
+/* ---- Invalid but non-blank addresses (wp_mail() would send nothing) ----- */
+
+if ( function_exists( 'checkview_recipients_have_valid_address' ) ) {
+	cv_t_check( 'have_valid_address: an invalid address is not one', ! checkview_recipients_have_valid_address( 'orders@shop' ) );
+	cv_t_check( 'have_valid_address: an unreplaced mail-tag is not one', ! checkview_recipients_have_valid_address( '[your-email]' ) );
+	cv_t_check( 'have_valid_address: Name <address> is one', checkview_recipients_have_valid_address( 'Shop Owner <owner@example.com>' ) );
+	cv_t_check( 'have_valid_address: one valid among invalid is enough', checkview_recipients_have_valid_address( 'orders@shop, owner@example.com' ) );
+	cv_t_check( 'have_valid_address: semicolons are not separators (as in wp_mail)', ! checkview_recipients_have_valid_address( 'a@example.com; b@example.com' ) );
+	cv_t_check( 'have_valid_address: a later list counts', checkview_recipients_have_valid_address( 'orders@shop', array( 'boss@example.com' ) ) );
+	cv_t_check( 'have_valid_address: an unexpected shape keeps old behaviour', checkview_recipients_have_valid_address( array( array( 'x' ) ) ) && checkview_recipients_have_valid_address( new stdClass() ) );
+	cv_t_check( 'headers_have_copy_recipients: an invalid Cc is not one', ! checkview_headers_have_copy_recipients( 'Cc: [boss-email]' ) );
+}
+
+cv_t_modes(
+	function ( $m ) use ( $cf7, $el, $wpf, $frm ) {
+		$r = $cf7->checkview_inject_email( array( 'recipient' => 'orders@shop', 'additional_headers' => '' ) );
+		cv_t_check( "CF7 $m: an invalid recipient is left as is", 'orders@shop' === $r['recipient'] );
+		$r = $cf7->checkview_inject_email( array( 'recipient' => '[your-email]', 'additional_headers' => 'Cc: [boss-email]' ) );
+		cv_t_check( "CF7 $m: an unreplaced tag with an invalid Cc is left as is", '[your-email]' === $r['recipient'] );
+		$r = $cf7->checkview_inject_email( array( 'recipient' => 'orders@shop', 'additional_headers' => 'Cc: boss@example.com' ) );
+		cv_t_check( "CF7 $m: an invalid To but a valid Cc is redirected", cv_t_has_test( $r['recipient'] ) );
+		$r = $cf7->checkview_inject_email( array( 'recipient' => 'Shop Owner <owner@example.com>', 'additional_headers' => '' ) );
+		cv_t_check( "CF7 $m: Name <address> is redirected", cv_t_has_test( $r['recipient'] ) );
+		$base = array( 'email_to' => 'orders@shop', 'email_to_cc' => '', 'email_to_bcc' => '' );
+		cv_t_check( "Elementor $m: an invalid To is left as is", 'orders@shop' === $el->checkview_override_mail_fields( $base, null )['email_to'] );
+		cv_t_check( "Elementor $m: an invalid To but a valid Cc is redirected", cv_t_has_test( $el->checkview_override_mail_fields( array_merge( $base, array( 'email_to_cc' => 'boss@example.com' ) ), null )['email_to'] ) );
+		cv_t_check( "WPForms $m: an invalid Send To is left as is", ! cv_t_has_test( $wpf->checkview_inject_email( array( 'address' => array( 'orders@shop' ), 'replyto' => '' ) )['address'] ) );
+		// Formidable keeps the blank-only check: it can turn phone numbers into
+		// addresses after this filter, so a non-address To may still send.
+		cv_t_check( "Formidable $m: a non-blank To keeps old behaviour", cv_t_has_test( $frm->checkview_inject_email( array( '5550100142' ), array(), 1, array( 'email_key' => 501 ) ) ) );
+	}
+);
+$GLOBALS['cv_t_mail'] = array();
+$sent = $nf->checkview_inject_email( false, array( 'to' => 'orders@shop', 'cc' => '', 'bcc' => '', 'email_subject' => 's' ), 'm', array(), array() );
+cv_t_check( 'Ninja Forms replace: an invalid To sends nothing itself', false === $sent && array() === $GLOBALS['cv_t_mail'] );
+
 /* ---- wp_mail backstop ---------------------------------------------------- */
 
 $bs = cv_t_obj( 'Checkview_Mail_Redirect' );
@@ -345,6 +386,10 @@ cv_t_modes(
 		cv_t_check( "backstop $m: no To but a Cc is redirected", cv_t_has_test( $r['to'] ) );
 		$r = $bs->redirect_recipient( array( 'to' => 'owner@example.com', 'headers' => '' ) );
 		cv_t_check( "backstop $m: a recipient is redirected", cv_t_has_test( $r['to'] ) );
+		$r = $bs->redirect_recipient( array( 'to' => 'orders@shop', 'headers' => '' ) );
+		cv_t_check( "backstop $m: an invalid To is left as is", 'orders@shop' === $r['to'] );
+		$r = $bs->redirect_recipient( array( 'to' => 'orders@shop', 'headers' => array( 'Cc: boss@example.com' ) ) );
+		cv_t_check( "backstop $m: an invalid To but a valid Cc is redirected", cv_t_has_test( $r['to'] ) );
 	}
 );
 
