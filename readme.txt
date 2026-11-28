@@ -208,7 +208,8 @@ Support and test configuration are handled through the CheckView platform. Pleas
 = 2.6.3 =
 * Connection: The plugin now also accepts CheckView's signed token from the request URL when the Authorization header is missing or holds other credentials. This fixes CheckView's requests on servers that drop the Authorization header, and prepares for testing sites behind an HTTP basic auth password prompt, which CheckView will support in a later update.
 * Application passwords: On a site that uses WordPress application passwords and sits behind an HTTP basic auth password prompt, requests made while connecting a site or during a CheckView test (for example a form submitted through the REST API) are no longer read as an application password login, so WordPress will not reject them. Other requests are unaffected.
-* Email tests: When a form or WooCommerce would send a notification to nobody (for example Forminator routing rules that match no address, or a mistyped WooCommerce order recipient), CheckView no longer sends that email to its test inbox, so the email test now fails just as the real email would. This covers Forminator, Formidable, Contact Form 7, Elementor, Ninja Forms, WPForms and WooCommerce.
+* Email tests: When a form or WooCommerce would send a notification to nobody, CheckView no longer sends that email to its test inbox, so the email test now fails just as the real email would. A blank recipient list (for example Forminator routing rules that match no address) is caught for Forminator, Formidable, Contact Form 7, Elementor, Ninja Forms, WPForms and WooCommerce. A recipient that is not a valid email address (for example an unreplaced [your-email] tag, or a mistyped WooCommerce order recipient) is caught for Forminator, Contact Form 7, Elementor, Ninja Forms, WPForms and WooCommerce, and for notifications that custom code sends straight through wp_mail() during a test. Fluent Forms and Everest Forms are unchanged and still send such an email to the test inbox. To restore the previous behaviour, add define( 'CHECKVIEW_GUARD_UNADDRESSED_EMAIL', false ); to wp-config.php.
+* WooCommerce: The order email recipient filter used during a test now runs after store code, so it sees the final recipient list. A store snippet that blanks the recipient for test orders now makes the email test fail, as it would for a real order.
 
 = 2.6.2 =
 * Speed: Ordinary visitors' requests no longer read CheckView's whitelist. It is read only for a request that could be a CheckView test, and refreshed hourly in the background. This also covers the Solid Security and Defender allowlists.
@@ -719,3 +720,8 @@ Support and test configuration are handled through the CheckView platform. Pleas
 
 = 1.0.0 =
 * Initial release.
+
+== Upgrade Notice ==
+
+= 2.6.3 =
+Email tests now fail when a form's notification has no valid recipient, as the real email would. If a test turns red after this update, check that form's recipient (To) setting.

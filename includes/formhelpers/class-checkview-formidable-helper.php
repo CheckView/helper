@@ -243,8 +243,8 @@ if ( ! class_exists( 'Checkview_Formidable_Helper' ) ) {
 			// Formidable sends nothing when To, Cc and Bcc are all empty
 			// (FrmEmail::has_recipients, checked after this filter). Leave such
 			// an email empty so the test fails as a real submission would.
-			if ( checkview_recipients_are_empty( $email ) && ! $this->checkview_action_has_copy_recipients( $args ) ) {
-				checkview_log_no_recipients( 'Formidable' );
+			if ( checkview_guard_unaddressed_email() && checkview_recipients_are_empty( $email ) && ! $this->checkview_action_has_copy_recipients( $args ) ) {
+				checkview_log_no_recipients( 'Formidable', $email );
 				return $email;
 			}
 

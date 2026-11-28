@@ -16,6 +16,11 @@
  *    still send that): still redirected to the test inbox, as before;
  *  - a normal recipient: redirected (replace) or appended (append), as before.
  *
+ * It also covers invalid but non-blank addresses ("orders@shop", an
+ * unreplaced "[your-email]" tag): wp_mail() sends nothing for those either,
+ * since core and FluentSMTP validate with is_email(). The is_email() stub
+ * below agrees with WordPress for every address these tests use.
+ *
  * It also checks the shared wp_mail backstop, which must not address a To
  * that holds only separators or blanks (two CF7 mail-tags that both rendered
  * empty give ","), since the form filter left it that way on purpose.
@@ -95,7 +100,7 @@ function has_action( ...$a ) {
 	return false;
 }
 function apply_filters( $hook, $value, ...$a ) {
-	return $value;
+	return array_key_exists( $hook, $GLOBALS['cv_t_filters'] ?? array() ) ? $GLOBALS['cv_t_filters'][ $hook ] : $value;
 }
 function do_action( ...$a ) {}
 // True only so the WPForms constructor skips including wp-admin/includes/plugin.php;
@@ -112,8 +117,40 @@ function get_option( $name, $default = false ) {
 function wp_json_encode( $v ) {
 	return json_encode( $v );
 }
-function is_email( $e ) {
-	return (bool) filter_var( trim( (string) $e ), FILTER_VALIDATE_EMAIL );
+// A port of WordPress's is_email() rules (formatting.php), so the tests see
+// the same verdicts as core: at least 6 chars, a local part of allowed
+// characters, a dotted domain of [a-z0-9-] labels with no leading or
+// trailing dot or hyphen.
+function is_email( $email ) {
+	$email = (string) $email;
+	if ( strlen( $email ) < 6 || false === strpos( $email, '@', 1 ) ) {
+		return false;
+	}
+	list( $local, $domain ) = explode( '@', $email, 2 );
+	if ( ! preg_match( '/^[a-zA-Z0-9!#$%&\'*+\/=?^_`{|}~\.-]+$/', $local ) ) {
+		return false;
+	}
+	if ( preg_match( '/\.{2,}/', $domain ) || trim( $domain, " \t\n\r\0\x0B." ) !== $domain ) {
+		return false;
+	}
+	$subs = explode( '.', $domain );
+	if ( 2 > count( $subs ) ) {
+		return false;
+	}
+	foreach ( $subs as $sub ) {
+		if ( trim( $sub, " \t\n\r\0\x0B-" ) !== $sub || ! preg_match( '/^[a-z0-9-]+$/i', $sub ) ) {
+			return false;
+		}
+	}
+	return $email;
+}
+// Without ext-intl, stand in for idn_to_ascii() so the IDN branch still runs.
+if ( ! function_exists( 'idn_to_ascii' ) ) {
+	define( 'IDNA_DEFAULT', 0 );
+	define( 'INTL_IDNA_VARIANT_UTS46', 1 );
+	function idn_to_ascii( $domain ) {
+		return 'müller-shop.de' === $domain ? 'xn--mller-shop-9db.de' : false;
+	}
 }
 function maybe_unserialize( $v ) {
 	return is_string( $v ) && false !== @unserialize( $v ) ? unserialize( $v ) : $v;
@@ -121,8 +158,9 @@ function maybe_unserialize( $v ) {
 function get_post( $id ) {
 	return $GLOBALS['cv_t_posts'][ $id ] ?? null;
 }
-function wp_mail( $to, ...$rest ) {
-	$GLOBALS['cv_t_mail'][] = $to;
+function wp_mail( $to, $subject = '', $message = '', $headers = array(), ...$rest ) {
+	$GLOBALS['cv_t_mail'][]         = $to;
+	$GLOBALS['cv_t_mail_headers'][] = $headers;
 	return true;
 }
 function wp_strip_all_tags( $s ) {
@@ -144,6 +182,26 @@ function checkview_get_test_id() {
 }
 function checkview_should_allow_original_recipients() {
 	return $GLOBALS['cv_t_append'];
+}
+
+// Record every class the autoloader is asked for, so a test can prove the
+// helpers never trigger loading PHPMailer (that could fatal a site where a
+// plugin bundles its own copy).
+$GLOBALS['cv_t_autoload'] = array();
+spl_autoload_register(
+	function ( $class ) {
+		$GLOBALS['cv_t_autoload'][] = $class;
+	}
+);
+// Formidable's own decoder, as on a real site (JSON only; anything else is
+// returned unchanged, like FrmAppHelper::maybe_json_decode()).
+class FrmAppHelper {
+	public static $calls = 0;
+	public static function maybe_json_decode( $v ) {
+		++self::$calls;
+		$d = is_string( $v ) ? json_decode( $v, true ) : null;
+		return is_array( $d ) ? $d : $v;
+	}
 }
 
 require CHECKVIEW_INC_DIR . 'checkview-functions.php';
@@ -198,7 +256,7 @@ function cv_t_modes( callable $fn, $with_receipt = true ) {
 function cv_t_logged_no_recipients() {
 	$hit = false;
 	foreach ( Checkview_Admin_Logs::$lines as $line ) {
-		$hit = $hit || false !== strpos( $line, 'has no recipients' );
+		$hit = $hit || false !== strpos( $line, 'left unaddressed' );
 	}
 	Checkview_Admin_Logs::$lines = array();
 	return $hit;
@@ -214,7 +272,8 @@ if ( function_exists( 'checkview_recipients_are_empty' ) ) {
 	cv_t_check( 'recipients_are_empty: a non-string entry counts', ! checkview_recipients_are_empty( array( array( 'x' ) ) ) );
 	cv_t_check( 'headers_have_copy_recipients: Cc line', checkview_headers_have_copy_recipients( "From: a@b.co\nCc: c@d.co" ) );
 	cv_t_check( 'headers_have_copy_recipients: empty Bcc line is not one', ! checkview_headers_have_copy_recipients( array( 'From: a@b.co', 'Bcc: ' ) ) );
-	cv_t_check( 'headers_have_copy_recipients: same header match as the Cc/Bcc strips', ! checkview_headers_have_copy_recipients( 'Cc : c@d.co' ) );
+	cv_t_check( 'headers_have_copy_recipients: `Cc : x` counts, as in wp_mail()', checkview_headers_have_copy_recipients( 'Cc : c@d.co' ) );
+	cv_t_check( 'headers_have_copy_recipients: a leading space counts, as in wp_mail()', checkview_headers_have_copy_recipients( array( ' Cc: c@d.co' ) ) );
 	cv_t_check( 'recipients_are_empty: an object counts and does not fatal', ! checkview_recipients_are_empty( new stdClass() ) );
 }
 
@@ -327,10 +386,103 @@ cv_t_modes(
 		cv_t_check( "WooCommerce $m: a valid recipient is redirected", cv_t_has_test( $woo->checkview_filter_admin_emails( 'orders@shop.com', $order, $wce ) ) );
 		Checkview_Admin_Logs::$lines = array();
 		$woo->checkview_filter_admin_emails( '', $order, (object) array( 'id' => 'new_order', 'recipient' => 'orders@shop.com' ) );
-		cv_t_check( "WooCommerce $m: log names a filter that blanked the recipient", false !== strpos( implode( ' ', Checkview_Admin_Logs::$lines ), 'another filter changed the recipient' ) );
+		$log = implode( ' ', Checkview_Admin_Logs::$lines );
+		cv_t_check( "WooCommerce $m: log names a filter that blanked the recipient, without the address", false !== strpos( $log, 'another filter changed the stored recipient' ) && false === strpos( $log, 'orders@shop.com' ) );
 	},
 	false
 );
+
+/* ---- Invalid but non-blank addresses (wp_mail() would send nothing) ----- */
+
+if ( function_exists( 'checkview_recipients_have_valid_address' ) ) {
+	cv_t_check( 'have_valid_address: an invalid address is not one', ! checkview_recipients_have_valid_address( 'orders@shop' ) );
+	cv_t_check( 'have_valid_address: an unreplaced mail-tag is not one', ! checkview_recipients_have_valid_address( '[your-email]' ) );
+	cv_t_check( 'have_valid_address: Name <address> is one', checkview_recipients_have_valid_address( 'Shop Owner <owner@example.com>' ) );
+	cv_t_check( 'have_valid_address: one valid among invalid is enough', checkview_recipients_have_valid_address( 'orders@shop, owner@example.com' ) );
+	cv_t_check( 'have_valid_address: semicolons are not separators (as in wp_mail)', ! checkview_recipients_have_valid_address( 'a@example.com; b@example.com' ) );
+	cv_t_check( 'have_valid_address: a later list counts', checkview_recipients_have_valid_address( 'orders@shop', array( 'boss@example.com' ) ) );
+	cv_t_check( 'have_valid_address: an unexpected shape keeps old behaviour', checkview_recipients_have_valid_address( array( array( 'x' ) ) ) && checkview_recipients_have_valid_address( new stdClass() ) );
+	cv_t_check( 'headers_have_copy_recipients: an invalid Cc is not one', ! checkview_headers_have_copy_recipients( 'Cc: [boss-email]' ) );
+	cv_t_check( 'headers_have_copy_recipients: Cc as Name <address> counts', checkview_headers_have_copy_recipients( "Cc: Boss <boss@example.com>\r" ) );
+	cv_t_check( 'have_valid_address: an array of Name <address> entries', checkview_recipients_have_valid_address( array( 'Shop Owner <owner@example.com>' ) ) );
+	cv_t_check( 'have_valid_address: a quoted name with a comma still yields the address', checkview_recipients_have_valid_address( '"Doe, Jane" <jane@example.com>' ) );
+	cv_t_check( 'have_valid_address: uppercase and plus addressing', checkview_recipients_have_valid_address( 'Owner+Quotes@Example.COM' ) );
+	cv_t_check( 'have_valid_address: a trailing-dot domain is not one', ! checkview_recipients_have_valid_address( 'owner@example.com.' ) );
+	cv_t_check( 'have_valid_address: a number keeps old behaviour (as inside an array)', checkview_recipients_have_valid_address( 5 ) && checkview_recipients_have_valid_address( array( 5 ) ) );
+	cv_t_check( 'have_valid_address: an internationalised domain is valid (punycoded as PHPMailer does)', checkview_recipients_have_valid_address( 'info@müller-shop.de' ) );
+	cv_t_check( 'have_valid_address: an ASCII punycode domain is valid as is', checkview_recipients_have_valid_address( 'info@xn--mller-kva.de' ) );
+	cv_t_check( 'have_valid_address: a domain the converter rejects is not valid', ! checkview_recipients_have_valid_address( 'info@xn--ü.de' ) );
+	// PHPMailer's default 'php' validator (inlined) against is_email().
+	cv_t_check( 'have_valid_address: an IP-literal domain counts (PHPMailer default accepts it)', checkview_recipients_have_valid_address( 'user@[10.0.0.1]' ) );
+	cv_t_check( 'have_valid_address: a short address counts (PHPMailer default accepts it)', checkview_recipients_have_valid_address( 'a@b.c' ) );
+	cv_t_check( 'have_valid_address: a dotted-IP domain counts (is_email accepts it)', checkview_recipients_have_valid_address( 'user@192.168.0.1' ) );
+	cv_t_check( 'have_valid_address: a line break inside an address is not valid', ! checkview_recipients_have_valid_address( "\"a\nb\"@example.com" ) );
+	cv_t_check( 'have_valid_address: Name <> is not valid', ! checkview_recipients_have_valid_address( 'Name <>' ) );
+	cv_t_check( 'have_valid_address: <a@b.co> <> is not valid (as in core)', ! checkview_recipients_have_valid_address( '<owner@example.com> <>' ) );
+	cv_t_check( 'headers_have_copy_recipients: a Cc and Bcc packed into one element is not one', ! checkview_headers_have_copy_recipients( array( "Cc: boss@example.com\nBcc: evil@example.com" ) ) );
+	cv_t_check( 'headers_have_copy_recipients: X-Cc and Bcc-Note are not Cc/Bcc', ! checkview_headers_have_copy_recipients( "X-Cc: boss@example.com\nBcc-Note: boss@example.com" ) );
+	cv_t_check( 'the PHPMailer class is never autoloaded by these checks', array() === preg_grep( '/^\\\\?PHPMailer\\\\/', $GLOBALS['cv_t_autoload'] ) );
+}
+
+cv_t_modes(
+	function ( $m ) use ( $cf7, $el, $wpf, $frm ) {
+		$r = $cf7->checkview_inject_email( array( 'recipient' => 'orders@shop', 'additional_headers' => '' ) );
+		cv_t_check( "CF7 $m: an invalid recipient is left as is", 'orders@shop' === $r['recipient'] );
+		$r = $cf7->checkview_inject_email( array( 'recipient' => '[your-email]', 'additional_headers' => 'Cc: [boss-email]' ) );
+		cv_t_check( "CF7 $m: an unreplaced tag with an invalid Cc is left as is", '[your-email]' === $r['recipient'] );
+		$r = $cf7->checkview_inject_email( array( 'recipient' => 'orders@shop', 'additional_headers' => 'Cc: boss@example.com' ) );
+		cv_t_check( "CF7 $m: an invalid To but a valid Cc is redirected", cv_t_has_test( $r['recipient'] ) );
+		$r = $cf7->checkview_inject_email( array( 'recipient' => 'Shop Owner <owner@example.com>', 'additional_headers' => '' ) );
+		cv_t_check( "CF7 $m: Name <address> is redirected", cv_t_has_test( $r['recipient'] ) );
+		$r = $cf7->checkview_inject_email( array( 'recipient' => "owner@example\n.com", 'additional_headers' => '' ) );
+		cv_t_check( "CF7 $m: a line break CF7 strips later does not make it invalid", cv_t_has_test( $r['recipient'] ) );
+		cv_t_check( "WPForms $m: an invalid Send To with a valid CC is redirected", cv_t_has_test( $wpf->checkview_inject_email( array( 'address' => array( 'orders@shop' ), 'carboncopy' => array( 'boss@example.com' ), 'replyto' => '' ) )['address'] ) );
+		cv_t_check( "WPForms $m: an empty Send To stays empty whatever its CC", ! cv_t_has_test( $wpf->checkview_inject_email( array( 'address' => array(), 'carboncopy' => array( 'boss@example.com' ), 'replyto' => '' ) )['address'] ) );
+		$base = array( 'email_to' => 'orders@shop', 'email_to_cc' => '', 'email_to_bcc' => '' );
+		cv_t_check( "Elementor $m: an invalid To is left as is", 'orders@shop' === $el->checkview_override_mail_fields( $base, null )['email_to'] );
+		cv_t_check( "Elementor $m: an invalid To but a valid Cc is redirected", cv_t_has_test( $el->checkview_override_mail_fields( array_merge( $base, array( 'email_to_cc' => 'boss@example.com' ) ), null )['email_to'] ) );
+		cv_t_check( "WPForms $m: an invalid Send To is left as is", ! cv_t_has_test( $wpf->checkview_inject_email( array( 'address' => array( 'orders@shop' ), 'replyto' => '' ) )['address'] ) );
+		// Formidable keeps the blank-only check: it post-processes the To
+		// after this filter (handle_phone_numbers, format_recipients), so a
+		// non-address To may still send.
+		cv_t_check( "Formidable $m: a non-blank To keeps old behaviour", cv_t_has_test( $frm->checkview_inject_email( array( '5550100142' ), array(), 1, array( 'email_key' => 501 ) ) ) );
+	}
+);
+$r = $cf7->checkview_inject_email( array( 'recipient' => 'owner@example.com', 'additional_headers' => "Reply-To: a@example.com\nCc : boss@example.com" ) );
+cv_t_check( 'CF7 replace: a `Cc :` header is stripped', false === stripos( $r['additional_headers'], 'boss@' ) && false !== strpos( $r['additional_headers'], 'Reply-To' ) );
+$GLOBALS['cv_t_mail'] = array();
+$sent = $nf->checkview_inject_email( false, array( 'to' => 'orders@shop', 'cc' => '', 'bcc' => '', 'email_subject' => 's' ), 'm', array(), array() );
+cv_t_check( 'Ninja Forms replace: an invalid To sends nothing itself', false === $sent && array() === $GLOBALS['cv_t_mail'] );
+$GLOBALS['cv_t_mail'] = array();
+$nf->checkview_inject_email( false, array( 'to' => 'orders@shop', 'cc' => 'boss@example.com', 'bcc' => '', 'email_subject' => 's' ), 'm', array(), array() );
+cv_t_check( 'Ninja Forms replace: an invalid To but a valid Cc is sent to the test inbox', array( CHECKVIEW_TEST_EMAIL ) === $GLOBALS['cv_t_mail'] );
+// Forminator keeps the blank-only check because Forminator itself drops any
+// recipient that fails is_email() before this filter (get_admin_email_recipients).
+cv_t_check( 'Forminator: a non-blank list keeps old behaviour (Forminator validates itself)', cv_t_has_test( $fmn->checkview_inject_email( array( 'orders@shop' ) ) ) );
+cv_t_check( 'Formidable: action settings go through FrmAppHelper::maybe_json_decode() when it exists', FrmAppHelper::$calls > 0 );
+$GLOBALS['cv_t_mail']         = array();
+$GLOBALS['cv_t_mail_headers'] = array();
+$nf->checkview_inject_email( false, array( 'to' => 'owner@example.com', 'cc' => '', 'bcc' => '', 'email_subject' => 's' ), 'm', array( 'From: a@example.com', 'Cc : boss@example.com', ' Bcc: x@example.com' ), array() );
+cv_t_check( 'Ninja Forms replace: `Cc :` and indented Bcc headers are stripped before sending', 1 === count( $GLOBALS['cv_t_mail_headers'] ) && 1 === count( $GLOBALS['cv_t_mail_headers'][0] ) );
+
+/* ---- Log line and emergency off switch ---------------------------------- */
+
+Checkview_Admin_Logs::$lines = array();
+$cf7->checkview_inject_email( array( 'recipient' => '', 'additional_headers' => '' ) );
+$cf7->checkview_inject_email( array( 'recipient' => 'orders@shop, [your-email]', 'additional_headers' => '' ) );
+$cv_t_log = Checkview_Admin_Logs::$lines;
+cv_t_check( 'log: a blank To says it is blank', false !== strpos( $cv_t_log[0] ?? '', 'the To field is blank' ) );
+cv_t_check( 'log: an invalid To says how many entries, none valid', false !== strpos( $cv_t_log[1] ?? '', 'holds 2 entries but none is a valid email address' ) );
+cv_t_check( 'log: names the test and never the address', false !== strpos( $cv_t_log[1] ?? '', TEST_ID ) && false === strpos( implode( ' ', $cv_t_log ), 'orders@shop' ) );
+cv_t_obj( 'Checkview_Mail_Redirect' )->redirect_recipient( array( 'to' => 'orders@shop', 'headers' => '' ) );
+cv_t_check( 'log: the backstop adds no second line after a form helper logged', 2 === count( Checkview_Admin_Logs::$lines ) );
+$GLOBALS['cv_t_filters']['checkview_guard_unaddressed_email'] = false;
+cv_t_check( 'off switch: CF7 invalid recipient goes to the test inbox again', cv_t_has_test( $cf7->checkview_inject_email( array( 'recipient' => 'orders@shop', 'additional_headers' => '' ) )['recipient'] ) );
+cv_t_check( 'off switch: Forminator empty list goes to the test inbox again', cv_t_has_test( $fmn->checkview_inject_email( array() ) ) );
+cv_t_check( 'off switch: backstop redirects an invalid To again', cv_t_has_test( cv_t_obj( 'Checkview_Mail_Redirect' )->redirect_recipient( array( 'to' => 'orders@shop', 'headers' => '' ) )['to'] ) );
+cv_t_check( 'off switch: WooCommerce blank recipient goes to the test inbox again', cv_t_has_test( $woo->checkview_filter_admin_emails( '', $order, $wce ) ) );
+unset( $GLOBALS['cv_t_filters']['checkview_guard_unaddressed_email'] );
+Checkview_Admin_Logs::$lines = array();
 
 /* ---- wp_mail backstop ---------------------------------------------------- */
 
@@ -345,6 +497,10 @@ cv_t_modes(
 		cv_t_check( "backstop $m: no To but a Cc is redirected", cv_t_has_test( $r['to'] ) );
 		$r = $bs->redirect_recipient( array( 'to' => 'owner@example.com', 'headers' => '' ) );
 		cv_t_check( "backstop $m: a recipient is redirected", cv_t_has_test( $r['to'] ) );
+		$r = $bs->redirect_recipient( array( 'to' => 'orders@shop', 'headers' => '' ) );
+		cv_t_check( "backstop $m: an invalid To is left as is", 'orders@shop' === $r['to'] );
+		$r = $bs->redirect_recipient( array( 'to' => 'orders@shop', 'headers' => array( 'Cc: boss@example.com' ) ) );
+		cv_t_check( "backstop $m: an invalid To but a valid Cc is redirected", cv_t_has_test( $r['to'] ) );
 	}
 );
 

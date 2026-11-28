@@ -308,8 +308,8 @@ if ( ! class_exists( 'Checkview_Forminator_Helper' ) ) {
 			// checking after this filter (for example routing rules that match
 			// no address). Leave it empty so the test fails as a real
 			// submission would, instead of sending it to the test inbox.
-			if ( checkview_recipients_are_empty( $email ) ) {
-				checkview_log_no_recipients( 'Forminator' );
+			if ( checkview_guard_unaddressed_email() && checkview_recipients_are_empty( $email ) ) {
+				checkview_log_no_recipients( 'Forminator', $email );
 				return $email;
 			}
 

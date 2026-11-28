@@ -2598,9 +2598,99 @@ if ( ! function_exists( 'checkview_recipients_are_empty' ) ) {
 	}
 }
 
+if ( ! function_exists( 'checkview_recipients_have_valid_address' ) ) {
+	/**
+	 * Whether any recipient list holds an address wp_mail() would send to.
+	 *
+	 * Mirrors wp_mail(): a string is split on commas, an address is taken
+	 * from `Name <address>` with the same pattern, and each one is checked
+	 * with is_email(), which core (and FluentSMTP) set as PHPMailer's
+	 * validator. wp_mail() skips addresses that fail and sends nothing when
+	 * none is left, so an email like that must not be addressed to the test
+	 * inbox either.
+	 *
+	 * Where the real mailer might still send, the address counts as valid
+	 * (keeping the old redirect), so this can only miss a false pass, never
+	 * cause a false failure:
+	 * - an internationalised domain is converted to punycode first, as
+	 *   PHPMailer does before it validates;
+	 * - an address PHPMailer's default validator would accept (its 'php'
+	 *   pattern: no CR/LF, then FILTER_VALIDATE_EMAIL) also counts, for
+	 *   mailers (WP Mail SMTP and others) that replace core's PHPMailer and
+	 *   may keep that validator instead of is_email(). The check is inlined:
+	 *   referencing the PHPMailer class here would autoload it before core's
+	 *   require_once and can fatal a site that bundles another copy.
+	 *
+	 * @param mixed ...$lists Recipient lists: arrays of addresses or comma-separated strings.
+	 * @return bool True when at least one address is valid.
+	 */
+	function checkview_recipients_have_valid_address( ...$lists ) {
+		if ( ! function_exists( 'is_email' ) ) {
+			return true;
+		}
+		foreach ( $lists as $list ) {
+			if ( null === $list || false === $list ) {
+				continue;
+			}
+			if ( ! is_array( $list ) && ! is_string( $list ) ) {
+				// Unexpected shape (object, number): keep the old behaviour.
+				return true;
+			}
+			$entries = is_array( $list ) ? $list : explode( ',', $list );
+			foreach ( $entries as $entry ) {
+				if ( null === $entry || false === $entry ) {
+					continue;
+				}
+				if ( ! is_string( $entry ) ) {
+					return true;
+				}
+				$address = trim( $entry );
+				if ( preg_match( '/(.*)<(.+)>/', $address, $m ) ) {
+					$address = trim( $m[2] );
+				}
+				if ( '' !== $address && checkview_address_is_sendable( $address ) ) {
+					return true;
+				}
+			}
+		}
+		return false;
+	}
+}
+
+if ( ! function_exists( 'checkview_address_is_sendable' ) ) {
+	/**
+	 * Whether a single bare address would be accepted by the mailer.
+	 *
+	 * @param string $address Address without a display name.
+	 * @return bool
+	 */
+	function checkview_address_is_sendable( $address ) {
+		$at = strrpos( $address, '@' );
+		// PHPMailer punycodes an internationalised domain before validating it.
+		// Its conversion is stricter (charset check, STD3 rules), so this can
+		// only accept more, which keeps the old redirect. A site whose charset
+		// is not UTF-8 is the one exception and is rare enough to leave.
+		if ( false !== $at && function_exists( 'idn_to_ascii' ) && defined( 'IDNA_DEFAULT' ) && defined( 'INTL_IDNA_VARIANT_UTS46' ) && preg_match( '/[\x80-\xFF]/', substr( $address, $at + 1 ) ) ) {
+			$ascii = idn_to_ascii( substr( $address, $at + 1 ), IDNA_DEFAULT, INTL_IDNA_VARIANT_UTS46 );
+			if ( false !== $ascii ) {
+				$address = substr( $address, 0, $at + 1 ) . $ascii;
+			}
+		}
+		if ( is_email( $address ) ) {
+			return true;
+		}
+		// PHPMailer's default 'php' validator, inlined (see above). It accepts
+		// a few shapes is_email() rejects (quoted local parts, IP literals).
+		if ( false !== strpos( $address, "\n" ) || false !== strpos( $address, "\r" ) ) {
+			return false;
+		}
+		return false !== filter_var( $address, FILTER_VALIDATE_EMAIL );
+	}
+}
+
 if ( ! function_exists( 'checkview_headers_have_copy_recipients' ) ) {
 	/**
-	 * Whether email headers carry a non-empty Cc or Bcc line.
+	 * Whether email headers carry a Cc or Bcc line with an address wp_mail() would send to.
 	 *
 	 * @param array|string $headers Headers as an array of lines or a newline-separated string.
 	 * @return bool
@@ -2611,9 +2701,9 @@ if ( ! function_exists( 'checkview_headers_have_copy_recipients' ) ) {
 		}
 		$lines = is_array( $headers ) ? $headers : preg_split( '/\r\n|\r|\n/', (string) $headers );
 		foreach ( $lines as $line ) {
-			// Same header-name match as the helpers' own Cc/Bcc strip (`^(bcc:|cc:)`),
-			// so a line counted here is also one those strips remove.
-			if ( is_string( $line ) && preg_match( '/^b?cc:\s*(.*)$/i', $line, $m ) && ! checkview_recipients_are_empty( $m[1] ) ) {
+			// Same header-name rule as wp_mail() (trimmed, case-insensitive,
+			// spaces allowed before the colon) and as the helpers' Cc/Bcc strips.
+			if ( is_string( $line ) && preg_match( '/^\s*b?cc\s*:\s*(.*)$/i', $line, $m ) && checkview_recipients_have_valid_address( $m[1] ) ) {
 				return true;
 			}
 		}
@@ -2621,15 +2711,53 @@ if ( ! function_exists( 'checkview_headers_have_copy_recipients' ) ) {
 	}
 }
 
+if ( ! function_exists( 'checkview_guard_unaddressed_email' ) ) {
+	/**
+	 * Whether the recipient filters leave an email that reaches nobody alone.
+	 *
+	 * On by default: such an email is not addressed to the test inbox, so the
+	 * email test fails as a real submission would. Emergency rollback to the
+	 * old redirect: `define( 'CHECKVIEW_GUARD_UNADDRESSED_EMAIL', false );` in
+	 * wp-config.php, or the `checkview_guard_unaddressed_email` filter.
+	 *
+	 * @return bool
+	 */
+	function checkview_guard_unaddressed_email() {
+		$on = ! ( defined( 'CHECKVIEW_GUARD_UNADDRESSED_EMAIL' ) && false === CHECKVIEW_GUARD_UNADDRESSED_EMAIL );
+		return (bool) apply_filters( 'checkview_guard_unaddressed_email', $on );
+	}
+}
+
 if ( ! function_exists( 'checkview_log_no_recipients' ) ) {
 	/**
-	 * Logs that a test email was left unaddressed because it has no recipients.
+	 * Logs why a test email was left unaddressed, without any address.
+	 *
+	 * Says whether the To was blank or filled in with no valid address, and
+	 * names the test. The wp_mail backstop's line is skipped once a form
+	 * helper has logged in the same request, since it is usually the same
+	 * email reaching wp_mail().
 	 *
 	 * @param string $source Plugin or email name for the log line.
+	 * @param mixed  $to     The To list as the plugin had it (not logged).
 	 * @return void
 	 */
-	function checkview_log_no_recipients( $source ) {
-		Checkview_Admin_Logs::add( 'ip-logs', $source . ': this email has no recipients, so it was left unaddressed and is not sent, as for a real visitor.' );
+	function checkview_log_no_recipients( $source, $to = null ) {
+		static $helper_logged = false;
+		$is_backstop          = 'wp_mail backstop' === $source;
+		if ( $is_backstop && $helper_logged ) {
+			return;
+		}
+		if ( ! $is_backstop ) {
+			$helper_logged = true;
+		}
+		if ( checkview_recipients_are_empty( $to ) ) {
+			$what = 'the To field is blank';
+		} else {
+			$count = is_array( $to ) ? count( $to ) : count( explode( ',', (string) ( is_scalar( $to ) ? $to : '' ) ) );
+			$what  = 'the To field holds ' . $count . ' ' . ( 1 === $count ? 'entry' : 'entries' ) . ' but none is a valid email address';
+		}
+		$test_id = function_exists( 'checkview_get_test_id' ) ? checkview_get_test_id() : '';
+		Checkview_Admin_Logs::add( 'ip-logs', 'CheckView test ' . ( $test_id ? $test_id : '(unknown)' ) . ', ' . $source . ': ' . $what . ' and there is no valid Cc or Bcc, so the email was left unaddressed; a real submission would send it to nobody. Check the recipient setting on this form.' );
 	}
 }
 
