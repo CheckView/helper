@@ -50,7 +50,7 @@ if ( ! class_exists( 'Checkview_Formidable_Helper' ) ) {
 						'checkview_inject_email',
 					),
 					99,
-					1
+					4
 				);
 			}
 
@@ -233,10 +233,21 @@ if ( ! class_exists( 'Checkview_Formidable_Helper' ) ) {
 		/**
 		 * Sets our email for test submissions.
 		 *
-		 * @param string $email Email address.
-		 * @return string Email.
+		 * @param string|array $email   To addresses.
+		 * @param array        $values  Entry values (unused).
+		 * @param int          $form_id Form ID (unused).
+		 * @param array        $args    Holds `email_key`, the email action's post ID.
+		 * @return string|array Email.
 		 */
-		public function checkview_inject_email( $email ) {
+		public function checkview_inject_email( $email, $values = array(), $form_id = 0, $args = array() ) { // phpcs:ignore Generic.CodeAnalysis.UnusedFunctionParameter.FoundBeforeLastUsed -- Hook signature.
+			// Formidable sends nothing when To, Cc and Bcc are all empty
+			// (FrmEmail::has_recipients, checked after this filter). Leave such
+			// an email empty so the test fails as a real submission would.
+			if ( checkview_recipients_are_empty( $email ) && ! $this->checkview_action_has_copy_recipients( $args ) ) {
+				checkview_log_no_recipients( 'Formidable' );
+				return $email;
+			}
+
 			// New: append-mode branch — deliver to BOTH real recipient and test inbox.
 			if ( checkview_should_allow_original_recipients() ) {
 				$email = is_array( $email )
@@ -257,6 +268,28 @@ if ( ! class_exists( 'Checkview_Formidable_Helper' ) ) {
 
 			Checkview_Admin_Logs::add( 'ip-logs', 'Submission recipient email address: ' . wp_json_encode( $email ) );
 			return $email;
+		}
+		/**
+		 * Whether the email action being sent has Cc or Bcc addresses set.
+		 *
+		 * `frm_to_email` runs before Formidable reads Cc and Bcc, so this reads
+		 * the action's raw settings. A setting that is filled in counts even if
+		 * its shortcodes might render empty, and an action that cannot be read
+		 * counts too: both keep the old behaviour of redirecting to the test inbox.
+		 *
+		 * @param array $args `frm_to_email` args; `email_key` is the action's post ID.
+		 * @return bool
+		 */
+		private function checkview_action_has_copy_recipients( $args ) {
+			$action = ( is_array( $args ) && ! empty( $args['email_key'] ) ) ? get_post( (int) $args['email_key'] ) : null;
+			if ( ! $action ) {
+				return true;
+			}
+			$settings = is_array( $action->post_content ) ? $action->post_content : json_decode( (string) $action->post_content, true );
+			if ( ! is_array( $settings ) ) {
+				return true;
+			}
+			return ! checkview_recipients_are_empty( $settings['cc'] ?? '', $settings['bcc'] ?? '' );
 		}
 		/**
 		 * Removes email headers.

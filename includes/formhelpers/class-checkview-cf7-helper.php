@@ -502,6 +502,15 @@ if ( ! class_exists( 'Checkview_Cf7_Helper' ) ) {
 		 * @return array
 		 */
 		public function checkview_inject_email( $args ) {
+			// CF7 sends whatever this filter returns, with no recipient check.
+			// With no To, Cc or Bcc a real submission sends nothing and the
+			// visitor sees CF7's sending error, so leave such an email empty
+			// instead of sending it to the test inbox.
+			if ( checkview_recipients_are_empty( $args['recipient'] ?? '' ) && ! checkview_headers_have_copy_recipients( $args['additional_headers'] ?? '' ) ) {
+				checkview_log_no_recipients( 'Contact Form 7' );
+				return $args;
+			}
+
 			// New: append-mode branch — deliver to BOTH real recipient and test inbox.
 			// CF7's $args['recipient'] is a comma-separated string. additional_headers
 			// is a CRLF-separated string.

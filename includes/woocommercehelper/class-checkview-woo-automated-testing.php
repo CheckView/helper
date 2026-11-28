@@ -1310,6 +1310,16 @@ class Checkview_Woo_Automated_Testing {
 		}
 
 		if ( $is_test_order ) {
+			// WooCommerce drops addresses that fail is_email() after this filter
+			// and skips the email when none is left (WC_Email::send_notification).
+			// When the store's recipient is blank or invalid, leave it so the
+			// test fails as a real order would, instead of sending to the test inbox.
+			$valid_recipients = array_filter( array_map( 'trim', explode( ',', (string) $recipient ) ), 'is_email' );
+			if ( empty( $valid_recipients ) ) {
+				checkview_log_no_recipients( 'WooCommerce ' . ( is_object( $email ) && isset( $email->id ) ? $email->id : 'email' ) );
+				return $recipient;
+			}
+
 			// New: append-mode — deliver to BOTH real recipient and test inbox.
 			if ( checkview_should_allow_original_recipients() && defined( 'CHECKVIEW_TEST_EMAIL' ) ) {
 				return checkview_append_test_email_string( $recipient );
