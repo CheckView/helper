@@ -19,6 +19,8 @@ CheckView automatically tests your WordPress forms on a schedule, using real bro
 
 Built specifically for WordPress and WooCommerce, CheckView helps site owners, developers, and agencies detect problems early and resolve them faster, without writing code or setting up complex testing infrastructure.
 
+https://www.youtube.com/watch?v=b2uAcpdsjpM
+
 == Works Well With ==
 
 CheckView works well with popular WordPress form and eCommerce plugins including Contact Form 7, WPForms, Gravity Forms, Fluent Forms, Ninja Forms, Formidable Forms, Forminator, WS Form, Elementor Pro Forms (classic), and WooCommerce.
