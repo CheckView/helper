@@ -9,8 +9,8 @@
  * the test inbox in anyway, so the test passed for an email no visitor gets.
  *
  * For each filter this checks three things, in replace mode, with the
- * `disable_email_receipt_<test id>` option set, and in the "deliver to
- * original recipients" append mode:
+ * `disable_email_receipt_<test id>` option set (form plugins only), and in
+ * the "deliver to original recipients" append mode:
  *  - no recipients at all: the email stays unaddressed (no test inbox);
  *  - an empty To but a Cc or Bcc (CF7, Formidable, Elementor and Ninja Forms
  *    still send that): still redirected to the test inbox, as before;
@@ -115,6 +115,9 @@ function wp_json_encode( $v ) {
 function is_email( $e ) {
 	return (bool) filter_var( trim( (string) $e ), FILTER_VALIDATE_EMAIL );
 }
+function maybe_unserialize( $v ) {
+	return is_string( $v ) && false !== @unserialize( $v ) ? unserialize( $v ) : $v;
+}
 function get_post( $id ) {
 	return $GLOBALS['cv_t_posts'][ $id ] ?? null;
 }
@@ -173,12 +176,17 @@ function cv_t_has_test( $v ) {
 // Three modes: replace (default), the `disable_email_receipt_<test id>`
 // option (keep the real recipients and add the test inbox), and append
 // (allow original recipients).
-function cv_t_modes( callable $fn ) {
+// WooCommerce's filter has no receipt-option branch (it reads a constant
+// nothing defines), so its block passes $with_receipt = false.
+function cv_t_modes( callable $fn, $with_receipt = true ) {
 	$modes = array(
 		'replace' => array( false, false ),
 		'receipt' => array( false, 'true' ),
 		'append'  => array( true, false ),
 	);
+	if ( ! $with_receipt ) {
+		unset( $modes['receipt'] );
+	}
 	foreach ( $modes as $mode => list( $append, $receipt ) ) {
 		$GLOBALS['cv_t_append'] = $append;
 		$GLOBALS['cv_t_options'][ 'disable_email_receipt_' . TEST_ID ] = $receipt;
@@ -227,6 +235,8 @@ cv_t_modes(
 
 $GLOBALS['cv_t_posts'][501] = (object) array( 'post_content' => json_encode( array( 'cc' => '', 'bcc' => '' ) ) );
 $GLOBALS['cv_t_posts'][502] = (object) array( 'post_content' => json_encode( array( 'cc' => 'boss@example.com', 'bcc' => '' ) ) );
+// An older action stored PHP-serialized.
+$GLOBALS['cv_t_posts'][503] = (object) array( 'post_content' => serialize( array( 'cc' => '', 'bcc' => '' ) ) );
 $frm = cv_t_obj( 'Checkview_Formidable_Helper' );
 cv_t_modes(
 	function ( $m ) use ( $frm ) {
@@ -234,6 +244,7 @@ cv_t_modes(
 		cv_t_check( "Formidable $m: no To but a Cc is redirected", cv_t_has_test( $frm->checkview_inject_email( array(), array(), 1, array( 'email_key' => 502 ) ) ) );
 		cv_t_check( "Formidable $m: unreadable action keeps old behaviour", cv_t_has_test( $frm->checkview_inject_email( array(), array(), 1, array( 'email_key' => 999 ) ) ) );
 		cv_t_check( "Formidable $m: called with one arg keeps old behaviour", cv_t_has_test( $frm->checkview_inject_email( array() ) ) );
+		cv_t_check( "Formidable $m: serialized action with no Cc or Bcc stays empty", ! cv_t_has_test( $frm->checkview_inject_email( array(), array(), 1, array( 'email_key' => 503 ) ) ) );
 		cv_t_check( "Formidable $m: a recipient is redirected", cv_t_has_test( $frm->checkview_inject_email( array( 'owner@example.com' ), array(), 1, array( 'email_key' => 501 ) ) ) );
 	}
 );
@@ -314,7 +325,11 @@ cv_t_modes(
 		cv_t_check( "WooCommerce $m: blank recipient stays blank", '' === $woo->checkview_filter_admin_emails( '', $order, $wce ) );
 		cv_t_check( "WooCommerce $m: invalid recipient is left for WooCommerce to drop", 'orders@shop' === $woo->checkview_filter_admin_emails( 'orders@shop', $order, $wce ) );
 		cv_t_check( "WooCommerce $m: a valid recipient is redirected", cv_t_has_test( $woo->checkview_filter_admin_emails( 'orders@shop.com', $order, $wce ) ) );
-	}
+		Checkview_Admin_Logs::$lines = array();
+		$woo->checkview_filter_admin_emails( '', $order, (object) array( 'id' => 'new_order', 'recipient' => 'orders@shop.com' ) );
+		cv_t_check( "WooCommerce $m: log names a filter that blanked the recipient", false !== strpos( implode( ' ', Checkview_Admin_Logs::$lines ), 'another filter changed the recipient' ) );
+	},
+	false
 );
 
 /* ---- wp_mail backstop ---------------------------------------------------- */

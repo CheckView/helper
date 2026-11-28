@@ -285,7 +285,18 @@ if ( ! class_exists( 'Checkview_Formidable_Helper' ) ) {
 			if ( ! $action ) {
 				return true;
 			}
-			$settings = is_array( $action->post_content ) ? $action->post_content : json_decode( (string) $action->post_content, true );
+			$settings = $action->post_content;
+			if ( ! is_array( $settings ) ) {
+				// Decode as Formidable does; fall back to JSON, then to PHP
+				// serialization for older actions.
+				$raw      = (string) $settings;
+				$settings = ( class_exists( 'FrmAppHelper' ) && method_exists( 'FrmAppHelper', 'maybe_json_decode' ) )
+					? FrmAppHelper::maybe_json_decode( $raw )
+					: json_decode( $raw, true );
+				if ( ! is_array( $settings ) && function_exists( 'maybe_unserialize' ) ) {
+					$settings = maybe_unserialize( $raw );
+				}
+			}
 			if ( ! is_array( $settings ) ) {
 				return true;
 			}

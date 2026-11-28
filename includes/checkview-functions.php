@@ -2606,6 +2606,9 @@ if ( ! function_exists( 'checkview_headers_have_copy_recipients' ) ) {
 	 * @return bool
 	 */
 	function checkview_headers_have_copy_recipients( $headers ) {
+		if ( ! is_array( $headers ) && null !== $headers && ! is_scalar( $headers ) ) {
+			return false;
+		}
 		$lines = is_array( $headers ) ? $headers : preg_split( '/\r\n|\r|\n/', (string) $headers );
 		foreach ( $lines as $line ) {
 			// Same header-name match as the helpers' own Cc/Bcc strip (`^(bcc:|cc:)`),

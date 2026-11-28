@@ -1319,7 +1319,11 @@ class Checkview_Woo_Automated_Testing {
 			// test fails as a real order would, instead of sending to the test inbox.
 			$valid_recipients = array_filter( array_map( 'trim', explode( ',', (string) $recipient ) ), 'is_email' );
 			if ( empty( $valid_recipients ) ) {
-				checkview_log_no_recipients( 'WooCommerce ' . ( is_object( $email ) && isset( $email->id ) ? $email->id : 'email' ) );
+				// Say when another filter changed the stored recipient, so a
+				// store snippet that blanks it for test orders is easy to spot.
+				$configured = ( is_object( $email ) && isset( $email->recipient ) && is_scalar( $email->recipient ) ) ? (string) $email->recipient : null;
+				$changed    = ( null !== $configured && $configured !== (string) $recipient ) ? ' (another filter changed the recipient from ' . wp_json_encode( $configured ) . ')' : '';
+				checkview_log_no_recipients( 'WooCommerce ' . ( is_object( $email ) && isset( $email->id ) ? $email->id : 'email' ) . $changed );
 				return $recipient;
 			}
 
