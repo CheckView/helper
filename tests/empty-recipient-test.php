@@ -117,8 +117,32 @@ function get_option( $name, $default = false ) {
 function wp_json_encode( $v ) {
 	return json_encode( $v );
 }
-function is_email( $e ) {
-	return (bool) filter_var( trim( (string) $e ), FILTER_VALIDATE_EMAIL );
+// A port of WordPress's is_email() rules (formatting.php), so the tests see
+// the same verdicts as core: at least 6 chars, a local part of allowed
+// characters, a dotted domain of [a-z0-9-] labels with no leading or
+// trailing dot or hyphen.
+function is_email( $email ) {
+	$email = (string) $email;
+	if ( strlen( $email ) < 6 || false === strpos( $email, '@', 1 ) ) {
+		return false;
+	}
+	list( $local, $domain ) = explode( '@', $email, 2 );
+	if ( ! preg_match( '/^[a-zA-Z0-9!#$%&\'*+\/=?^_`{|}~\.-]+$/', $local ) ) {
+		return false;
+	}
+	if ( preg_match( '/\.{2,}/', $domain ) || trim( $domain, " \t\n\r\0\x0B." ) !== $domain ) {
+		return false;
+	}
+	$subs = explode( '.', $domain );
+	if ( 2 > count( $subs ) ) {
+		return false;
+	}
+	foreach ( $subs as $sub ) {
+		if ( trim( $sub, " \t\n\r\0\x0B-" ) !== $sub || ! preg_match( '/^[a-z0-9-]+$/i', $sub ) ) {
+			return false;
+		}
+	}
+	return $email;
 }
 function maybe_unserialize( $v ) {
 	return is_string( $v ) && false !== @unserialize( $v ) ? unserialize( $v ) : $v;
@@ -126,8 +150,9 @@ function maybe_unserialize( $v ) {
 function get_post( $id ) {
 	return $GLOBALS['cv_t_posts'][ $id ] ?? null;
 }
-function wp_mail( $to, ...$rest ) {
-	$GLOBALS['cv_t_mail'][] = $to;
+function wp_mail( $to, $subject = '', $message = '', $headers = array(), ...$rest ) {
+	$GLOBALS['cv_t_mail'][]         = $to;
+	$GLOBALS['cv_t_mail_headers'][] = $headers;
 	return true;
 }
 function wp_strip_all_tags( $s ) {
@@ -219,7 +244,8 @@ if ( function_exists( 'checkview_recipients_are_empty' ) ) {
 	cv_t_check( 'recipients_are_empty: a non-string entry counts', ! checkview_recipients_are_empty( array( array( 'x' ) ) ) );
 	cv_t_check( 'headers_have_copy_recipients: Cc line', checkview_headers_have_copy_recipients( "From: a@b.co\nCc: c@d.co" ) );
 	cv_t_check( 'headers_have_copy_recipients: empty Bcc line is not one', ! checkview_headers_have_copy_recipients( array( 'From: a@b.co', 'Bcc: ' ) ) );
-	cv_t_check( 'headers_have_copy_recipients: same header match as the Cc/Bcc strips', ! checkview_headers_have_copy_recipients( 'Cc : c@d.co' ) );
+	cv_t_check( 'headers_have_copy_recipients: `Cc : x` counts, as in wp_mail()', checkview_headers_have_copy_recipients( 'Cc : c@d.co' ) );
+	cv_t_check( 'headers_have_copy_recipients: a leading space counts, as in wp_mail()', checkview_headers_have_copy_recipients( array( ' Cc: c@d.co' ) ) );
 	cv_t_check( 'recipients_are_empty: an object counts and does not fatal', ! checkview_recipients_are_empty( new stdClass() ) );
 }
 
@@ -348,6 +374,16 @@ if ( function_exists( 'checkview_recipients_have_valid_address' ) ) {
 	cv_t_check( 'have_valid_address: a later list counts', checkview_recipients_have_valid_address( 'orders@shop', array( 'boss@example.com' ) ) );
 	cv_t_check( 'have_valid_address: an unexpected shape keeps old behaviour', checkview_recipients_have_valid_address( array( array( 'x' ) ) ) && checkview_recipients_have_valid_address( new stdClass() ) );
 	cv_t_check( 'headers_have_copy_recipients: an invalid Cc is not one', ! checkview_headers_have_copy_recipients( 'Cc: [boss-email]' ) );
+	cv_t_check( 'headers_have_copy_recipients: Cc as Name <address> counts', checkview_headers_have_copy_recipients( "Cc: Boss <boss@example.com>\r" ) );
+	cv_t_check( 'have_valid_address: an array of Name <address> entries', checkview_recipients_have_valid_address( array( 'Shop Owner <owner@example.com>' ) ) );
+	cv_t_check( 'have_valid_address: a quoted name with a comma still yields the address', checkview_recipients_have_valid_address( '"Doe, Jane" <jane@example.com>' ) );
+	cv_t_check( 'have_valid_address: uppercase and plus addressing', checkview_recipients_have_valid_address( 'Owner+Quotes@Example.COM' ) );
+	cv_t_check( 'have_valid_address: a trailing-dot domain is not one', ! checkview_recipients_have_valid_address( 'owner@example.com.' ) );
+	cv_t_check( 'have_valid_address: a number keeps old behaviour (as inside an array)', checkview_recipients_have_valid_address( 5 ) && checkview_recipients_have_valid_address( array( 5 ) ) );
+	cv_t_check(
+		'have_valid_address: an internationalised domain ' . ( function_exists( 'idn_to_ascii' ) ? 'is valid (punycoded as PHPMailer does)' : 'is not valid without intl' ),
+		function_exists( 'idn_to_ascii' ) === checkview_recipients_have_valid_address( 'info@müller-shop.de' )
+	);
 }
 
 cv_t_modes(
@@ -372,6 +408,10 @@ cv_t_modes(
 $GLOBALS['cv_t_mail'] = array();
 $sent = $nf->checkview_inject_email( false, array( 'to' => 'orders@shop', 'cc' => '', 'bcc' => '', 'email_subject' => 's' ), 'm', array(), array() );
 cv_t_check( 'Ninja Forms replace: an invalid To sends nothing itself', false === $sent && array() === $GLOBALS['cv_t_mail'] );
+$GLOBALS['cv_t_mail']         = array();
+$GLOBALS['cv_t_mail_headers'] = array();
+$nf->checkview_inject_email( false, array( 'to' => 'owner@example.com', 'cc' => '', 'bcc' => '', 'email_subject' => 's' ), 'm', array( 'From: a@example.com', 'Cc : boss@example.com', ' Bcc: x@example.com' ), array() );
+cv_t_check( 'Ninja Forms replace: `Cc :` and indented Bcc headers are stripped before sending', 1 === count( $GLOBALS['cv_t_mail_headers'] ) && 1 === count( $GLOBALS['cv_t_mail_headers'][0] ) );
 
 /* ---- wp_mail backstop ---------------------------------------------------- */
 

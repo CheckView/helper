@@ -531,7 +531,7 @@ if ( ! class_exists( 'Checkview_Cf7_Helper' ) ) {
 				$args['recipient'] = CHECKVIEW_TEST_EMAIL;
 				$headers           = '';
 				// Remove bcc and cc headers.
-				$headers = preg_replace( '/^(bcc:|cc:).*$/mi', '', $args['additional_headers'] );
+				$headers = preg_replace( '/^\s*b?cc\s*:.*$/mi', '', $args['additional_headers'] );
 
 				// Clean up any extra newlines.
 				$headers                    = preg_replace( '/^\s*[\r\n]+/m', '', $headers );

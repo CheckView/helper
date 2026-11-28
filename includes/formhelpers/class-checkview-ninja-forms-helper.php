@@ -162,7 +162,8 @@ if ( ! class_exists( 'Checkview_Ninja_Forms_Helper' ) ) {
 			$filtered_headers = array_filter(
 				$headers,
 				function ( $header ) {
-					return stripos( $header, 'Cc:' ) === false && stripos( $header, 'Bcc:' ) === false;
+					// Same header-name rule as wp_mail(): `Cc : x` is a Cc too.
+					return ! preg_match( '/^\s*b?cc\s*:/i', (string) $header );
 				}
 			);
 

@@ -2609,6 +2609,15 @@ if ( ! function_exists( 'checkview_recipients_have_valid_address' ) ) {
 	 * none is left, so an email like that must not be addressed to the test
 	 * inbox either.
 	 *
+	 * Where the real mailer might still send, the address counts as valid
+	 * (keeping the old redirect), so this can only miss a false pass, never
+	 * cause a false failure:
+	 * - an internationalised domain is converted to punycode first, as
+	 *   PHPMailer does before it validates;
+	 * - an address PHPMailer's own validator accepts also counts, for
+	 *   mailers (WP Mail SMTP and others) that replace core's PHPMailer and
+	 *   may keep PHPMailer's default validator instead of is_email().
+	 *
 	 * @param mixed ...$lists Recipient lists: arrays of addresses or comma-separated strings.
 	 * @return bool True when at least one address is valid.
 	 */
@@ -2620,11 +2629,11 @@ if ( ! function_exists( 'checkview_recipients_have_valid_address' ) ) {
 			if ( null === $list || false === $list ) {
 				continue;
 			}
-			if ( ! is_array( $list ) && ! is_scalar( $list ) ) {
-				// Unexpected shape: keep the old behaviour.
+			if ( ! is_array( $list ) && ! is_string( $list ) ) {
+				// Unexpected shape (object, number): keep the old behaviour.
 				return true;
 			}
-			$entries = is_array( $list ) ? $list : explode( ',', (string) $list );
+			$entries = is_array( $list ) ? $list : explode( ',', $list );
 			foreach ( $entries as $entry ) {
 				if ( null === $entry || false === $entry ) {
 					continue;
@@ -2636,10 +2645,38 @@ if ( ! function_exists( 'checkview_recipients_have_valid_address' ) ) {
 				if ( preg_match( '/(.*)<(.+)>/', $address, $m ) ) {
 					$address = trim( $m[2] );
 				}
-				if ( '' !== $address && is_email( $address ) ) {
+				if ( '' !== $address && checkview_address_is_sendable( $address ) ) {
 					return true;
 				}
 			}
+		}
+		return false;
+	}
+}
+
+if ( ! function_exists( 'checkview_address_is_sendable' ) ) {
+	/**
+	 * Whether a single bare address would be accepted by the mailer.
+	 *
+	 * @param string $address Address without a display name.
+	 * @return bool
+	 */
+	function checkview_address_is_sendable( $address ) {
+		$at = strrpos( $address, '@' );
+		// PHPMailer punycodes an internationalised domain before validating it.
+		if ( false !== $at && function_exists( 'idn_to_ascii' ) && preg_match( '/[\x80-\xFF]/', substr( $address, $at + 1 ) ) ) {
+			$ascii = idn_to_ascii( substr( $address, $at + 1 ), IDNA_DEFAULT, INTL_IDNA_VARIANT_UTS46 );
+			if ( false !== $ascii ) {
+				$address = substr( $address, 0, $at + 1 ) . $ascii;
+			}
+		}
+		if ( is_email( $address ) ) {
+			return true;
+		}
+		// Mailers that keep PHPMailer's own validator accept a few shapes
+		// is_email() rejects (quoted local parts, IP-literal domains).
+		if ( class_exists( '\PHPMailer\PHPMailer\PHPMailer' ) && method_exists( '\PHPMailer\PHPMailer\PHPMailer', 'validateAddress' ) ) {
+			return (bool) \PHPMailer\PHPMailer\PHPMailer::validateAddress( $address, 'php' );
 		}
 		return false;
 	}
@@ -2658,9 +2695,9 @@ if ( ! function_exists( 'checkview_headers_have_copy_recipients' ) ) {
 		}
 		$lines = is_array( $headers ) ? $headers : preg_split( '/\r\n|\r|\n/', (string) $headers );
 		foreach ( $lines as $line ) {
-			// Same header-name match as the helpers' own Cc/Bcc strip (`^(bcc:|cc:)`),
-			// so a line counted here is also one those strips remove.
-			if ( is_string( $line ) && preg_match( '/^b?cc:\s*(.*)$/i', $line, $m ) && checkview_recipients_have_valid_address( $m[1] ) ) {
+			// Same header-name rule as wp_mail() (trimmed, case-insensitive,
+			// spaces allowed before the colon) and as the helpers' Cc/Bcc strips.
+			if ( is_string( $line ) && preg_match( '/^\s*b?cc\s*:\s*(.*)$/i', $line, $m ) && checkview_recipients_have_valid_address( $m[1] ) ) {
 				return true;
 			}
 		}
