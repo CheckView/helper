@@ -588,6 +588,15 @@ if ( ! class_exists( 'Checkview_Elementor_Helper' ) ) {
 				return $fields;
 			}
 
+			// Elementor sends whatever this filter returns, with no recipient
+			// check. If To, Cc and Bcc hold no valid address (blank, or a
+			// shortcode that did not render an address), wp_mail() sends
+			// nothing, so leave it instead of sending it to the test inbox.
+			if ( checkview_guard_unaddressed_email() && ! checkview_recipients_have_valid_address( $fields['email_to'] ?? '', $fields['email_to_cc'] ?? '', $fields['email_to_bcc'] ?? '' ) ) {
+				checkview_log_no_recipients( 'Elementor', $fields['email_to'] ?? '' );
+				return $fields;
+			}
+
 			// New: append-mode branch — deliver to BOTH the real recipients and
 			// the test inbox. `email_to` is a comma-separated string here.
 			// CC/BCC are read out of $fields AFTER this filter runs, so leaving

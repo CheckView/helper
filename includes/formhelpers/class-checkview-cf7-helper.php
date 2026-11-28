@@ -502,6 +502,19 @@ if ( ! class_exists( 'Checkview_Cf7_Helper' ) ) {
 		 * @return array
 		 */
 		public function checkview_inject_email( $args ) {
+			// CF7 sends whatever this filter returns, with no recipient check.
+			// With no valid To, Cc or Bcc address (blank, or a mail-tag left
+			// unreplaced) wp_mail() sends nothing and the visitor sees CF7's
+			// sending error, so leave such an email instead of sending it to
+			// the test inbox.
+			// CF7 strips line breaks from the recipient after this filter
+			// (wpcf7_strip_newline), so check it the same way.
+			$recipient = str_replace( array( "\r", "\n" ), '', (string) ( $args['recipient'] ?? '' ) );
+			if ( checkview_guard_unaddressed_email() && ! checkview_recipients_have_valid_address( $recipient ) && ! checkview_headers_have_copy_recipients( $args['additional_headers'] ?? '' ) ) {
+				checkview_log_no_recipients( 'Contact Form 7', $recipient );
+				return $args;
+			}
+
 			// New: append-mode branch — deliver to BOTH real recipient and test inbox.
 			// CF7's $args['recipient'] is a comma-separated string. additional_headers
 			// is a CRLF-separated string.
@@ -521,7 +534,7 @@ if ( ! class_exists( 'Checkview_Cf7_Helper' ) ) {
 				$args['recipient'] = CHECKVIEW_TEST_EMAIL;
 				$headers           = '';
 				// Remove bcc and cc headers.
-				$headers = preg_replace( '/^(bcc:|cc:).*$/mi', '', $args['additional_headers'] );
+				$headers = preg_replace( '/^\s*b?cc\s*:.*$/mi', '', (string) ( $args['additional_headers'] ?? '' ) );
 
 				// Clean up any extra newlines.
 				$headers                    = preg_replace( '/^\s*[\r\n]+/m', '', $headers );

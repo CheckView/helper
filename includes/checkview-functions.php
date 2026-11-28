@@ -115,14 +115,20 @@ if ( ! function_exists( 'checkview_validate_jwt_token' ) ) {
 	 * @since 1.0.0
 	 *
 	 * @param string $token JWT to valiate.
+	 * @param bool   $log   Whether to write a log line when the token is refused.
+	 *                      Since 2.6.3. A replacement of this function must
+	 *                      honour it: the application password opt-out passes
+	 *                      false so made-up tokens cannot flood the log.
 	 * @return string|bool|WP_Error
 	 */
-	function checkview_validate_jwt_token( $token ) {
+	function checkview_validate_jwt_token( $token, $log = true ) {
 
 		$key = checkview_get_publickey();
 		// Ensure the header is present.
 		if ( ! $token ) {
-			Checkview_Admin_Logs::add( 'api-logs', 'Authorization header not found.' );
+			if ( $log ) {
+				Checkview_Admin_Logs::add( 'api-logs', 'Authorization header not found.' );
+			}
 			return new WP_Error(
 				'no_auth_header',
 				'There was a technical error while processing your request.',
@@ -132,7 +138,9 @@ if ( ! function_exists( 'checkview_validate_jwt_token' ) ) {
 
 		// Check if it contains a Bearer token.
 		if ( strpos( $token, 'Bearer ' ) !== 0 ) {
-			Checkview_Admin_Logs::add( 'api-logs', 'Authorization header must start with "Bearer "' );
+			if ( $log ) {
+				Checkview_Admin_Logs::add( 'api-logs', 'Authorization header must start with "Bearer "' );
+			}
 			return new WP_Error(
 				'invalid_auth_header',
 				'There was a technical error while processing your request.',
@@ -155,7 +163,9 @@ if ( ! function_exists( 'checkview_validate_jwt_token' ) ) {
 			JWT::$leeway = $leeway;
 			$decoded     = JWT::decode( $token, new Key( $key, 'RS256' ) );
 		} catch ( \Throwable $e ) {
-			Checkview_Admin_Logs::add( 'api-logs', esc_html( $e->getMessage() ) );
+			if ( $log ) {
+				Checkview_Admin_Logs::add( 'api-logs', esc_html( $e->getMessage() ) );
+			}
 			return new WP_Error(
 				'invalid_auth_header',
 				'There was a technical error while processing your request.',
@@ -176,19 +186,25 @@ if ( ! function_exists( 'checkview_validate_jwt_token' ) ) {
 
 		// If a URL mismatch, return false.
 		if ( false === strpos( $site_url, checkview_ensure_trailing_slash( $jwt['websiteUrl'] ) ) ) {
-			Checkview_Admin_Logs::add( 'api-logs', 'Invalid site url.' );
+			if ( $log ) {
+				Checkview_Admin_Logs::add( 'api-logs', 'Invalid site url.' );
+			}
 			return false;
 		}
 
 		// If token expired, return false.
 		if ( $jwt['exp'] < time() ) {
-			Checkview_Admin_Logs::add( 'api-logs', 'Token Expired.' );
+			if ( $log ) {
+				Checkview_Admin_Logs::add( 'api-logs', 'Token Expired.' );
+			}
 			return false;
 		}
 
 		// Reject tokens without a nonce.
 		if ( empty( $jwt['_checkview_nonce'] ) ) {
-			Checkview_Admin_Logs::add( 'api-logs', 'Nonce Absent.' );
+			if ( $log ) {
+				Checkview_Admin_Logs::add( 'api-logs', 'Nonce Absent.' );
+			}
 			return false;
 		}
 
@@ -2543,6 +2559,208 @@ if ( ! function_exists( 'checkview_recipients_contain_test_email' ) ) {
 	}
 }
 
+if ( ! function_exists( 'checkview_recipients_are_empty' ) ) {
+	/**
+	 * Whether every recipient list given names nobody.
+	 *
+	 * When a form or store resolves an email to nobody (for example routing
+	 * rules that match no address), a real submission sends nothing. The
+	 * recipient filters must then leave the email alone: putting the test
+	 * inbox in would make the test pass for an email no visitor ever gets.
+	 *
+	 * Pass every list the plugin still sends to on its own. Some plugins send
+	 * to Cc or Bcc when To is empty, and that email does go out, so it keeps
+	 * being redirected to the test inbox.
+	 *
+	 * @param mixed ...$lists Recipient lists: arrays of addresses, or strings separated by commas or semicolons.
+	 * @return bool True when no list holds a non-blank entry.
+	 */
+	function checkview_recipients_are_empty( ...$lists ) {
+		foreach ( $lists as $list ) {
+			if ( ! is_array( $list ) && null !== $list && ! is_scalar( $list ) ) {
+				// An object or other unexpected shape: count it as a recipient
+				// so the old behaviour stays (and a cast cannot fatal).
+				return false;
+			}
+			$entries = is_array( $list ) ? $list : preg_split( '/[,;]/', (string) $list );
+			foreach ( $entries as $entry ) {
+				if ( null === $entry || false === $entry ) {
+					continue;
+				}
+				// Anything that is not a blank string counts as a recipient,
+				// so an unexpected shape keeps the old behaviour.
+				if ( ! is_string( $entry ) || '' !== trim( $entry ) ) {
+					return false;
+				}
+			}
+		}
+		return true;
+	}
+}
+
+if ( ! function_exists( 'checkview_recipients_have_valid_address' ) ) {
+	/**
+	 * Whether any recipient list holds an address wp_mail() would send to.
+	 *
+	 * Mirrors wp_mail(): a string is split on commas, an address is taken
+	 * from `Name <address>` with the same pattern, and each one is checked
+	 * with is_email(), which core (and FluentSMTP) set as PHPMailer's
+	 * validator. wp_mail() skips addresses that fail and sends nothing when
+	 * none is left, so an email like that must not be addressed to the test
+	 * inbox either.
+	 *
+	 * Where the real mailer might still send, the address counts as valid
+	 * (keeping the old redirect), so this can only miss a false pass, never
+	 * cause a false failure:
+	 * - an internationalised domain is converted to punycode first, as
+	 *   PHPMailer does before it validates;
+	 * - an address PHPMailer's default validator would accept (its 'php'
+	 *   pattern: no CR/LF, then FILTER_VALIDATE_EMAIL) also counts, for
+	 *   mailers (WP Mail SMTP and others) that replace core's PHPMailer and
+	 *   may keep that validator instead of is_email(). The check is inlined:
+	 *   referencing the PHPMailer class here would autoload it before core's
+	 *   require_once and can fatal a site that bundles another copy.
+	 *
+	 * @param mixed ...$lists Recipient lists: arrays of addresses or comma-separated strings.
+	 * @return bool True when at least one address is valid.
+	 */
+	function checkview_recipients_have_valid_address( ...$lists ) {
+		if ( ! function_exists( 'is_email' ) ) {
+			return true;
+		}
+		foreach ( $lists as $list ) {
+			if ( null === $list || false === $list ) {
+				continue;
+			}
+			if ( ! is_array( $list ) && ! is_string( $list ) ) {
+				// Unexpected shape (object, number): keep the old behaviour.
+				return true;
+			}
+			$entries = is_array( $list ) ? $list : explode( ',', $list );
+			foreach ( $entries as $entry ) {
+				if ( null === $entry || false === $entry ) {
+					continue;
+				}
+				if ( ! is_string( $entry ) ) {
+					return true;
+				}
+				$address = trim( $entry );
+				if ( preg_match( '/(.*)<(.+)>/', $address, $m ) ) {
+					$address = trim( $m[2] );
+				}
+				if ( '' !== $address && checkview_address_is_sendable( $address ) ) {
+					return true;
+				}
+			}
+		}
+		return false;
+	}
+}
+
+if ( ! function_exists( 'checkview_address_is_sendable' ) ) {
+	/**
+	 * Whether a single bare address would be accepted by the mailer.
+	 *
+	 * @param string $address Address without a display name.
+	 * @return bool
+	 */
+	function checkview_address_is_sendable( $address ) {
+		$at = strrpos( $address, '@' );
+		// PHPMailer punycodes an internationalised domain before validating it.
+		// Its conversion is stricter (charset check, STD3 rules), so this can
+		// only accept more, which keeps the old redirect. A site whose charset
+		// is not UTF-8 is the one exception and is rare enough to leave.
+		if ( false !== $at && function_exists( 'idn_to_ascii' ) && defined( 'IDNA_DEFAULT' ) && defined( 'INTL_IDNA_VARIANT_UTS46' ) && preg_match( '/[\x80-\xFF]/', substr( $address, $at + 1 ) ) ) {
+			$ascii = idn_to_ascii( substr( $address, $at + 1 ), IDNA_DEFAULT, INTL_IDNA_VARIANT_UTS46 );
+			if ( false !== $ascii ) {
+				$address = substr( $address, 0, $at + 1 ) . $ascii;
+			}
+		}
+		if ( is_email( $address ) ) {
+			return true;
+		}
+		// PHPMailer's default 'php' validator, inlined (see above). It accepts
+		// a few shapes is_email() rejects (quoted local parts, IP literals).
+		if ( false !== strpos( $address, "\n" ) || false !== strpos( $address, "\r" ) ) {
+			return false;
+		}
+		return false !== filter_var( $address, FILTER_VALIDATE_EMAIL );
+	}
+}
+
+if ( ! function_exists( 'checkview_headers_have_copy_recipients' ) ) {
+	/**
+	 * Whether email headers carry a Cc or Bcc line with an address wp_mail() would send to.
+	 *
+	 * @param array|string $headers Headers as an array of lines or a newline-separated string.
+	 * @return bool
+	 */
+	function checkview_headers_have_copy_recipients( $headers ) {
+		if ( ! is_array( $headers ) && null !== $headers && ! is_scalar( $headers ) ) {
+			return false;
+		}
+		$lines = is_array( $headers ) ? $headers : preg_split( '/\r\n|\r|\n/', (string) $headers );
+		foreach ( $lines as $line ) {
+			// Same header-name rule as wp_mail() (trimmed, case-insensitive,
+			// spaces allowed before the colon) and as the helpers' Cc/Bcc strips.
+			if ( is_string( $line ) && preg_match( '/^\s*b?cc\s*:\s*(.*)$/i', $line, $m ) && checkview_recipients_have_valid_address( $m[1] ) ) {
+				return true;
+			}
+		}
+		return false;
+	}
+}
+
+if ( ! function_exists( 'checkview_guard_unaddressed_email' ) ) {
+	/**
+	 * Whether the recipient filters leave an email that reaches nobody alone.
+	 *
+	 * On by default: such an email is not addressed to the test inbox, so the
+	 * email test fails as a real submission would. Emergency rollback to the
+	 * old redirect: `define( 'CHECKVIEW_GUARD_UNADDRESSED_EMAIL', false );` in
+	 * wp-config.php, or the `checkview_guard_unaddressed_email` filter.
+	 *
+	 * @return bool
+	 */
+	function checkview_guard_unaddressed_email() {
+		$on = ! ( defined( 'CHECKVIEW_GUARD_UNADDRESSED_EMAIL' ) && false === CHECKVIEW_GUARD_UNADDRESSED_EMAIL );
+		return (bool) apply_filters( 'checkview_guard_unaddressed_email', $on );
+	}
+}
+
+if ( ! function_exists( 'checkview_log_no_recipients' ) ) {
+	/**
+	 * Logs why a test email was left unaddressed, without any address.
+	 *
+	 * Says whether the To was blank or filled in with no valid address, and
+	 * names the test. The wp_mail backstop's line is skipped once a form
+	 * helper has logged in the same request, since it is usually the same
+	 * email reaching wp_mail().
+	 *
+	 * @param string $source Plugin or email name for the log line.
+	 * @param mixed  $to     The To list as the plugin had it (not logged).
+	 * @return void
+	 */
+	function checkview_log_no_recipients( $source, $to = null ) {
+		static $helper_logged = false;
+		$is_backstop          = 'wp_mail backstop' === $source;
+		if ( $is_backstop && $helper_logged ) {
+			return;
+		}
+		if ( ! $is_backstop ) {
+			$helper_logged = true;
+		}
+		if ( checkview_recipients_are_empty( $to ) ) {
+			$what = 'the To field is blank';
+		} else {
+			$count = is_array( $to ) ? count( $to ) : count( explode( ',', (string) ( is_scalar( $to ) ? $to : '' ) ) );
+			$what  = 'the To field holds ' . $count . ' ' . ( 1 === $count ? 'entry' : 'entries' ) . ' but none is a valid email address';
+		}
+		$test_id = function_exists( 'checkview_get_test_id' ) ? checkview_get_test_id() : '';
+		Checkview_Admin_Logs::add( 'ip-logs', 'CheckView test ' . ( $test_id ? $test_id : '(unknown)' ) . ', ' . $source . ': ' . $what . ' and there is no valid Cc or Bcc, so the email was left unaddressed; a real submission would send it to nobody. Check the recipient setting on this form.' );
+	}
+}
+
 if ( ! function_exists( 'checkview_append_test_email_string' ) ) {
 	/**
 	 * Appends CHECKVIEW_TEST_EMAIL to a comma-separated recipient string with dedup.
@@ -3066,3 +3284,154 @@ if ( ! function_exists( 'checkview_sweep_test_users' ) ) {
 		}
 	}
 }
+
+if ( ! function_exists( 'checkview_auth_header_for_request' ) ) {
+	/**
+	 * Picks the token a CheckView API request authenticates with.
+	 *
+	 * The `Authorization` header comes first, so nothing changes for sites that
+	 * work today. On a site behind HTTP basic auth that header carries the
+	 * gate's own `Basic` credentials, and some Apache setups drop it before
+	 * PHP, so CheckView also sends the same token as the `_checkview_token`
+	 * parameter, in the query string. The token stays single use: the
+	 * permission check consumes its nonce whichever way it arrived.
+	 *
+	 * @since 2.6.3
+	 *
+	 * @param string $auth_header Sanitized `Authorization` header, or ''.
+	 * @param mixed  $query_token The `_checkview_token` request parameter, if any.
+	 * @return string `Bearer <token>`, or the header unchanged.
+	 */
+	function checkview_auth_header_for_request( $auth_header, $query_token ) {
+		if ( 0 === strpos( $auth_header, 'Bearer ' ) || ! is_string( $query_token ) ) {
+			return $auth_header;
+		}
+
+		$query_token = trim( sanitize_text_field( $query_token ) );
+		if ( '' === $query_token ) {
+			return $auth_header;
+		}
+
+		return 0 === strpos( $query_token, 'Bearer ' ) ? $query_token : 'Bearer ' . $query_token;
+	}
+}
+
+if ( ! function_exists( 'checkview_request_token_for_app_password_check' ) ) {
+	/**
+	 * The CheckView token a request carries, if any, as `Bearer <token>`.
+	 *
+	 * The test browser sends the `X-CheckView-Signature` header on every
+	 * same-site request; CheckView's servers send `_checkview_token` in the
+	 * query string (never in a POST body, so only the query string is read).
+	 * When both are present the header is used, even if it later fails to
+	 * validate. Presence only: the caller validates it.
+	 *
+	 * @since 2.6.3
+	 *
+	 * @return string `Bearer <token>`, or '' when the request carries none.
+	 */
+	function checkview_request_token_for_app_password_check() {
+		$token = '';
+		if ( ! empty( $_SERVER['HTTP_X_CHECKVIEW_SIGNATURE'] ) ) {
+			// phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized -- JWT; validated by checkview_validate_jwt_token().
+			$token = trim( wp_unslash( $_SERVER['HTTP_X_CHECKVIEW_SIGNATURE'] ) );
+		} elseif ( isset( $_GET['_checkview_token'] ) && is_string( $_GET['_checkview_token'] ) ) { // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Signed token from CheckView, validated by the caller.
+			$token = trim( sanitize_text_field( wp_unslash( $_GET['_checkview_token'] ) ) ); // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Signed token from CheckView, validated by the caller.
+		}
+
+		if ( '' === $token ) {
+			return '';
+		}
+
+		return 0 === strpos( $token, 'Bearer ' ) ? $token : 'Bearer ' . $token;
+	}
+}
+
+if ( ! function_exists( 'checkview_skip_application_password_for_checkview' ) ) {
+	/**
+	 * Stops WordPress reading a CheckView request's basic-auth credentials as
+	 * an application password login.
+	 *
+	 * On a site behind HTTP basic auth every request carries the gate's
+	 * `Authorization: Basic` header. If the site has ever created an
+	 * application password and something asks for the current user during a
+	 * REST request (WooCommerce does on every one), WordPress tries to log in
+	 * with those credentials, fails, and answers 401.
+	 *
+	 * On CheckView's own routes that error is already discarded for a
+	 * logged-out request (Checkview_Admin::bypass_rest_authentication()), so
+	 * this filter is not what lets CheckView's helper calls in. It is for
+	 * CheckView requests to other REST routes while they carry the gate's
+	 * credentials: the site-info call to the REST index when a site is added,
+	 * and the test browser's requests, for example a form that submits over
+	 * the REST API. On CheckView's own routes it means a call no longer counts as a failed
+	 * login, and never runs as a user whose application password happens to
+	 * match the gate's credentials.
+	 *
+	 * This turns that login attempt off only for a request that carries a valid
+	 * CheckView signature or token. Every other request is returned untouched,
+	 * so the site's own application password users are unaffected. The filter
+	 * never picks a user; at most it leaves this request anonymous. The token's
+	 * nonce is not consumed here: the permission check does that.
+	 *
+	 * Anyone can send a Basic header with a made-up token, so a refused token
+	 * writes at most one log line per 10 minutes, and a token is validated at
+	 * most once per request.
+	 *
+	 * @since 2.6.3
+	 *
+	 * @param bool $is_api_request Whether WordPress treats this as an API request.
+	 * @return bool
+	 */
+	function checkview_skip_application_password_for_checkview( $is_api_request ) {
+		static $running    = false;
+		static $last_check = null;
+		static $last_valid = false;
+
+		// Page views, and calls outside WordPress's own lookup of the current
+		// user (for example a route that calls wp_authenticate() with posted
+		// credentials), are left alone.
+		if ( ! $is_api_request || ! doing_filter( 'determine_current_user' ) ) {
+			return $is_api_request;
+		}
+
+		// Something asked for the current user again while this request's
+		// CheckView token was being validated (for example a plugin hooked into
+		// the public key download). Letting that nested login attempt run would
+		// fail on the gate's credentials and bring back the 401, so turn it off
+		// too. This can only leave the request anonymous.
+		if ( $running ) {
+			return false;
+		}
+
+		$token = checkview_request_token_for_app_password_check();
+		if ( '' === $token ) {
+			return $is_api_request;
+		}
+
+		// WordPress can look up the current user more than once per request.
+		// The request's start time is part of the key so the answer never
+		// carries over to a later request in runtimes that keep PHP running
+		// between requests (worker modes).
+		$request_time = isset( $_SERVER['REQUEST_TIME_FLOAT'] ) ? (string) (float) $_SERVER['REQUEST_TIME_FLOAT'] : ''; // phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized -- Cast to float.
+		$this_check   = $request_time . '|' . $token;
+		if ( $this_check !== $last_check ) {
+			$running = true;
+			try {
+				$nonce = checkview_validate_jwt_token( $token, false );
+			} finally {
+				$running = false;
+			}
+			$last_check = $this_check;
+			$last_valid = is_string( $nonce ) && '' !== $nonce;
+
+			if ( ! $last_valid && ! get_transient( 'checkview_app_password_skip_refused_logged' ) ) {
+				set_transient( 'checkview_app_password_skip_refused_logged', 1, 10 * MINUTE_IN_SECONDS );
+				Checkview_Admin_Logs::add( 'api-logs', 'A request with HTTP basic auth credentials carried a CheckView token that did not validate, so WordPress was left to check the credentials as an application password. Repeats are not logged for 10 minutes.' );
+			}
+		}
+
+		return $last_valid ? false : $is_api_request;
+	}
+}
+add_filter( 'application_password_is_api_request', 'checkview_skip_application_password_for_checkview' );

@@ -357,11 +357,14 @@ class Checkview_Woo_Automated_Testing {
 				3
 			);
 
+			// PHP_INT_MAX so the test sees the final recipient list: a store
+			// snippet that adds or changes the recipient at a normal priority
+			// runs first, and cannot add a real address after the test inbox.
 			$this->loader->add_filter(
 				'woocommerce_email_recipient_new_order',
 				$this,
 				'checkview_filter_admin_emails',
-				10,
+				PHP_INT_MAX,
 				3
 			);
 
@@ -369,7 +372,7 @@ class Checkview_Woo_Automated_Testing {
 				'woocommerce_email_recipient_failed_order',
 				$this,
 				'checkview_filter_admin_emails',
-				10,
+				PHP_INT_MAX,
 				3
 			);
 
@@ -381,7 +384,7 @@ class Checkview_Woo_Automated_Testing {
 				'woocommerce_email_recipient_customer_completed_order',
 				$this,
 				'checkview_filter_admin_emails',
-				10,
+				PHP_INT_MAX,
 				3
 			);
 
@@ -1310,6 +1313,25 @@ class Checkview_Woo_Automated_Testing {
 		}
 
 		if ( $is_test_order ) {
+			// WooCommerce drops addresses that fail is_email() after this filter
+			// and skips the email when none is left (WC_Email::send_notification).
+			// When the store's recipient is blank or invalid, leave it so the
+			// test fails as a real order would, instead of sending to the test inbox.
+			$valid_recipients = array_filter( array_map( 'trim', explode( ',', (string) $recipient ) ), 'is_email' );
+			if ( checkview_guard_unaddressed_email() && empty( $valid_recipients ) ) {
+				// Say when another filter changed the stored recipient, so a
+				// store snippet that blanks it for test orders is easy to spot.
+				// Counts only: the address itself is not logged.
+				$configured = ( is_object( $email ) && isset( $email->recipient ) && is_scalar( $email->recipient ) ) ? (string) $email->recipient : null;
+				$changed    = '';
+				if ( null !== $configured && $configured !== (string) $recipient ) {
+					$stored  = count( array_filter( array_map( 'trim', explode( ',', $configured ) ), 'is_email' ) );
+					$changed = ' (another filter changed the stored recipient: ' . $stored . ' valid stored, 0 after filters)';
+				}
+				checkview_log_no_recipients( 'WooCommerce ' . ( is_object( $email ) && isset( $email->id ) ? $email->id : 'email' ) . $changed, $recipient );
+				return $recipient;
+			}
+
 			// New: append-mode — deliver to BOTH real recipient and test inbox.
 			if ( checkview_should_allow_original_recipients() && defined( 'CHECKVIEW_TEST_EMAIL' ) ) {
 				return checkview_append_test_email_string( $recipient );

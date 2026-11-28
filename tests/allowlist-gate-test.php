@@ -236,6 +236,9 @@ function wp_parse_url( $url, $component = -1 ) {
 function rest_get_url_prefix() {
 	return 'wp-json';
 }
+function is_email( $email ) {
+	return (bool) filter_var( trim( (string) $email ), FILTER_VALIDATE_EMAIL );
+}
 function is_plugin_active( $plugin ) {
 	return in_array( $plugin, array( 'defender-security/wp-defender.php', 'better-wp-security/better-wp-security.php' ), true );
 }

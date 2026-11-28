@@ -123,6 +123,15 @@ if ( ! class_exists( 'Checkview_Ninja_Forms_Helper' ) ) {
 		 * @return bool
 		 */
 		public function checkview_inject_email( $sent, $action_settings, $message, $headers, $attachments ) {
+			// This filter runs before Ninja Forms checks any recipient. With no
+			// valid To, Cc or Bcc address a real submission sends nothing, so
+			// hand the send back to Ninja Forms (its wp_mail() then has no one
+			// to send to) instead of sending to the test inbox below.
+			if ( checkview_guard_unaddressed_email() && ! checkview_recipients_have_valid_address( $action_settings['to'] ?? '', $action_settings['cc'] ?? '', $action_settings['bcc'] ?? '' ) ) {
+				checkview_log_no_recipients( 'Ninja Forms', $action_settings['to'] ?? '' );
+				return $sent;
+			}
+
 			// Append-mode branch — let Ninja Forms' own pipeline send ONE email
 			// with merged recipients (real + CHECKVIEW_TEST_EMAIL) instead of the
 			// direct wp_mail() to CHECKVIEW_TEST_EMAIL only that replace-mode does
@@ -153,7 +162,8 @@ if ( ! class_exists( 'Checkview_Ninja_Forms_Helper' ) ) {
 			$filtered_headers = array_filter(
 				$headers,
 				function ( $header ) {
-					return stripos( $header, 'Cc:' ) === false && stripos( $header, 'Bcc:' ) === false;
+					// Same header-name rule as wp_mail(): `Cc : x` is a Cc too.
+					return ! preg_match( '/^\s*b?cc\s*:/i', (string) $header );
 				}
 			);
 

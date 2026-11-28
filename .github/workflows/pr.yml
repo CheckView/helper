@@ -22,6 +22,8 @@ jobs:
       - run: php tests/allowlist-gate-test.php
       - run: php tests/order-stamp-ownership-test.php
         if: ${{ !cancelled() }}
+      - run: php tests/basic-auth-test.php
+        if: ${{ !cancelled() }}
 
   deploy-scripts:
     name: Deploy scripts
@@ -39,9 +41,9 @@ jobs:
       # The deploy workflows run these files with `node file.ts`, which only
       # strips types, so type-check them here.
       - run: pnpm exec tsc -p scripts/tsconfig.json --noEmit
-      # The Pressable installer names the plugin folder after the repo in this
-      # URL, so it must stay `inspry/checkview` (see scripts/pressable.ts).
-      - run: grep -q "github.com/inspry/checkview/archive/refs/heads/quality.zip" scripts/pressable.ts
+      # The same pre-flight the Pressable deploy runs: the download URL must
+      # stay `inspry/checkview` and still resolve to this repo's quality zip.
+      - run: bash scripts/check-download-url.sh
       # Compile (never run) each script the way `node file.ts` loads it.
       - run: |
           node --no-warnings -e '

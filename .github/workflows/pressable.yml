@@ -28,6 +28,11 @@ jobs:
         with:
           node-version: '24'
 
+      # Stops the job before any site is touched if the deploy's download URL
+      # is wrong or no longer resolves (details in the script).
+      - name: Check the download URL
+        run: bash scripts/check-download-url.sh
+
       # Node 24 runs the TypeScript directly (type stripping), so nothing is
       # installed into the job that holds the deploy secrets.
       - name: Run script
