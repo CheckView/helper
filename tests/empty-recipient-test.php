@@ -184,6 +184,26 @@ function checkview_should_allow_original_recipients() {
 	return $GLOBALS['cv_t_append'];
 }
 
+// Record every class the autoloader is asked for, so a test can prove the
+// helpers never trigger loading PHPMailer (that could fatal a site where a
+// plugin bundles its own copy).
+$GLOBALS['cv_t_autoload'] = array();
+spl_autoload_register(
+	function ( $class ) {
+		$GLOBALS['cv_t_autoload'][] = $class;
+	}
+);
+// Formidable's own decoder, as on a real site (JSON only; anything else is
+// returned unchanged, like FrmAppHelper::maybe_json_decode()).
+class FrmAppHelper {
+	public static $calls = 0;
+	public static function maybe_json_decode( $v ) {
+		++self::$calls;
+		$d = is_string( $v ) ? json_decode( $v, true ) : null;
+		return is_array( $d ) ? $d : $v;
+	}
+}
+
 require CHECKVIEW_INC_DIR . 'checkview-functions.php';
 foreach ( array( 'forminator', 'formidable', 'cf7', 'elementor', 'ninja-forms', 'wpforms' ) as $cv_t_slug ) {
 	require CHECKVIEW_INC_DIR . "formhelpers/class-checkview-$cv_t_slug-helper.php";
@@ -400,7 +420,7 @@ if ( function_exists( 'checkview_recipients_have_valid_address' ) ) {
 	cv_t_check( 'have_valid_address: <a@b.co> <> is not valid (as in core)', ! checkview_recipients_have_valid_address( '<owner@example.com> <>' ) );
 	cv_t_check( 'headers_have_copy_recipients: a Cc and Bcc packed into one element is not one', ! checkview_headers_have_copy_recipients( array( "Cc: boss@example.com\nBcc: evil@example.com" ) ) );
 	cv_t_check( 'headers_have_copy_recipients: X-Cc and Bcc-Note are not Cc/Bcc', ! checkview_headers_have_copy_recipients( "X-Cc: boss@example.com\nBcc-Note: boss@example.com" ) );
-	cv_t_check( 'the PHPMailer class is never loaded by these checks', ! class_exists( '\\PHPMailer\\PHPMailer\\PHPMailer', false ) );
+	cv_t_check( 'the PHPMailer class is never autoloaded by these checks', array() === preg_grep( '/^\\\\?PHPMailer\\\\/', $GLOBALS['cv_t_autoload'] ) );
 }
 
 cv_t_modes(
@@ -421,8 +441,9 @@ cv_t_modes(
 		cv_t_check( "Elementor $m: an invalid To is left as is", 'orders@shop' === $el->checkview_override_mail_fields( $base, null )['email_to'] );
 		cv_t_check( "Elementor $m: an invalid To but a valid Cc is redirected", cv_t_has_test( $el->checkview_override_mail_fields( array_merge( $base, array( 'email_to_cc' => 'boss@example.com' ) ), null )['email_to'] ) );
 		cv_t_check( "WPForms $m: an invalid Send To is left as is", ! cv_t_has_test( $wpf->checkview_inject_email( array( 'address' => array( 'orders@shop' ), 'replyto' => '' ) )['address'] ) );
-		// Formidable keeps the blank-only check: it can turn phone numbers into
-		// addresses after this filter, so a non-address To may still send.
+		// Formidable keeps the blank-only check: it post-processes the To
+		// after this filter (handle_phone_numbers, format_recipients), so a
+		// non-address To may still send.
 		cv_t_check( "Formidable $m: a non-blank To keeps old behaviour", cv_t_has_test( $frm->checkview_inject_email( array( '5550100142' ), array(), 1, array( 'email_key' => 501 ) ) ) );
 	}
 );
@@ -431,6 +452,13 @@ cv_t_check( 'CF7 replace: a `Cc :` header is stripped', false === stripos( $r['a
 $GLOBALS['cv_t_mail'] = array();
 $sent = $nf->checkview_inject_email( false, array( 'to' => 'orders@shop', 'cc' => '', 'bcc' => '', 'email_subject' => 's' ), 'm', array(), array() );
 cv_t_check( 'Ninja Forms replace: an invalid To sends nothing itself', false === $sent && array() === $GLOBALS['cv_t_mail'] );
+$GLOBALS['cv_t_mail'] = array();
+$nf->checkview_inject_email( false, array( 'to' => 'orders@shop', 'cc' => 'boss@example.com', 'bcc' => '', 'email_subject' => 's' ), 'm', array(), array() );
+cv_t_check( 'Ninja Forms replace: an invalid To but a valid Cc is sent to the test inbox', array( CHECKVIEW_TEST_EMAIL ) === $GLOBALS['cv_t_mail'] );
+// Forminator keeps the blank-only check because Forminator itself drops any
+// recipient that fails is_email() before this filter (get_admin_email_recipients).
+cv_t_check( 'Forminator: a non-blank list keeps old behaviour (Forminator validates itself)', cv_t_has_test( $fmn->checkview_inject_email( array( 'orders@shop' ) ) ) );
+cv_t_check( 'Formidable: action settings go through FrmAppHelper::maybe_json_decode() when it exists', FrmAppHelper::$calls > 0 );
 $GLOBALS['cv_t_mail']         = array();
 $GLOBALS['cv_t_mail_headers'] = array();
 $nf->checkview_inject_email( false, array( 'to' => 'owner@example.com', 'cc' => '', 'bcc' => '', 'email_subject' => 's' ), 'm', array( 'From: a@example.com', 'Cc : boss@example.com', ' Bcc: x@example.com' ), array() );

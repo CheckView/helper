@@ -67,6 +67,10 @@ if ( ! class_exists( 'Checkview_Mail_Redirect' ) ) {
 		 *   CHECKVIEW_TEST_EMAIL, but still strip Cc/Bcc.
 		 * - APPEND mode: skip if $to already contains CHECKVIEW_TEST_EMAIL.
 		 *
+		 * A third skip leaves an email alone when its To holds no address
+		 * wp_mail() would accept and it has no valid Cc/Bcc: nobody would get
+		 * it, so it must not reach the test inbox (see the comment in the method).
+		 *
 		 * @param mixed $atts wp_mail compact args (to/subject/message/headers/attachments).
 		 * @return mixed Modified args (or original if not applicable).
 		 */
