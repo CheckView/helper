@@ -24,6 +24,8 @@ jobs:
         if: ${{ !cancelled() }}
       - run: php tests/basic-auth-test.php
         if: ${{ !cancelled() }}
+      - run: php tests/empty-recipient-test.php
+        if: ${{ !cancelled() }}
 
   deploy-scripts:
     name: Deploy scripts
