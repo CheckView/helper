@@ -144,6 +144,14 @@ function is_email( $email ) {
 	}
 	return $email;
 }
+// Without ext-intl, stand in for idn_to_ascii() so the IDN branch still runs.
+if ( ! function_exists( 'idn_to_ascii' ) ) {
+	define( 'IDNA_DEFAULT', 0 );
+	define( 'INTL_IDNA_VARIANT_UTS46', 1 );
+	function idn_to_ascii( $domain ) {
+		return 'müller-shop.de' === $domain ? 'xn--mller-shop-9db.de' : false;
+	}
+}
 function maybe_unserialize( $v ) {
 	return is_string( $v ) && false !== @unserialize( $v ) ? unserialize( $v ) : $v;
 }
@@ -380,10 +388,19 @@ if ( function_exists( 'checkview_recipients_have_valid_address' ) ) {
 	cv_t_check( 'have_valid_address: uppercase and plus addressing', checkview_recipients_have_valid_address( 'Owner+Quotes@Example.COM' ) );
 	cv_t_check( 'have_valid_address: a trailing-dot domain is not one', ! checkview_recipients_have_valid_address( 'owner@example.com.' ) );
 	cv_t_check( 'have_valid_address: a number keeps old behaviour (as inside an array)', checkview_recipients_have_valid_address( 5 ) && checkview_recipients_have_valid_address( array( 5 ) ) );
-	cv_t_check(
-		'have_valid_address: an internationalised domain ' . ( function_exists( 'idn_to_ascii' ) ? 'is valid (punycoded as PHPMailer does)' : 'is not valid without intl' ),
-		function_exists( 'idn_to_ascii' ) === checkview_recipients_have_valid_address( 'info@müller-shop.de' )
-	);
+	cv_t_check( 'have_valid_address: an internationalised domain is valid (punycoded as PHPMailer does)', checkview_recipients_have_valid_address( 'info@müller-shop.de' ) );
+	cv_t_check( 'have_valid_address: an ASCII punycode domain is valid as is', checkview_recipients_have_valid_address( 'info@xn--mller-kva.de' ) );
+	cv_t_check( 'have_valid_address: a domain the converter rejects is not valid', ! checkview_recipients_have_valid_address( 'info@xn--ü.de' ) );
+	// PHPMailer's default 'php' validator (inlined) against is_email().
+	cv_t_check( 'have_valid_address: an IP-literal domain counts (PHPMailer default accepts it)', checkview_recipients_have_valid_address( 'user@[10.0.0.1]' ) );
+	cv_t_check( 'have_valid_address: a short address counts (PHPMailer default accepts it)', checkview_recipients_have_valid_address( 'a@b.c' ) );
+	cv_t_check( 'have_valid_address: a dotted-IP domain counts (is_email accepts it)', checkview_recipients_have_valid_address( 'user@192.168.0.1' ) );
+	cv_t_check( 'have_valid_address: a line break inside an address is not valid', ! checkview_recipients_have_valid_address( "\"a\nb\"@example.com" ) );
+	cv_t_check( 'have_valid_address: Name <> is not valid', ! checkview_recipients_have_valid_address( 'Name <>' ) );
+	cv_t_check( 'have_valid_address: <a@b.co> <> is not valid (as in core)', ! checkview_recipients_have_valid_address( '<owner@example.com> <>' ) );
+	cv_t_check( 'headers_have_copy_recipients: a Cc and Bcc packed into one element is not one', ! checkview_headers_have_copy_recipients( array( "Cc: boss@example.com\nBcc: evil@example.com" ) ) );
+	cv_t_check( 'headers_have_copy_recipients: X-Cc and Bcc-Note are not Cc/Bcc', ! checkview_headers_have_copy_recipients( "X-Cc: boss@example.com\nBcc-Note: boss@example.com" ) );
+	cv_t_check( 'the PHPMailer class is never loaded by these checks', ! class_exists( '\\PHPMailer\\PHPMailer\\PHPMailer', false ) );
 }
 
 cv_t_modes(
@@ -396,6 +413,10 @@ cv_t_modes(
 		cv_t_check( "CF7 $m: an invalid To but a valid Cc is redirected", cv_t_has_test( $r['recipient'] ) );
 		$r = $cf7->checkview_inject_email( array( 'recipient' => 'Shop Owner <owner@example.com>', 'additional_headers' => '' ) );
 		cv_t_check( "CF7 $m: Name <address> is redirected", cv_t_has_test( $r['recipient'] ) );
+		$r = $cf7->checkview_inject_email( array( 'recipient' => "owner@example\n.com", 'additional_headers' => '' ) );
+		cv_t_check( "CF7 $m: a line break CF7 strips later does not make it invalid", cv_t_has_test( $r['recipient'] ) );
+		cv_t_check( "WPForms $m: an invalid Send To with a valid CC is redirected", cv_t_has_test( $wpf->checkview_inject_email( array( 'address' => array( 'orders@shop' ), 'carboncopy' => array( 'boss@example.com' ), 'replyto' => '' ) )['address'] ) );
+		cv_t_check( "WPForms $m: an empty Send To stays empty whatever its CC", ! cv_t_has_test( $wpf->checkview_inject_email( array( 'address' => array(), 'carboncopy' => array( 'boss@example.com' ), 'replyto' => '' ) )['address'] ) );
 		$base = array( 'email_to' => 'orders@shop', 'email_to_cc' => '', 'email_to_bcc' => '' );
 		cv_t_check( "Elementor $m: an invalid To is left as is", 'orders@shop' === $el->checkview_override_mail_fields( $base, null )['email_to'] );
 		cv_t_check( "Elementor $m: an invalid To but a valid Cc is redirected", cv_t_has_test( $el->checkview_override_mail_fields( array_merge( $base, array( 'email_to_cc' => 'boss@example.com' ) ), null )['email_to'] ) );
@@ -405,6 +426,8 @@ cv_t_modes(
 		cv_t_check( "Formidable $m: a non-blank To keeps old behaviour", cv_t_has_test( $frm->checkview_inject_email( array( '5550100142' ), array(), 1, array( 'email_key' => 501 ) ) ) );
 	}
 );
+$r = $cf7->checkview_inject_email( array( 'recipient' => 'owner@example.com', 'additional_headers' => "Reply-To: a@example.com\nCc : boss@example.com" ) );
+cv_t_check( 'CF7 replace: a `Cc :` header is stripped', false === stripos( $r['additional_headers'], 'boss@' ) && false !== strpos( $r['additional_headers'], 'Reply-To' ) );
 $GLOBALS['cv_t_mail'] = array();
 $sent = $nf->checkview_inject_email( false, array( 'to' => 'orders@shop', 'cc' => '', 'bcc' => '', 'email_subject' => 's' ), 'm', array(), array() );
 cv_t_check( 'Ninja Forms replace: an invalid To sends nothing itself', false === $sent && array() === $GLOBALS['cv_t_mail'] );

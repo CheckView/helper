@@ -2614,9 +2614,12 @@ if ( ! function_exists( 'checkview_recipients_have_valid_address' ) ) {
 	 * cause a false failure:
 	 * - an internationalised domain is converted to punycode first, as
 	 *   PHPMailer does before it validates;
-	 * - an address PHPMailer's own validator accepts also counts, for
+	 * - an address PHPMailer's default validator would accept (its 'php'
+	 *   pattern: no CR/LF, then FILTER_VALIDATE_EMAIL) also counts, for
 	 *   mailers (WP Mail SMTP and others) that replace core's PHPMailer and
-	 *   may keep PHPMailer's default validator instead of is_email().
+	 *   may keep that validator instead of is_email(). The check is inlined:
+	 *   referencing the PHPMailer class here would autoload it before core's
+	 *   require_once and can fatal a site that bundles another copy.
 	 *
 	 * @param mixed ...$lists Recipient lists: arrays of addresses or comma-separated strings.
 	 * @return bool True when at least one address is valid.
@@ -2664,7 +2667,10 @@ if ( ! function_exists( 'checkview_address_is_sendable' ) ) {
 	function checkview_address_is_sendable( $address ) {
 		$at = strrpos( $address, '@' );
 		// PHPMailer punycodes an internationalised domain before validating it.
-		if ( false !== $at && function_exists( 'idn_to_ascii' ) && preg_match( '/[\x80-\xFF]/', substr( $address, $at + 1 ) ) ) {
+		// Its conversion is stricter (charset check, STD3 rules), so this can
+		// only accept more, which keeps the old redirect. A site whose charset
+		// is not UTF-8 is the one exception and is rare enough to leave.
+		if ( false !== $at && function_exists( 'idn_to_ascii' ) && defined( 'IDNA_DEFAULT' ) && defined( 'INTL_IDNA_VARIANT_UTS46' ) && preg_match( '/[\x80-\xFF]/', substr( $address, $at + 1 ) ) ) {
 			$ascii = idn_to_ascii( substr( $address, $at + 1 ), IDNA_DEFAULT, INTL_IDNA_VARIANT_UTS46 );
 			if ( false !== $ascii ) {
 				$address = substr( $address, 0, $at + 1 ) . $ascii;
@@ -2673,12 +2679,12 @@ if ( ! function_exists( 'checkview_address_is_sendable' ) ) {
 		if ( is_email( $address ) ) {
 			return true;
 		}
-		// Mailers that keep PHPMailer's own validator accept a few shapes
-		// is_email() rejects (quoted local parts, IP-literal domains).
-		if ( class_exists( '\PHPMailer\PHPMailer\PHPMailer' ) && method_exists( '\PHPMailer\PHPMailer\PHPMailer', 'validateAddress' ) ) {
-			return (bool) \PHPMailer\PHPMailer\PHPMailer::validateAddress( $address, 'php' );
+		// PHPMailer's default 'php' validator, inlined (see above). It accepts
+		// a few shapes is_email() rejects (quoted local parts, IP literals).
+		if ( false !== strpos( $address, "\n" ) || false !== strpos( $address, "\r" ) ) {
+			return false;
 		}
-		return false;
+		return false !== filter_var( $address, FILTER_VALIDATE_EMAIL );
 	}
 }
 
