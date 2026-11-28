@@ -357,11 +357,14 @@ class Checkview_Woo_Automated_Testing {
 				3
 			);
 
+			// PHP_INT_MAX so the test sees the final recipient list: a store
+			// snippet that adds or changes the recipient at a normal priority
+			// runs first, and cannot add a real address after the test inbox.
 			$this->loader->add_filter(
 				'woocommerce_email_recipient_new_order',
 				$this,
 				'checkview_filter_admin_emails',
-				10,
+				PHP_INT_MAX,
 				3
 			);
 
@@ -369,7 +372,7 @@ class Checkview_Woo_Automated_Testing {
 				'woocommerce_email_recipient_failed_order',
 				$this,
 				'checkview_filter_admin_emails',
-				10,
+				PHP_INT_MAX,
 				3
 			);
 
@@ -381,7 +384,7 @@ class Checkview_Woo_Automated_Testing {
 				'woocommerce_email_recipient_customer_completed_order',
 				$this,
 				'checkview_filter_admin_emails',
-				10,
+				PHP_INT_MAX,
 				3
 			);
 

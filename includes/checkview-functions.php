@@ -2577,6 +2577,11 @@ if ( ! function_exists( 'checkview_recipients_are_empty' ) ) {
 	 */
 	function checkview_recipients_are_empty( ...$lists ) {
 		foreach ( $lists as $list ) {
+			if ( ! is_array( $list ) && null !== $list && ! is_scalar( $list ) ) {
+				// An object or other unexpected shape: count it as a recipient
+				// so the old behaviour stays (and a cast cannot fatal).
+				return false;
+			}
 			$entries = is_array( $list ) ? $list : preg_split( '/[,;]/', (string) $list );
 			foreach ( $entries as $entry ) {
 				if ( null === $entry || false === $entry ) {
@@ -2603,7 +2608,9 @@ if ( ! function_exists( 'checkview_headers_have_copy_recipients' ) ) {
 	function checkview_headers_have_copy_recipients( $headers ) {
 		$lines = is_array( $headers ) ? $headers : preg_split( '/\r\n|\r|\n/', (string) $headers );
 		foreach ( $lines as $line ) {
-			if ( is_string( $line ) && preg_match( '/^\s*b?cc\s*:\s*(.*)$/i', $line, $m ) && ! checkview_recipients_are_empty( $m[1] ) ) {
+			// Same header-name match as the helpers' own Cc/Bcc strip (`^(bcc:|cc:)`),
+			// so a line counted here is also one those strips remove.
+			if ( is_string( $line ) && preg_match( '/^b?cc:\s*(.*)$/i', $line, $m ) && ! checkview_recipients_are_empty( $m[1] ) ) {
 				return true;
 			}
 		}

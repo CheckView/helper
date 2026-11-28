@@ -8,12 +8,17 @@
  * match no address, a real submission sends nothing. The filters used to put
  * the test inbox in anyway, so the test passed for an email no visitor gets.
  *
- * For each filter this checks three things, in replace mode and in the
- * "deliver to original recipients" append mode:
+ * For each filter this checks three things, in replace mode, with the
+ * `disable_email_receipt_<test id>` option set, and in the "deliver to
+ * original recipients" append mode:
  *  - no recipients at all: the email stays unaddressed (no test inbox);
  *  - an empty To but a Cc or Bcc (CF7, Formidable, Elementor and Ninja Forms
  *    still send that): still redirected to the test inbox, as before;
  *  - a normal recipient: redirected (replace) or appended (append), as before.
+ *
+ * It also checks the shared wp_mail backstop, which must not address a To
+ * that holds only separators or blanks (two CF7 mail-tags that both rendered
+ * empty give ","), since the form filter left it that way on purpose.
  *
  * Self-contained: WordPress and the form plugins are stubbed below, so this
  * runs with plain PHP (8.0+) from the plugin root:
@@ -143,6 +148,7 @@ foreach ( array( 'forminator', 'formidable', 'cf7', 'elementor', 'ninja-forms', 
 	require CHECKVIEW_INC_DIR . "formhelpers/class-checkview-$cv_t_slug-helper.php";
 }
 require CHECKVIEW_INC_DIR . 'woocommercehelper/class-checkview-woo-automated-testing.php';
+require CHECKVIEW_INC_DIR . 'class-checkview-mail-redirect.php';
 
 function cv_t_obj( $class ) {
 	return ( new ReflectionClass( $class ) )->newInstanceWithoutConstructor();
@@ -164,12 +170,30 @@ function cv_t_check( $label, $ok ) {
 function cv_t_has_test( $v ) {
 	return false !== strpos( json_encode( $v ), CHECKVIEW_TEST_EMAIL );
 }
+// Three modes: replace (default), the `disable_email_receipt_<test id>`
+// option (keep the real recipients and add the test inbox), and append
+// (allow original recipients).
 function cv_t_modes( callable $fn ) {
-	foreach ( array( 'replace' => false, 'append' => true ) as $mode => $append ) {
+	$modes = array(
+		'replace' => array( false, false ),
+		'receipt' => array( false, 'true' ),
+		'append'  => array( true, false ),
+	);
+	foreach ( $modes as $mode => list( $append, $receipt ) ) {
 		$GLOBALS['cv_t_append'] = $append;
+		$GLOBALS['cv_t_options'][ 'disable_email_receipt_' . TEST_ID ] = $receipt;
 		$fn( $mode );
 	}
-	$GLOBALS['cv_t_append'] = false;
+	$GLOBALS['cv_t_append']  = false;
+	$GLOBALS['cv_t_options'] = array();
+}
+function cv_t_logged_no_recipients() {
+	$hit = false;
+	foreach ( Checkview_Admin_Logs::$lines as $line ) {
+		$hit = $hit || false !== strpos( $line, 'has no recipients' );
+	}
+	Checkview_Admin_Logs::$lines = array();
+	return $hit;
 }
 
 /* ---- Shared helpers ----------------------------------------------------- */
@@ -182,6 +206,8 @@ if ( function_exists( 'checkview_recipients_are_empty' ) ) {
 	cv_t_check( 'recipients_are_empty: a non-string entry counts', ! checkview_recipients_are_empty( array( array( 'x' ) ) ) );
 	cv_t_check( 'headers_have_copy_recipients: Cc line', checkview_headers_have_copy_recipients( "From: a@b.co\nCc: c@d.co" ) );
 	cv_t_check( 'headers_have_copy_recipients: empty Bcc line is not one', ! checkview_headers_have_copy_recipients( array( 'From: a@b.co', 'Bcc: ' ) ) );
+	cv_t_check( 'headers_have_copy_recipients: same header match as the Cc/Bcc strips', ! checkview_headers_have_copy_recipients( 'Cc : c@d.co' ) );
+	cv_t_check( 'recipients_are_empty: an object counts and does not fatal', ! checkview_recipients_are_empty( new stdClass() ) );
 }
 
 /* ---- Forminator ---------------------------------------------------------- */
@@ -190,6 +216,9 @@ $fmn = cv_t_obj( 'Checkview_Forminator_Helper' );
 cv_t_modes(
 	function ( $m ) use ( $fmn ) {
 		cv_t_check( "Forminator $m: empty list stays empty", array() === $fmn->checkview_inject_email( array() ) );
+		cv_t_check( "Forminator $m: no-recipient log line written", cv_t_logged_no_recipients() );
+		cv_t_check( "Forminator $m: list of one blank entry stays unaddressed", ! cv_t_has_test( $fmn->checkview_inject_email( array( '' ) ) ) );
+		cv_t_check( "Forminator $m: empty string stays empty", '' === $fmn->checkview_inject_email( '' ) );
 		cv_t_check( "Forminator $m: a recipient is redirected", cv_t_has_test( $fmn->checkview_inject_email( array( 'owner@example.com' ) ) ) );
 	}
 );
@@ -204,6 +233,7 @@ cv_t_modes(
 		cv_t_check( "Formidable $m: no To, Cc or Bcc stays empty", ! cv_t_has_test( $frm->checkview_inject_email( array(), array(), 1, array( 'email_key' => 501 ) ) ) );
 		cv_t_check( "Formidable $m: no To but a Cc is redirected", cv_t_has_test( $frm->checkview_inject_email( array(), array(), 1, array( 'email_key' => 502 ) ) ) );
 		cv_t_check( "Formidable $m: unreadable action keeps old behaviour", cv_t_has_test( $frm->checkview_inject_email( array(), array(), 1, array( 'email_key' => 999 ) ) ) );
+		cv_t_check( "Formidable $m: called with one arg keeps old behaviour", cv_t_has_test( $frm->checkview_inject_email( array() ) ) );
 		cv_t_check( "Formidable $m: a recipient is redirected", cv_t_has_test( $frm->checkview_inject_email( array( 'owner@example.com' ), array(), 1, array( 'email_key' => 501 ) ) ) );
 	}
 );
@@ -246,6 +276,15 @@ cv_t_check( 'Ninja Forms replace: no To but a Cc is sent to the test inbox', arr
 $GLOBALS['cv_t_mail'] = array();
 $nf->checkview_inject_email( false, array( 'to' => 'owner@example.com', 'cc' => '', 'bcc' => '', 'email_subject' => 's' ), 'm', array(), array() );
 cv_t_check( 'Ninja Forms replace: a recipient is sent to the test inbox', array( CHECKVIEW_TEST_EMAIL ) === $GLOBALS['cv_t_mail'] );
+// Append mode hands every send back to Ninja Forms (the wp_mail backstop
+// adds the test inbox), with or without recipients.
+$GLOBALS['cv_t_append'] = true;
+foreach ( array( 'a recipient' => 'owner@example.com', 'no recipients' => '' ) as $cv_t_what => $cv_t_to ) {
+	$GLOBALS['cv_t_mail'] = array();
+	$sent = $nf->checkview_inject_email( false, array( 'to' => $cv_t_to, 'cc' => '', 'bcc' => '', 'email_subject' => 's' ), 'm', array(), array() );
+	cv_t_check( "Ninja Forms append: $cv_t_what is handed back unsent", false === $sent && array() === $GLOBALS['cv_t_mail'] );
+}
+$GLOBALS['cv_t_append'] = false;
 
 /* ---- WPForms ------------------------------------------------------------- */
 
@@ -253,6 +292,7 @@ $wpf = cv_t_obj( 'Checkview_Wpforms_Helper' );
 cv_t_modes(
 	function ( $m ) use ( $wpf ) {
 		cv_t_check( "WPForms $m: no Send To stays empty", ! cv_t_has_test( $wpf->checkview_inject_email( array( 'address' => array(), 'replyto' => '' ) )['address'] ) );
+		cv_t_check( "WPForms $m: a smart tag that rendered empty stays empty", ! cv_t_has_test( $wpf->checkview_inject_email( array( 'address' => array( '' ), 'replyto' => '' ) )['address'] ) );
 		cv_t_check( "WPForms $m: a recipient is redirected", cv_t_has_test( $wpf->checkview_inject_email( array( 'address' => array( 'owner@example.com' ), 'replyto' => '' ) )['address'] ) );
 	}
 );
@@ -274,6 +314,22 @@ cv_t_modes(
 		cv_t_check( "WooCommerce $m: blank recipient stays blank", '' === $woo->checkview_filter_admin_emails( '', $order, $wce ) );
 		cv_t_check( "WooCommerce $m: invalid recipient is left for WooCommerce to drop", 'orders@shop' === $woo->checkview_filter_admin_emails( 'orders@shop', $order, $wce ) );
 		cv_t_check( "WooCommerce $m: a valid recipient is redirected", cv_t_has_test( $woo->checkview_filter_admin_emails( 'orders@shop.com', $order, $wce ) ) );
+	}
+);
+
+/* ---- wp_mail backstop ---------------------------------------------------- */
+
+$bs = cv_t_obj( 'Checkview_Mail_Redirect' );
+cv_t_modes(
+	function ( $m ) use ( $bs ) {
+		$r = $bs->redirect_recipient( array( 'to' => ',', 'headers' => '' ) );
+		cv_t_check( "backstop $m: a separator-only To stays unaddressed", ',' === $r['to'] );
+		$r = $bs->redirect_recipient( array( 'to' => array( '' ), 'headers' => array() ) );
+		cv_t_check( "backstop $m: a blank To list stays unaddressed", ! cv_t_has_test( $r['to'] ) );
+		$r = $bs->redirect_recipient( array( 'to' => ', ', 'headers' => "Cc: boss@example.com" ) );
+		cv_t_check( "backstop $m: no To but a Cc is redirected", cv_t_has_test( $r['to'] ) );
+		$r = $bs->redirect_recipient( array( 'to' => 'owner@example.com', 'headers' => '' ) );
+		cv_t_check( "backstop $m: a recipient is redirected", cv_t_has_test( $r['to'] ) );
 	}
 );
 
