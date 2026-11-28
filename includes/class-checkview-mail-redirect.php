@@ -75,6 +75,17 @@ if ( ! class_exists( 'Checkview_Mail_Redirect' ) ) {
 				return $atts;
 			}
 
+			// A To that holds only separators or blanks (for example two CF7
+			// mail-tags that both rendered empty: ",") reaches nobody, and a
+			// form plugin's own recipient filter has already left it that way
+			// on purpose. Addressing it to the test inbox here would let a test
+			// pass for an email a real visitor's submission never sends. An
+			// email that still has a Cc or Bcc does go out, so it is redirected.
+			if ( checkview_recipients_are_empty( $atts['to'] ) && ! checkview_headers_have_copy_recipients( $atts['headers'] ?? '' ) ) {
+				checkview_log_no_recipients( 'wp_mail backstop' );
+				return $atts;
+			}
+
 			$cv_test_id = checkview_get_test_id();
 			// Append mode is signaled two ways: the legacy per-test option, or the
 			// per-test allow_original_recipients_<test_id> option the SaaS sets at

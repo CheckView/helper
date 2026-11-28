@@ -2559,6 +2559,80 @@ if ( ! function_exists( 'checkview_recipients_contain_test_email' ) ) {
 	}
 }
 
+if ( ! function_exists( 'checkview_recipients_are_empty' ) ) {
+	/**
+	 * Whether every recipient list given names nobody.
+	 *
+	 * When a form or store resolves an email to nobody (for example routing
+	 * rules that match no address), a real submission sends nothing. The
+	 * recipient filters must then leave the email alone: putting the test
+	 * inbox in would make the test pass for an email no visitor ever gets.
+	 *
+	 * Pass every list the plugin still sends to on its own. Some plugins send
+	 * to Cc or Bcc when To is empty, and that email does go out, so it keeps
+	 * being redirected to the test inbox.
+	 *
+	 * @param mixed ...$lists Recipient lists: arrays of addresses, or strings separated by commas or semicolons.
+	 * @return bool True when no list holds a non-blank entry.
+	 */
+	function checkview_recipients_are_empty( ...$lists ) {
+		foreach ( $lists as $list ) {
+			if ( ! is_array( $list ) && null !== $list && ! is_scalar( $list ) ) {
+				// An object or other unexpected shape: count it as a recipient
+				// so the old behaviour stays (and a cast cannot fatal).
+				return false;
+			}
+			$entries = is_array( $list ) ? $list : preg_split( '/[,;]/', (string) $list );
+			foreach ( $entries as $entry ) {
+				if ( null === $entry || false === $entry ) {
+					continue;
+				}
+				// Anything that is not a blank string counts as a recipient,
+				// so an unexpected shape keeps the old behaviour.
+				if ( ! is_string( $entry ) || '' !== trim( $entry ) ) {
+					return false;
+				}
+			}
+		}
+		return true;
+	}
+}
+
+if ( ! function_exists( 'checkview_headers_have_copy_recipients' ) ) {
+	/**
+	 * Whether email headers carry a non-empty Cc or Bcc line.
+	 *
+	 * @param array|string $headers Headers as an array of lines or a newline-separated string.
+	 * @return bool
+	 */
+	function checkview_headers_have_copy_recipients( $headers ) {
+		if ( ! is_array( $headers ) && null !== $headers && ! is_scalar( $headers ) ) {
+			return false;
+		}
+		$lines = is_array( $headers ) ? $headers : preg_split( '/\r\n|\r|\n/', (string) $headers );
+		foreach ( $lines as $line ) {
+			// Same header-name match as the helpers' own Cc/Bcc strip (`^(bcc:|cc:)`),
+			// so a line counted here is also one those strips remove.
+			if ( is_string( $line ) && preg_match( '/^b?cc:\s*(.*)$/i', $line, $m ) && ! checkview_recipients_are_empty( $m[1] ) ) {
+				return true;
+			}
+		}
+		return false;
+	}
+}
+
+if ( ! function_exists( 'checkview_log_no_recipients' ) ) {
+	/**
+	 * Logs that a test email was left unaddressed because it has no recipients.
+	 *
+	 * @param string $source Plugin or email name for the log line.
+	 * @return void
+	 */
+	function checkview_log_no_recipients( $source ) {
+		Checkview_Admin_Logs::add( 'ip-logs', $source . ': this email has no recipients, so it was left unaddressed and is not sent, as for a real visitor.' );
+	}
+}
+
 if ( ! function_exists( 'checkview_append_test_email_string' ) ) {
 	/**
 	 * Appends CHECKVIEW_TEST_EMAIL to a comma-separated recipient string with dedup.

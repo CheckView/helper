@@ -304,6 +304,15 @@ if ( ! class_exists( 'Checkview_Forminator_Helper' ) ) {
 		 * @return string/ARRAY Email.
 		 */
 		public function checkview_inject_email( $email ) {
+			// Forminator skips a notification whose recipient list is empty,
+			// checking after this filter (for example routing rules that match
+			// no address). Leave it empty so the test fails as a real
+			// submission would, instead of sending it to the test inbox.
+			if ( checkview_recipients_are_empty( $email ) ) {
+				checkview_log_no_recipients( 'Forminator' );
+				return $email;
+			}
+
 			// New: append-mode branch — deliver to BOTH real recipient and test inbox.
 			if ( checkview_should_allow_original_recipients() ) {
 				$email = is_array( $email )

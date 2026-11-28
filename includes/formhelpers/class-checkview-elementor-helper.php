@@ -588,6 +588,15 @@ if ( ! class_exists( 'Checkview_Elementor_Helper' ) ) {
 				return $fields;
 			}
 
+			// Elementor sends whatever this filter returns, with no recipient
+			// check. If To, Cc and Bcc are all empty (a shortcode in To that
+			// rendered empty), a real submission sends nothing, so leave it
+			// empty instead of sending it to the test inbox.
+			if ( checkview_recipients_are_empty( $fields['email_to'] ?? '', $fields['email_to_cc'] ?? '', $fields['email_to_bcc'] ?? '' ) ) {
+				checkview_log_no_recipients( 'Elementor' );
+				return $fields;
+			}
+
 			// New: append-mode branch — deliver to BOTH the real recipients and
 			// the test inbox. `email_to` is a comma-separated string here.
 			// CC/BCC are read out of $fields AFTER this filter runs, so leaving

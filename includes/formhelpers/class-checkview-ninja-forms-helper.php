@@ -123,6 +123,15 @@ if ( ! class_exists( 'Checkview_Ninja_Forms_Helper' ) ) {
 		 * @return bool
 		 */
 		public function checkview_inject_email( $sent, $action_settings, $message, $headers, $attachments ) {
+			// This filter runs before Ninja Forms checks any recipient. With no
+			// To, Cc or Bcc a real submission sends nothing, so hand the send
+			// back to Ninja Forms (its wp_mail() then has no one to send to)
+			// instead of sending to the test inbox below.
+			if ( checkview_recipients_are_empty( $action_settings['to'] ?? '', $action_settings['cc'] ?? '', $action_settings['bcc'] ?? '' ) ) {
+				checkview_log_no_recipients( 'Ninja Forms' );
+				return $sent;
+			}
+
 			// Append-mode branch — let Ninja Forms' own pipeline send ONE email
 			// with merged recipients (real + CHECKVIEW_TEST_EMAIL) instead of the
 			// direct wp_mail() to CHECKVIEW_TEST_EMAIL only that replace-mode does
